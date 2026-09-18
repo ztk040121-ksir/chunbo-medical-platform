@@ -1,0 +1,48 @@
+# ============ 密钥与本地配置（严禁提交） ============
+application-local.yml
+.env
+.env.*
+!.env.example
+
+# ============ Java / Maven ============
+target/
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# ============ Node.js / 前端 ============
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+.eslintcache
+
+# ============ 运行时数据 ============
+uploads/
+/test1.jpg
+/test2.png
+/bing_test.html
+
+# ============ 测试截图与临时文件 ============
+春播万象截图/
+*.tmp
+
+# ============ 内部审计/评估文档（含敏感信息，勿提交） ============
+代码审查报告.md
+简历-代码匹配度评估.md
+
+# ============ 工作目录 ============
+.workbuddy/
+
+# ============ IDE ============
+.idea/
+*.iml
+.vscode/
+*.suo
+*.swp
+
+# ============ OS ============
+.DS_Store
+Thumbs.db

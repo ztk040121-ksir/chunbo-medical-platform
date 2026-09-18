@@ -1,0 +1,72 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: chunbo-medical-backend
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/chunbo_medical?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:12345}
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      timeout: 3000ms
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.ohmygpt.com
+      connect-timeout: 3s
+      read-timeout: 8s
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.3
+      embedding:
+        options:
+          model: text-embedding-ada-002
+    mcp:
+      server:
+        enabled: true
+        name: chunbo-medical-mcp-server
+        type: SYNC
+        version: 1.0.0
+      client:
+        enabled: false
+        # 说明：魔搭 MCP fetch 走 Spring AI 1.0.0-M7 的 MCP client 自动配置时，
+        # 连接失败(404/超时)会直接导致启动崩溃、无法降级；且魔搭需直连、模型需走VPN，二者冲突。
+        # 现网页抓取能力由自研 WebFetchTools 提供（等价，已注册为 MCP 工具）。
+        # 待接入国内模型或升级 Spring AI 稳定版后，可把 enabled 改为 true 并启用下方连接：
+        toolcallback:
+          enabled: false
+        sse:
+          connections:
+            modelscope-fetch:
+              url: https://mcp.api-inference.modelscope.net/c64f19f3024545
+              sse-endpoint: /sse
+    retry:
+      max-attempts: 1
+
+chunbo:
+  ai:
+    mock-enabled: false
+    llm-enabled: true
+    proxy:
+      host: 127.0.0.1
+      port: 7897
+    clinic-name: "春播万象 · 基层智慧医疗全栈平台"
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.chunbo.medical: debug
+    org.springframework.ai: info

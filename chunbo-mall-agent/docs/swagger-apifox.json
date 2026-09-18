@@ -1,0 +1,108 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "春播商城 B2B 多智能体医药电商 API 契约文档",
+    "description": "基于 LangGraph 状态图与 Spring AI RAG 知识库的 B2B 医药电商运营智能体接口",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/mall/chat": {
+      "post": {
+        "summary": "LangGraph 多智能体协同问答（Router 路由 + 子智能体协作）",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "example": "我是采购主管，订购300盒通络贴能给多少阶梯折扣？"
+                  },
+                  "role": {
+                    "type": "string",
+                    "example": "buyer"
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "example": "SESSION_MALL_001"
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "协同决策结果、状态图流转轨迹及议价草案"
+          }
+        }
+      }
+    },
+    "/api/mall/products": {
+      "get": {
+        "summary": "获取 B2B 控销药品与特色贴敷选品货架",
+        "responses": {
+          "200": {
+            "description": "控销商品列表"
+          }
+        }
+      }
+    },
+    "/api/mall/orders": {
+      "get": {
+        "summary": "获取 B2B 采购订单列表",
+        "responses": {
+          "200": {
+            "description": "采购订单列表"
+          }
+        }
+      }
+    },
+    "/api/mall/order/create": {
+      "post": {
+        "summary": "采纳议价方案并一键生成正式采购订单",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clinicName": {
+                    "type": "string"
+                  },
+                  "buyerName": {
+                    "type": "string"
+                  },
+                  "totalAmount": {
+                    "type": "number"
+                  },
+                  "discountAmount": {
+                    "type": "number"
+                  },
+                  "finalAmount": {
+                    "type": "number"
+                  },
+                  "itemsJson": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建的采购订单信息"
+          }
+        }
+      }
+    }
+  }
+}
