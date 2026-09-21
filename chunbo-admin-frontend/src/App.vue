@@ -18,7 +18,7 @@
 
         <div class="login-tab-title">
           <h3>中台统一身份认证</h3>
-          <span class="version-tag">RBAC 安全系统 v1.0</span>
+          <span class="version-tag">RBAC 安全系统 v2.0.0</span>
         </div>
 
 
@@ -63,7 +63,7 @@
 
         <div class="login-bottom-info">
           <span>春播万象全栈医疗中台 · BCrypt 安全加密通道</span>
-          <el-link type="info" :underline="false" @click="openSystem('http://localhost:5173/login')">打开医生工作台 →</el-link>
+          <el-link type="info" underline="never" @click="openSystem('http://localhost:5173/login')">打开医生工作台 →</el-link>
         </div>
       </div>
     </div>
@@ -218,9 +218,9 @@
               </div>
               <div style="display: flex; gap: 12px; align-items: center;">
                 <el-radio-group v-model="analyticsPeriod" size="small" @change="loadAnalytics">
-                  <el-radio-button label="today">今日实时</el-radio-button>
-                  <el-radio-button label="month">本月统计 (近30天)</el-radio-button>
-                  <el-radio-button label="year">年度统计 (2026年)</el-radio-button>
+                  <el-radio-button value="today">今日实时</el-radio-button>
+                  <el-radio-button value="month">本月统计 (近30天)</el-radio-button>
+                  <el-radio-button value="year">年度统计 (2026年)</el-radio-button>
                 </el-radio-group>
                 <el-button type="primary" size="small" @click="loadAnalytics">刷新数据</el-button>
               </div>
@@ -230,22 +230,22 @@
             <div class="metrics-grid">
               <div class="metric-card bg-blue">
                 <div class="m-label">{{ analytics.labelRegTitle || '门诊接诊人数' }}</div>
-                <div class="m-val">{{ analytics.activeRegistrations !== undefined ? analytics.activeRegistrations : (analytics.todayRegistrations || 1) }} <span class="unit">人次</span></div>
+                <div class="m-val">{{ analytics.activeRegistrations !== undefined ? analytics.activeRegistrations : (analytics.todayRegistrations || 0) }} <span class="unit">人次</span></div>
                 <div class="m-sub">{{ analytics.labelRegSub || '门诊患者接待与建档' }}</div>
               </div>
               <div class="metric-card bg-green">
                 <div class="m-label">{{ analytics.labelFeeTitle || '门诊挂号费流水' }}</div>
-                <div class="m-val">¥{{ analytics.activeRegFeeRevenue !== undefined ? analytics.activeRegFeeRevenue : (analytics.todayRegFeeRevenue || 10) }}</div>
+                <div class="m-val">¥{{ analytics.activeRegFeeRevenue !== undefined ? analytics.activeRegFeeRevenue : (analytics.todayRegFeeRevenue || 0) }}</div>
                 <div class="m-sub">{{ analytics.labelFeeSub || '实收标准 ¥10/人次' }}</div>
               </div>
               <div class="metric-card bg-purple">
                 <div class="m-label">{{ analytics.labelMedTitle || '处方药品销售额' }}</div>
-                <div class="m-val">¥{{ analytics.activeMedicineRevenue !== undefined ? analytics.activeMedicineRevenue : (analytics.todayMedicineRevenue || 105.0) }}</div>
+                <div class="m-val">¥{{ analytics.activeMedicineRevenue !== undefined ? analytics.activeMedicineRevenue : (analytics.todayMedicineRevenue || 0) }}</div>
                 <div class="m-sub">{{ analytics.labelMedSub || '门诊处方药房销售实收' }}</div>
               </div>
               <div class="metric-card bg-orange">
                 <div class="m-label">{{ analytics.labelPlasterTitle || '特色中药贴敷理疗创收' }}</div>
-                <div class="m-val">¥{{ analytics.activePlasterRevenue !== undefined ? analytics.activePlasterRevenue : (analytics.totalPlasterRevenue || 1488) }}</div>
+                <div class="m-val">¥{{ analytics.activePlasterRevenue !== undefined ? analytics.activePlasterRevenue : (analytics.totalPlasterRevenue || 0) }}</div>
                 <div class="m-sub">{{ analytics.labelPlasterSub || '特色中医理疗专案 (综合毛利率 46.8%)' }}</div>
               </div>
             </div>
@@ -377,11 +377,19 @@
                 >
                   <div class="msg-sender">{{ msg.role === 'user' ? ('👤 提问 (' + currentUserName + ')') : '🤖 春播中台AI调度指挥助手' }}</div>
                   <div class="msg-content" v-html="renderMarkdown(msg.content)"></div>
+                  <div class="msg-tts-line" v-if="msg.role === 'assistant' && msg.content && !chatLoading">
+                    <span class="tts-link" @click="speakAdminMessage(msg)">{{ msg._speaking ? '⏹ 停止朗读' : '🔊 朗读回答' }}</span>
+                  </div>
                 </div>
               </div>
 
               <!-- 智能指令输入栏 -->
               <div class="chat-input-bar">
+                <div class="mic-btn-admin" :class="{ recording: isRecordingAdmin }" @click="toggleVoiceInputAdmin"
+                     :title="isRecordingAdmin ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
+                  <el-icon v-if="!isRecordingAdmin" :size="17"><Microphone /></el-icon>
+                  <span v-else style="font-size: 13px;">⏹</span>
+                </div>
                 <el-input 
                   v-model="inputQuery" 
                   placeholder="请输入中台调度指令：例如「生成全院工资表」、「查商城待发货订单」、「药房低库存预警」、「发货订单 B2C2026...」" 
@@ -395,7 +403,35 @@
                 </el-input>
                 <el-button v-if="!chatLoading" type="primary" size="default" @click="sendAssistantQuery">发送指令</el-button>
                 <el-button v-else type="danger" size="default" @click="stopAssistantGeneration">⏹ 停止</el-button>
+                <el-button type="warning" size="default" plain @click="openTextAssistant" title="AI 帮写/续写/润色/精简">✨ AI文字助手</el-button>
               </div>
+
+              <!-- AI 文字助手弹窗（通用文本模型） -->
+              <el-dialog v-model="showTextAssistant" title="✨ AI 文字助手（帮写 / 续写 / 润色 / 精简 / 联想词）" width="640px">
+                <div class="text-assistant-body">
+                  <div class="ta-templates">
+                    <span class="ta-label">选择模板：</span>
+                    <el-radio-group v-model="textAssistantType">
+                      <el-radio-button v-for="t in textTemplates" :key="t.key" :value="t.key">{{ t.name }}</el-radio-button>
+                    </el-radio-group>
+                  </div>
+                  <el-input
+                    v-model="textAssistantInput"
+                    type="textarea"
+                    :rows="5"
+                    placeholder="在这里输入需要处理的文本…"
+                    resize="none"
+                  />
+                  <div class="ta-actions">
+                    <el-button type="primary" :loading="textAssistantLoading" @click="runTextAssistant">✨ 生成</el-button>
+                    <el-button v-if="textAssistantResult" size="default" @click="copyTextResult">📋 复制结果</el-button>
+                  </div>
+                  <div class="ta-result" v-if="textAssistantResult">
+                    <div class="ta-result-title">生成结果：</div>
+                    <div class="ta-result-content" v-html="renderMarkdown(textAssistantResult)"></div>
+                  </div>
+                </div>
+              </el-dialog>
 
               <!-- 全中台 AI 调度会话历史抽屉 -->
               <el-drawer
@@ -495,9 +531,9 @@
             <!-- 订单状态过滤栏与手动发货说明 -->
             <div style="margin: 14px 0 10px; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
               <el-radio-group v-model="orderFilterStatus" size="small">
-                <el-radio-button label="ALL">全部订单 ({{ mallOrdersList.length }})</el-radio-button>
-                <el-radio-button label="PENDING">待发货出库 ({{ pendingShipCount }})</el-radio-button>
-                <el-radio-button label="SHIPPED">已发货运输中 ({{ shippedCount }})</el-radio-button>
+                <el-radio-button value="ALL">全部订单 ({{ mallOrdersList.length }})</el-radio-button>
+                <el-radio-button value="PENDING">待发货出库 ({{ pendingShipCount }})</el-radio-button>
+                <el-radio-button value="SHIPPED">已发货运输中 ({{ shippedCount }})</el-radio-button>
               </el-radio-group>
               <span style="font-size: 13px; color: #475569;">
                 💡 发货说明：待发货订单请在右侧操作栏点击 <b style="color: #16a34a;">【📦 一键发货出库】</b> 手动出库（非自动发货）
@@ -648,8 +684,8 @@
                 <span class="sub-desc" v-else>人事与院办审批平台 · 支持请假审核、同意与驳回</span>
               </div>
               <el-radio-group v-if="currentUserRole !== 'DOCTOR'" v-model="approvalViewRole" size="small">
-                <el-radio-button label="DEAN">🏛️ 人事/院办审批视角</el-radio-button>
-                <el-radio-button label="APPLICANT">👨‍⚕️ 员工申请发起视角</el-radio-button>
+                <el-radio-button value="DEAN">🏛️ 人事/院办审批视角</el-radio-button>
+                <el-radio-button value="APPLICANT">👨‍⚕️ 员工申请发起视角</el-radio-button>
               </el-radio-group>
             </div>
 
@@ -774,7 +810,7 @@
               </div>
               <div class="metric-card bg-orange">
                 <div class="m-label">处方与调剂授权率</div>
-                <div class="m-val">100%</div>
+                <div class="m-val">—</div>
                 <div class="m-sub">符合卫健委基层医疗执业规范</div>
               </div>
             </div>
@@ -964,7 +1000,7 @@
               </div>
               <div class="metric-card bg-green">
                 <div class="m-label">全栈进销存关联</div>
-                <div class="m-val">100%</div>
+                <div class="m-val">—</div>
                 <div class="m-sub">补货入库自动生成出入库台账</div>
               </div>
             </div>
@@ -1173,7 +1209,7 @@
               </div>
               <div class="metric-card bg-purple">
                 <div class="m-label">已发放新人购药金</div>
-                <div class="m-val">¥{{ (mallUsers.length * 200).toFixed(2) }}</div>
+                <div class="m-val">¥—</div>
                 <div class="m-sub">每位新注册居民预赠 200 元体验金</div>
               </div>
             </div>
@@ -1372,7 +1408,7 @@
           <div class="p-row"><b>安全角色:</b> <el-tag size="small" :type="currentUserRole === 'ADMIN' ? 'danger' : 'primary'">{{ currentRoleLabel }}</el-tag></div>
           <div class="p-row"><b>所属部门:</b> {{ currentUserDept }}</div>
           <div class="p-row"><b>岗位职称:</b> {{ currentUserTitle }}</div>
-          <div class="p-row"><b>签约机构:</b> 春播第001社区卫生服务中心 / 春播万象云诊所</div>
+          <div class="p-row"><b>签约机构:</b> 春播万象基层医疗服务平台</div>
         </div>
         <template #footer>
           <div class="flex-between">
@@ -1668,7 +1704,15 @@ const handleLogoutConfirm = () => {
 // ==============================================
 // 业务数据状态
 // ==============================================
-const currentTab = ref('analytics')
+// 当前主标签：刷新后保持在原标签页（localStorage 持久化）
+const currentTab = ref(localStorage.getItem('chunbo_admin_tab') || 'analytics')
+watch(currentTab, (v) => {
+  try { localStorage.setItem('chunbo_admin_tab', v) } catch (e) {}
+})
+// 商户无经营大屏权限：恢复到不可见标签时自动纠正
+if (currentUserRole.value === 'MERCHANT' && currentTab.value === 'analytics') {
+  currentTab.value = 'mall-orders'
+}
 const showProfileDialog = ref(false)
 
 const analytics = ref({})
@@ -1724,12 +1768,12 @@ const inboundQty = ref(100)
 const showAddProductDialog = ref(false)
 const newProductForm = ref({
   productName: '',
-  category: '感冒发热',
-  specification: '0.35g*24粒/盒',
-  manufacturer: '北京同仁堂科技发展股份有限公司',
-  retailGuidePrice: 28.00,
-  wholesalePrice: 14.50,
-  stock: 200,
+  category: '',
+  specification: '',
+  manufacturer: '',
+  retailGuidePrice: null,
+  wholesalePrice: null,
+  stock: null,
   imageUrl: ''
 })
 
@@ -1896,6 +1940,7 @@ const loadAdminSessions = () => {
         currentAdminSessionId.value = data.currentSessionId || data.sessions[0].id
         const active = adminSessionList.value.find(s => s.id === currentAdminSessionId.value) || adminSessionList.value[0]
         chatMessages.value = active.messages || []
+        syncAdminSessionsFromBackend()
         return
       }
     }
@@ -1916,6 +1961,37 @@ const loadAdminSessions = () => {
   currentAdminSessionId.value = initialSession.id
   chatMessages.value = initialSession.messages
   saveAdminSessions()
+  syncAdminSessionsFromBackend()
+}
+
+// 从后端同步会话历史标题（数据来源切换：会话列表标题以后端 AI 提炼为准）
+const syncAdminSessionsFromBackend = async () => {
+  const staffId = currentUserStaffId.value
+  const token = localStorage.getItem('chunbo_admin_token')
+  if (!staffId || !token) return
+  try {
+    const resp = await axios.get('/api/session/history', { params: { bizType: 'oa', userId: staffId } })
+    const groups = resp.data || {}
+    const backend = []
+    Object.keys(groups).forEach(k => {
+      (groups[k] || []).forEach(it => backend.push(it))
+    })
+    if (backend.length === 0) return
+    backend.forEach(bs => {
+      const local = adminSessionList.value.find(s => s.id === bs.sessionId)
+      if (local) {
+        if (bs.title) local.title = bs.title
+      } else {
+        adminSessionList.value.unshift({
+          id: bs.sessionId,
+          title: bs.title || '历史会话',
+          createdAt: bs.updateTime || formatAdminNowTime(),
+          updatedAt: bs.updateTime || formatAdminNowTime(),
+          messages: getDefaultAdminWelcome()
+        })
+      }
+    })
+  } catch (e) {}
 }
 
 // 自动持久化保存到 localStorage
@@ -1976,6 +2052,11 @@ const deleteAdminSession = (sessionId) => {
       createNewAdminSession()
     }
     saveAdminSessions()
+    // 同步后端删除（DB + Redis 记忆）
+    const staffId = currentUserStaffId.value
+    if (staffId) {
+      axios.delete('/api/session/history', { params: { bizType: 'oa', sessionId, userId: staffId } }).catch(() => {})
+    }
     ElMessage.success('已删除该会话记录')
   }
 }
@@ -2221,12 +2302,12 @@ const submitAddProduct = async () => {
     showAddProductDialog.value = false
     newProductForm.value = {
       productName: '',
-      category: '感冒发热',
-      specification: '0.35g*24粒/盒',
-      manufacturer: '北京同仁堂科技发展股份有限公司',
-      retailGuidePrice: 28.00,
-      wholesalePrice: 14.50,
-      stock: 200,
+      category: '',
+      specification: '',
+      manufacturer: '',
+      retailGuidePrice: null,
+      wholesalePrice: null,
+      stock: null,
       imageUrl: ''
     }
     loadMallAdminProducts()
@@ -2353,7 +2434,8 @@ const sendAssistantQuery = async () => {
   // 建立 SSE 流式连接（fetch + 鉴权 + 可中断）
   const abort = new AbortController()
   assistantAbort = abort
-  const sseUrl = `/api/assistant/chat/stream?message=${encodeURIComponent(text)}&userId=${encodeURIComponent(currentUserStaffId.value)}&userRole=${encodeURIComponent(currentUserRole.value)}&userName=${encodeURIComponent(currentUserName.value)}`
+  assistantActiveSessionId = currentAdminSessionId.value || ('OA_S_' + Date.now())
+  const sseUrl = `/api/assistant/chat/stream?message=${encodeURIComponent(text)}&userId=${encodeURIComponent(currentUserStaffId.value)}&userRole=${encodeURIComponent(currentUserRole.value)}&userName=${encodeURIComponent(currentUserName.value)}&sessionId=${encodeURIComponent(assistantActiveSessionId)}`
   try {
     const resp = await fetch(sseUrl, {
       headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') },
@@ -2363,6 +2445,18 @@ const sendAssistantQuery = async () => {
     const reader = resp.body.getReader()
     const dec = new TextDecoder('utf-8')
     let buf = ''
+    // 平滑流式渲染：token 先入缓冲，固定间隔吐出
+    let pendingText = ''
+    const renderTimer = setInterval(() => {
+      if (pendingText.length > 0) {
+        const take = Math.max(2, Math.ceil(pendingText.length / 6))
+        chatMessages.value[assistantMsgIndex].content += pendingText.slice(0, take)
+        pendingText = pendingText.slice(take)
+        nextTick(() => {
+          if (chatBoxRef.value) chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+        })
+      }
+    }, 30)
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -2372,14 +2466,24 @@ const sendAssistantQuery = async () => {
       for (const ev of parts) {
         const dl = ev.split('\n').find(l => l.startsWith('data:'))
         if (!dl) continue
-        let piece = dl.slice(5)
-        if (piece === '[DONE]') continue
-        chatMessages.value[assistantMsgIndex].content += piece
-        nextTick(() => {
-          if (chatBoxRef.value) chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
-        })
+        let piece = dl.slice(5).trim()
+        if (!piece) continue
+        let parsed
+        try { parsed = JSON.parse(piece) } catch (e2) {
+          // 兼容旧纯文本格式
+          pendingText += piece
+          continue
+        }
+        if (parsed.eventType === 1001) {
+          // DATA 事件：文字进入平滑缓冲
+          pendingText += (parsed.eventData || '')
+        }
+        // eventType 1002 (STOP) / 1003 (PARAM) / 1004 (PROCESS) 中台助手无卡片，忽略
       }
     }
+    clearInterval(renderTimer)
+    chatMessages.value[assistantMsgIndex].content += pendingText
+    pendingText = ''
   } catch (e) {
     if (e.name !== 'AbortError' && !chatMessages.value[assistantMsgIndex].content) {
       // 流式失败且无内容，使用普通 POST 接口兜底
@@ -2406,17 +2510,257 @@ const sendAssistantQuery = async () => {
   }
 }
 
-// ── 停止 AI 调度生成 ──
+// ── 停止 AI 调度生成（后端终止 Flux 流 + 前端断开 SSE，参照《SpringAI》笔记标准实现） ──
 let assistantAbort = null
+let assistantActiveSessionId = null
 const stopAssistantGeneration = () => {
+  // 先通知后端终止 Flux 输出（takeWhile 检测标记后中断）
+  if (assistantActiveSessionId) {
+    fetch(`/api/assistant/chat/stop?sessionId=${encodeURIComponent(assistantActiveSessionId)}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') }
+    }).catch(() => {})
+  }
   if (assistantAbort) {
     assistantAbort.abort()
     assistantAbort = null
   }
+  assistantActiveSessionId = null
   chatLoading.value = false
   const last = [...chatMessages.value].reverse().find(m => m.role === 'assistant')
   if (last && !last.content) last.content = '（已停止生成）'
   saveUserChatHistory()
+}
+
+// ── 语音能力：语音录入（ASR）与朗读回答（TTS） ──
+const isRecordingAdmin = ref(false)
+let adminMediaRecorder = null
+let adminAudioChunks = []
+let adminRecordStartAt = 0
+
+// 探测某个麦克风设备的实际电平（录 ~0.7s 取峰值）：-1=设备打开失败，0~128=信号峰值
+const probeMicLevel = async (deviceId) => {
+  let ctx = null
+  try {
+    const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true }
+    const s = await navigator.mediaDevices.getUserMedia(constraints)
+    ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') { try { await ctx.resume() } catch (e) {} }
+    const src = ctx.createMediaStreamSource(s)
+    const an = ctx.createAnalyser()
+    an.fftSize = 512
+    src.connect(an)
+    const buf = new Uint8Array(an.frequencyBinCount)
+    let peak = 0
+    const t0 = Date.now()
+    while (Date.now() - t0 < 700) {
+      an.getByteTimeDomainData(buf)
+      for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+      await new Promise(r => setTimeout(r, 60))
+    }
+    s.getTracks().forEach(t => t.stop())
+    return peak
+  } catch (e) {
+    return -1
+  } finally {
+    if (ctx) { try { ctx.close() } catch (e2) {} }
+  }
+}
+
+// 自动选麦：优先用上次有信号的设备；当前默认设备是"哑巴"（峰值≈0，蓝牙耳机 A2DP 模式下麦克风不工作很常见）
+// 时自动探测其它输入设备并切换到有信号的设备，避免录出一整条静音
+const pickBestMic = async () => {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput')
+    if (devs.length <= 1) return null
+    const saved = localStorage.getItem('chunbo_mic_device_id')
+    if (saved && devs.some(d => d.deviceId === saved)) {
+      const p = await probeMicLevel(saved)
+      if (p >= 3) return saved
+    }
+    ElMessage.info('正在检测麦克风设备…')
+    let best = null, bestPeak = 0
+    for (const d of devs.slice(0, 4)) {
+      if (d.deviceId === saved) continue
+      const p = await probeMicLevel(d.deviceId)
+      if (p > bestPeak) { best = d; bestPeak = p }
+    }
+    if (best && bestPeak >= 3) {
+      localStorage.setItem('chunbo_mic_device_id', best.deviceId)
+      ElMessage.success('当前麦克风无信号，已自动切换到：' + (best.label || '未知设备'))
+      return best.deviceId
+    }
+  } catch (e) {}
+  return null
+}
+
+const toggleVoiceInputAdmin = async () => {
+  if (isRecordingAdmin.value) {
+    if (adminMediaRecorder) { try { adminMediaRecorder.stop() } catch (e) {} }
+    return
+  }
+  try {
+    // 先自动选麦（跳过无信号的"哑巴"设备），再开正式录音流
+    const micId = await pickBestMic()
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: micId ? { deviceId: { exact: micId } } : true })
+    // WebAudio 处理链：音量放大（自适应AGC）+压限器，解决耳机麦克风采集音量过低
+    let levelTimer = null
+    let maxLevel = 0
+    let recStream = stream
+    let audioCtx = null
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      if (audioCtx.state === 'suspended') { try { await audioCtx.resume() } catch (e) {} }
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 512
+      const compressor = audioCtx.createDynamicsCompressor()
+      const gain = audioCtx.createGain()
+      gain.gain.value = 10
+      const dest = audioCtx.createMediaStreamDestination()
+      source.connect(analyser)
+      analyser.connect(compressor)
+      compressor.connect(gain)
+      gain.connect(dest)
+      recStream = dest.stream
+      const buf = new Uint8Array(analyser.frequencyBinCount)
+      levelTimer = setInterval(() => {
+        analyser.getByteTimeDomainData(buf)
+        let peak = 0
+        for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+        maxLevel = Math.max(maxLevel, peak)
+        // 自适应增益（AGC）：把人声峰值动态拉到约 45% 电平（增益范围 6~30 倍，平滑调整防爆音）
+        if (peak > 3) {
+          const target = Math.min(30, Math.max(6, 58 / peak))
+          gain.gain.value += (target - gain.gain.value) * 0.3
+        }
+      }, 50)
+    } catch (e) { if (audioCtx) { try { audioCtx.close() } catch (e2) {} audioCtx = null } }
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '')
+    adminMediaRecorder = mimeType ? new MediaRecorder(recStream, { mimeType }) : new MediaRecorder(recStream)
+    adminAudioChunks = []
+    adminRecordStartAt = Date.now()
+    adminMediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size) adminAudioChunks.push(ev.data) }
+    adminMediaRecorder.onstop = async () => {
+      isRecordingAdmin.value = false
+      const recordedMs = Date.now() - adminRecordStartAt
+      stream.getTracks().forEach(t => t.stop())
+      if (levelTimer) { clearInterval(levelTimer); levelTimer = null }
+      if (audioCtx) { try { audioCtx.close() } catch (e) {} audioCtx = null }
+      if (recordedMs < 800) {
+        ElMessage.warning('说话时间太短，请说完一句再结束')
+        return
+      }
+      if (!adminAudioChunks.length) {
+        ElMessage.warning('录音数据为空，请重试')
+        return
+      }
+      const blob = new Blob(adminAudioChunks, { type: adminMediaRecorder.mimeType || 'audio/webm' })
+      console.log('[语音录入] 音频=' + blob.size + '字节 时长≈' + Math.round(recordedMs / 1000) + 's 峰值电平=' + maxLevel)
+      // 静音拒发：原始峰值过低说明设备根本没拾音（音量100也无效，多为蓝牙耳机麦克风通道未激活），发送只会得到 whisper 幻听
+      if (maxLevel > 0 && maxLevel < 8) {
+        ElMessage.error('未检测到有效语音（峰值电平=' + maxLevel + '）：当前麦克风设备没有拾音，调音量无效。'
+          + '蓝牙耳机常见"能听歌但麦克风不工作"，请在 系统设置→声音→输入 切换到其它麦克风设备（如 Realtek），'
+          + '或检查耳机上的麦克风开关后重试')
+        return
+      }
+      if (maxLevel > 0 && maxLevel < 15) {
+        ElMessage.warning('麦克风音量偏低，已自动放大增益；若识别不准请靠近麦克风')
+      }
+      const fd = new FormData()
+      fd.append('file', blob, 'voice.webm')
+      ElMessage.info('正在识别语音…')
+      try {
+        const resp = await fetch('/api/audio/asr', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') },
+          body: fd
+        })
+        const data = await resp.json()
+        const txt = (data && (data.text || data.result)) || ''
+        if (txt && /[\u4e00-\u9fa5]/.test(txt)) { inputQuery.value += txt; ElMessage.success('语音识别完成，已填入输入框') }
+        else ElMessage.warning((data && data.message) || '未识别到清晰的中文语音，请靠近麦克风大声说一句再结束')
+      } catch (e) {
+        ElMessage.error('语音识别失败：' + (e.message || '网络错误'))
+      }
+    }
+    adminMediaRecorder.start()
+    isRecordingAdmin.value = true
+    ElMessage.info('开始录音，说完点击 ⏹ 结束')
+  } catch (e) {
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+  }
+}
+
+let adminTtsAudio = null
+const speakAdminMessage = async (msg) => {
+  if (adminTtsAudio) { adminTtsAudio.pause(); adminTtsAudio = null; msg._speaking = false; return }
+  try {
+    const plain = String(msg.content || '').replace(/[#*>`|_~-]/g, '').replace(/\n+/g, ' ').trim().slice(0, 400)
+    if (!plain) return
+    const resp = await fetch('/api/audio/tts-stream', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token'), 'Content-Type': 'text/plain' },
+      body: plain
+    })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const blob = await resp.blob()
+    adminTtsAudio = new Audio(URL.createObjectURL(blob))
+    msg._speaking = true
+    adminTtsAudio.onended = () => { msg._speaking = false; adminTtsAudio = null }
+    adminTtsAudio.play()
+  } catch (e) {
+    ElMessage.error('语音合成失败：' + (e.message || '网络错误'))
+  }
+}
+
+// ── AI 文字助手（通用文本模型：帮写/续写/润色/精简/联想词） ──
+const showTextAssistant = ref(false)
+const textTemplates = ref([])
+const textAssistantType = ref('polish')
+const textAssistantInput = ref('')
+const textAssistantResult = ref('')
+const textAssistantLoading = ref(false)
+
+const openTextAssistant = async () => {
+  showTextAssistant.value = true
+  textAssistantResult.value = ''
+  // 后端 5 个模板 type 键（与 /api/text/process 的 type 参数一致）
+  textTemplates.value = [
+    { key: 'associationalWord', name: '联想词' },
+    { key: 'helpedWrite', name: '帮写' },
+    { key: 'continuedWrite', name: '续写' },
+    { key: 'polish', name: '润色' },
+    { key: 'streamline', name: '精简' }
+  ]
+}
+
+const runTextAssistant = async () => {
+  if (!textAssistantInput.value.trim()) { ElMessage.warning('请先输入待处理文本'); return }
+  textAssistantLoading.value = true
+  textAssistantResult.value = ''
+  try {
+    const res = await axios.post('/api/text/process', {
+      type: textAssistantType.value,
+      input: textAssistantInput.value
+    }, {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') }
+    })
+    textAssistantResult.value = (res.data && res.data.result) || '（无返回）'
+  } catch (e) {
+    textAssistantResult.value = '文本处理失败：' + (e.response?.data?.message || e.message || '网络错误')
+  } finally {
+    textAssistantLoading.value = false
+  }
+}
+
+const copyTextResult = () => {
+  if (!textAssistantResult.value) return
+  navigator.clipboard?.writeText(textAssistantResult.value).then(() => {
+    ElMessage.success('已复制到剪贴板')
+  }).catch(() => {
+    ElMessage.info('复制失败，请手动复制')
+  })
 }
 
 const submitLeave = async () => {
@@ -2558,14 +2902,14 @@ const commLabel2 = ref('特色穴位贴敷理疗绩效')
 const salaryDistForm = ref({
   staffId: '',
   name: '',
-  role: 'DOCTOR',
-  month: '2026-09',
-  baseSalary: 6500,
-  clinicCommission: 3200,
-  plasterCommission: 4200,
-  deductionSocial: 1150,
-  tax: 280,
-  netSalary: 12470,
+  role: '',
+  month: '',
+  baseSalary: 0,
+  clinicCommission: 0,
+  plasterCommission: 0,
+  deductionSocial: 0,
+  tax: 0,
+  netSalary: 0,
   aiComment: ''
 })
 
@@ -3028,6 +3372,33 @@ body {
 .chat-msg .msg-content th { background: #f1f5f9; font-weight: 700; color: #334155; }
 .msg-sender { font-size: 10.5px; color: #64748b; margin-bottom: 4px; font-weight: 700; }
 .chat-input-bar { display: flex; gap: 8px; margin-top: 12px; }
+
+.mic-btn-admin {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 50%;
+  cursor: pointer; transition: all 0.15s;
+}
+.mic-btn-admin:hover { background: #e0f2f1; border-color: #0f766e; }
+.mic-btn-admin.recording { background: #fee2e2; border-color: #ef4444; animation: mic-pulse 1s ease-in-out infinite; }
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+
+.msg-tts-line { margin-top: 4px; text-align: right; }
+.tts-link { font-size: 12px; color: #0f766e; cursor: pointer; user-select: none; }
+.tts-link:hover { text-decoration: underline; }
+
+.text-assistant-body { display: flex; flex-direction: column; gap: 12px; }
+.ta-templates { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ta-label { font-weight: 600; color: #334155; font-size: 13px; }
+.ta-actions { display: flex; gap: 10px; }
+.ta-result { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+.ta-result-title { font-weight: 700; color: #334155; margin-bottom: 6px; font-size: 13px; }
+.ta-result-content { font-size: 13px; line-height: 1.7; color: #1e293b; white-space: pre-wrap; }
 
 .user-order-card {
   background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 12.5px;

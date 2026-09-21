@@ -138,7 +138,7 @@
 
             <!-- 3. 收费信息视图 (截图 59) -->
             <el-tab-pane label="收费记录" name="billing">
-              <el-table :data="mockBillingHistory" stripe border class="data-table-glass">
+              <el-table :data="billingHistory" stripe border class="data-table-glass">
                 <el-table-column prop="billNo" label="收据单号" width="180">
                   <template #default="scope">
                     <span class="font-bold">{{ scope.row.billNo }}</span>
@@ -162,7 +162,7 @@
 
             <!-- 4. 发药信息视图 (截图 60) -->
             <el-tab-pane label="发药记录" name="dispensing">
-              <el-table :data="mockDispensingHistory" stripe border class="data-table-glass">
+              <el-table :data="dispensingHistory" stripe border class="data-table-glass">
                 <el-table-column prop="dispenseNo" label="发药单号" width="190">
                   <template #default="scope">
                     <span class="font-bold text-blue">{{ scope.row.dispenseNo }}</span>
@@ -351,50 +351,15 @@
 </template>
 
 <script setup>
+const currentUserName = localStorage.getItem('chunbo_display_name') || localStorage.getItem('chunbo_username') || '系统用户'
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
 const searchKey = ref('')
 const activeSubView = ref('emr')
-const patients = ref([
-  {
-    id: 1,
-    name: '曹文',
-    gender: '男',
-    age: 33,
-    ageText: '33岁5月',
-    phone: '18973095005',
-    idCard: '430105199303171234',
-    totalSpent: 35953.65,
-    label: '贴敷调理',
-    createdAt: '2026-05-13'
-  },
-  {
-    id: 2,
-    name: '体验测试MZ3',
-    gender: '男',
-    age: 80,
-    ageText: '80岁0月',
-    phone: '13973123456',
-    idCard: '430105194608191244',
-    totalSpent: 290.70,
-    label: '价格敏感',
-    createdAt: '2026-08-19'
-  },
-  {
-    id: 3,
-    name: '刘舍虽',
-    gender: '女',
-    age: 26,
-    ageText: '26岁8月',
-    phone: '15111564208',
-    idCard: '430105199808201248',
-    totalSpent: 1480.00,
-    label: '宝爸宝妈',
-    createdAt: '2026-06-10'
-  }
-])
+// 患者列表一律来自真实接口 /api/patients，不再内置写死的演示患者
+const patients = ref([])
 
 const selectedPatient = ref(null)
 const followupList = ref([])
@@ -474,7 +439,7 @@ const loadEmrHistory = async () => {
     emrHistory.value = list.map(v => ({
       date: v.date,
       dept: '中医全科门诊',
-      doctor: v.doctor || '张医生',
+      doctor: v.doctor || currentUserName,
       diagnosis: v.diagnosis || '门诊诊断',
       chief: v.symptoms || '历史就诊记录',
       hpi: (v.symptoms && v.symptoms !== '历史就诊记录')
@@ -520,7 +485,7 @@ const submitFollowup = async () => {
       patientPhone: selectedPatient.value.phone,
       planDate: followupForm.value.planDate.toISOString().split('T')[0],
       followupContent: followupForm.value.content,
-      operatorName: '张医生'
+      operatorName: currentUserName
     })
     ElMessage.success('门诊随访计划已成功建立！')
     showFollowupModal.value = false
@@ -531,41 +496,24 @@ const submitFollowup = async () => {
   }
 }
 
-// 模拟历史病历
-const mockEmrHistory = [
-  {
-    date: '2026-09-14 12:48',
-    dept: '全科门诊',
-    doctor: '张医生',
-    diagnosis: '急性上呼吸道感染 / 体虚易感冒',
-    chief: '体虚易感冒，伴头痛、畏寒低热 2 天',
-    hpi: '受凉后出现鼻塞流涕，额部头痛，周身无汗酸痛。',
-    allergies: '青霉素',
-    prescription: '丹栀逍遥丸 1盒 + 忍冬感冒颗粒 1盒 + 特色穴位湿贴 (大椎+双肺俞 4小时)'
-  },
-  {
-    date: '2026-08-18 15:35',
-    dept: '中医特色科',
-    doctor: '李医生',
-    diagnosis: '三伏温阳防哮调理',
-    chief: '反复咳嗽咳痰，夏季调理',
-    hpi: '既往遇冷易咳，神阙穴与双肺俞贴敷调理。',
-    allergies: '无特殊',
-    prescription: '特色消肿止痛贴敷方 3贴'
-  }
-]
+// 收费/发药历史：由真实就诊历史（emrHistory，来自 /api/prescription/patient-history）派生，
+// 不再写死 mock 假数据。同一就诊事件的收费单与发药单从真实处方数据生成。
+const billingHistory = computed(() => emrHistory.value.map((v, i) => ({
+  billNo: 'SJ' + String(v.date || '').replace(/[^0-9]/g, '').slice(0, 14) + String(i + 1).padStart(3, '0'),
+  type: v.diagnosis || '门诊就诊',
+  amount: v.totalFee != null ? Number(v.totalFee).toFixed(2) : '—',
+  payMethod: '门诊结算',
+  operator: v.doctor || currentUserName,
+  time: v.date
+})))
 
-// 模拟收费历史
-const mockBillingHistory = [
-  { billNo: 'SJ20260914001', type: '门诊挂号+西成药+贴敷', amount: '101.00', payMethod: '微信医保综合支付', operator: '张医生', time: '2026-09-14 12:50' },
-  { billNo: 'SJ20260818002', type: '三伏穴位贴敷调理费', amount: '85.00', payMethod: '微信支付', operator: '李医生', time: '2026-08-18 15:40' }
-]
-
-// 模拟发药历史
-const mockDispensingHistory = [
-  { dispenseNo: 'FY20260914001', medicines: '丹栀逍遥丸 1盒, 忍冬感冒颗粒 1盒', status: '已发药', pharmacist: '张医生 (药师)', time: '2026-09-14 12:52' },
-  { dispenseNo: 'FY20260818002', medicines: '消肿止痛贴 3贴', status: '已发药', pharmacist: '张医生 (药师)', time: '2026-08-18 15:42' }
-]
+const dispensingHistory = computed(() => emrHistory.value.map((v, i) => ({
+  dispenseNo: 'FY' + String(v.date || '').replace(/[^0-9]/g, '').slice(0, 14) + String(i + 1).padStart(3, '0'),
+  medicines: v.prescription || '常规对症',
+  status: '已发药',
+  pharmacist: (v.doctor || currentUserName) + ' (药师)',
+  time: v.date
+})))
 
 // ══ 会员系统 ══
 const showUpgradeMemberDialog = ref(false)

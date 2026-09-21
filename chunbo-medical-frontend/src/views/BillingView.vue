@@ -12,11 +12,19 @@
       </div>
 
       <div class="header-right">
-        <el-input 
-          v-model="searchKeyword" 
-          placeholder="检索患者姓名 / 处方单号 / 就诊号" 
+        <el-date-picker
+          v-model="filterDate"
+          type="date"
+          value-format="YYYY-MM-DD"
+          clearable
+          placeholder="选择收费日期"
+          style="width: 160px;"
+        />
+        <el-input
+          v-model="searchKeyword"
+          placeholder="检索患者姓名 / 处方单号 / 就诊号"
           prefix-icon="Search"
-          clearable 
+          clearable
           style="width: 280px;"
         />
         <el-button type="primary" class="gradient-btn" @click="loadBillingList">
@@ -32,9 +40,9 @@
         <div class="panel-header">
           <span class="panel-title">{{ filterPayStatus === 'pending' ? '待结算队列' : (filterPayStatus === 'paid' ? '已结算流水' : '划价收费单') }} ({{ filteredBills.length }})</span>
           <el-radio-group v-model="filterPayStatus" size="small">
-            <el-radio-button label="all">全部</el-radio-button>
-            <el-radio-button label="pending">待支付</el-radio-button>
-            <el-radio-button label="paid">已结算</el-radio-button>
+            <el-radio-button value="all">全部</el-radio-button>
+            <el-radio-button value="pending">待支付</el-radio-button>
+            <el-radio-button value="paid">已结算</el-radio-button>
           </el-radio-group>
         </div>
 
@@ -145,12 +153,12 @@
             <div class="pay-methods">
               <span class="method-label">支付渠道：</span>
               <el-radio-group v-model="payMethod" size="large">
-                <el-radio-button label="chunbo-pay">
+                <el-radio-button value="chunbo-pay">
                   <el-icon><CreditCard /></el-icon> 确认收费并完成划价结算
                 </el-radio-button>
-                <el-radio-button label="wechat">微信支付</el-radio-button>
-                <el-radio-button label="alipay">支付宝</el-radio-button>
-                <el-radio-button label="cash">现金结算</el-radio-button>
+                <el-radio-button value="wechat">微信支付</el-radio-button>
+                <el-radio-button value="alipay">支付宝</el-radio-button>
+                <el-radio-button value="cash">现金结算</el-radio-button>
               </el-radio-group>
             </div>
 
@@ -181,12 +189,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 
 const searchKeyword = ref('')
 const filterPayStatus = ref('all')
+// 收费日期筛选：默认今天，清空看全部（与门诊接诊/挂号一致）
+const today = new Date()
+const pad = (n) => String(n).padStart(2, '0')
+const filterDate = ref(today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate()))
 const bills = ref([])
 const selectedBill = ref(null)
 const billItems = ref([])
@@ -224,6 +236,10 @@ const filteredBills = computed(() => {
   return bills.value.filter(b => {
     if (filterPayStatus.value === 'pending' && b.payStatus === '已支付') return false
     if (filterPayStatus.value === 'paid' && b.payStatus !== '已支付') return false
+    if (filterDate.value) {
+      const day = (b.createTime || '').substring(0, 10)
+      if (day !== filterDate.value) return false
+    }
     if (searchKeyword.value) {
       const kw = searchKeyword.value.toLowerCase()
       const mName = b.patientName && b.patientName.toLowerCase().includes(kw)
@@ -234,9 +250,16 @@ const filteredBills = computed(() => {
   })
 })
 
+// 日期/状态/关键词筛选后，若当前选中单不在结果里 → 清空右侧残留详情（避免列表空但右侧仍显示旧单）
+watch(filteredBills, (list) => {
+  if (selectedBill.value && !list.some(b => b.id === selectedBill.value.id)) {
+    selectedBill.value = null
+    billItems.value = []
+  }
+})
+
 const selectBill = (bill) => {
-  selectedBill.value = bill
-  // Generate items
+  selectedBill.value = bill  // Generate items
   const items = []
   // 1. Consultation fee
   items.push({

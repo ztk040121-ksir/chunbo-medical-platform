@@ -3,6 +3,7 @@ package com.chunbo.medical.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
+import com.chunbo.medical.service.CurrentUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +27,9 @@ public class InboundController {
 
     @Autowired
     private InventoryRecordMapper inventoryMapper;
+
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @GetMapping("/orders")
     public List<ClinicInboundOrder> getOrders(@RequestParam(value = "orderType", required = false) String orderType) {
@@ -53,20 +57,24 @@ public class InboundController {
 
     @PostMapping("/create")
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> createInboundOrder(@RequestBody Map<String, Object> payload) {
+    public Map<String, Object> createInboundOrder(@RequestBody Map<String, Object> payload, jakarta.servlet.http.HttpServletRequest request) {
         Map<String, Object> res = new HashMap<>();
         String orderType = (String) payload.getOrDefault("orderType", "采购入库");
         String supplierName = (String) payload.getOrDefault("supplierName", "国药控股湖南有限公司");
         String remark = (String) payload.getOrDefault("remark", "");
         String inboundNo = "RK" + System.currentTimeMillis();
 
+        // 入库人/审核人 = 当前登录人真实姓名
+        String operator = currentUserService.displayName(request);
+        if (operator == null || operator.isBlank()) operator = "系统用户";
+
         ClinicInboundOrder order = new ClinicInboundOrder();
         order.setInboundNo(inboundNo);
         order.setOrderType(orderType);
         order.setSupplierName(supplierName);
-        order.setCreatorName("张医生");
+        order.setCreatorName(operator);
         order.setStatus("completed");
-        order.setAuditorName("张医生");
+        order.setAuditorName(operator);
         order.setAuditTime(LocalDateTime.now());
         order.setRemark(remark);
         
@@ -117,7 +125,7 @@ public class InboundController {
                     ir.setChangeQty(qty);
                     ir.setBalanceQty(med.getStock());
                     ir.setRefOrderNo(inboundNo);
-                    ir.setOperator("张医生");
+                    ir.setOperator(operator);
                     ir.setRemark("入库单入库过账，增加库存");
                     ir.setCreateTime(LocalDateTime.now());
                     inventoryMapper.insert(ir);

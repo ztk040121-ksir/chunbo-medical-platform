@@ -123,7 +123,18 @@
                 <div class="msg-avatar">{{ msg.sender === 'user' ? '👤' : '👩‍⚕️' }}</div>
                 <div class="msg-content-box">
                   <div class="msg-sender-name">{{ msg.sender === 'user' ? '我' : '春播健康小药师' }}</div>
-                  <div class="msg-text markdown-body" v-html="renderMarkdown(msg.text)"></div>
+                  <!-- 思考中动画放进气泡内（与云诊所/OA 一致），内容到达后自动切换为正文 -->
+                  <div v-if="!msg.text && chatLoading && mIndex === chatMessages.length - 1" class="msg-text thinking-box">
+                    <div class="thinking-title">
+                      <span class="dot-pulse"></span> 小药师思考中 · 正在调用 MCP 工具穿透真实数据：
+                    </div>
+                    <ul class="thinking-steps">
+                      <li><code>mcp_query_real_mall_products()</code> 穿透 MySQL 商品库</li>
+                      <li><code>mcp_query_mall_express_tracking()</code> 检索便民订单台账</li>
+                      <li><code>mcp_contraindication_guard()</code> 用药配伍安全审查</li>
+                    </ul>
+                  </div>
+                  <div class="msg-text markdown-body" v-else v-html="renderMarkdown(msg.text)"></div>
 
                   <!-- 药师推荐药品快捷加购卡片 -->
                   <div v-if="msg.recommendations && msg.recommendations.length > 0" class="recommend-cards-wrap">
@@ -139,35 +150,28 @@
                       </el-button>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <!-- 小药师思考中：MCP 工具调用过程展示 -->
-              <div v-if="chatLoading" class="chat-bubble-row pharmacist">
-                <div class="msg-avatar">👩‍⚕️</div>
-                <div class="msg-content-box">
-                  <div class="msg-sender-name">春播健康小药师</div>
-                  <div class="msg-text thinking-box">
-                    <div class="thinking-title">
-                      <span class="dot-pulse"></span> 小药师思考中 · 正在调用 MCP 工具穿透真实数据：
-                    </div>
-                    <ul class="thinking-steps">
-                      <li><code>mcp_query_real_mall_products()</code> 穿透 MySQL 商品库</li>
-                      <li><code>mcp_query_mall_express_tracking()</code> 检索便民订单台账</li>
-                      <li><code>mcp_contraindication_guard()</code> 用药配伍安全审查</li>
-                    </ul>
+                  <!-- 朗读回答（TTS，生成完毕后显示） -->
+                  <div class="mall-tts-row" v-if="msg.sender === 'pharmacist' && msg.text && !(chatLoading && mIndex === chatMessages.length - 1)">
+                    <span class="tts-link-mall" @click="speakMallMessage(msg)">{{ msg._speaking ? '⏹ 停止朗读' : '🔊 朗读回答' }}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- 提问输入框 -->
+              <!-- 提问输入框 -->
             <div class="chat-input-zone">
-              <el-input 
-                v-model="userQueryText" 
-                placeholder="描述身体不适或想买的药(如: 胃胀反酸吃什么好)..." 
-                @keyup.enter="handleSendQuestion"
-              >
+              <div class="mall-input-row">
+                <div class="mic-btn-mall" :class="{ recording: isRecordingMall }" @click="toggleVoiceInputMall"
+                     :title="isRecordingMall ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
+                  <el-icon v-if="!isRecordingMall" :size="17"><Microphone /></el-icon>
+                  <span v-else style="font-size: 13px;">⏹</span>
+                </div>
+                <el-input
+                  v-model="userQueryText"
+                  placeholder="描述身体不适或想买的药(如: 胃胀反酸吃什么好)..."
+                  @keyup.enter="handleSendQuestion"
+                >
                 <template #append>
                   <el-button v-if="!chatLoading" type="primary" @click="handleSendQuestion">
                     咨询药师
@@ -177,12 +181,13 @@
                   </el-button>
                 </template>
               </el-input>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- 右侧：生活常备药专区与药品卡片网格 -->
-        <section class="products-grid-section">
+        <section class="products-grid-section" ref="productScrollEl" @scroll="onProductScroll">
           <!-- 专区公告横幅 -->
           <div class="mall-banner-strip">
             <div class="banner-badge">🚚 全民惠民</div>
@@ -198,7 +203,6 @@
             >
               <div class="prod-badge-strip">
                 <el-tag size="small" type="success" effect="plain">{{ p.category || '生活常备' }}</el-tag>
-                <span class="prod-stock-tip">现货充足</span>
               </div>
 
               <!-- 商品实拍图 -->
@@ -312,9 +316,9 @@
           <div class="pay-methods-row">
             <span class="label">支付方式:</span>
             <el-radio-group v-model="selectedPayType" size="small">
-              <el-radio label="wechat">微信支付</el-radio>
-              <el-radio label="alipay">支付宝</el-radio>
-              <el-radio label="card">银联/医保在线</el-radio>
+              <el-radio value="wechat">微信支付</el-radio>
+              <el-radio value="alipay">支付宝</el-radio>
+              <el-radio value="card">银联/医保在线</el-radio>
             </el-radio-group>
           </div>
 
@@ -384,7 +388,7 @@
         </el-table-column>
         <el-table-column prop="status" label="配送状态" width="120">
           <template #default="scope">
-            <el-tag type="success">{{ scope.row.status || '顺丰运输中' }}</el-tag>
+            <el-tag type="success">{{ scope.row.status || '—' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="下单时间" width="160">
@@ -586,7 +590,11 @@ const currentUser = ref(null)
 
 // 搜索与品类
 const searchKeyword = ref('')
-const currentCategory = ref('all')
+// 当前分类：刷新后保持原分类 + 原浏览位置（localStorage 持久化）
+const currentCategory = ref(localStorage.getItem('chunbo_mall_category') || 'all')
+watch(currentCategory, (v) => {
+  try { localStorage.setItem('chunbo_mall_category', v) } catch (e) {}
+})
 
 const categories = [
   { key: 'all', label: '全部家庭好药', icon: '🌟' },
@@ -602,12 +610,12 @@ const categories = [
 // 用户收货地址
 const showAddressModal = ref(false)
 const userAddress = ref({
-  name: '李先生',
-  phone: '13812345678',
-  province: '湖南省',
-  city: '长沙市',
-  district: '岳麓区',
-  detail: '中海国际社区 3栋201室'
+  name: '',
+  phone: '',
+  province: '',
+  city: '',
+  district: '',
+  detail: ''
 })
 
 const saveAddress = () => {
@@ -665,7 +673,17 @@ const filteredProducts = computed(() => {
 
 // 购物车状态
 const showCartDrawer = ref(false)
-const cartItems = ref([])
+const loadCartFromStorage = () => {
+  try {
+    const raw = localStorage.getItem('chunbo_mall_cart')
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) return arr
+    }
+  } catch (e) {}
+  return []
+}
+const cartItems = ref(loadCartFromStorage())
 const selectedPayType = ref('wechat')
 const orderSubmitting = ref(false)
 
@@ -688,7 +706,7 @@ const finalPayAmount = computed(() => {
 })
 
 const addToCart = (product) => {
-  const price = Number(product.retailGuidePrice || product.wholesalePrice || 20)
+  const price = Number(product.retailGuidePrice || product.wholesalePrice || 0)
   const existing = cartItems.value.find(item => item.id === product.id)
   if (existing) {
     existing.quantity += 1
@@ -701,6 +719,7 @@ const addToCart = (product) => {
       quantity: 1
     })
   }
+  updateCartSum()
   ElMessage.success(`已将【${product.productName}】加入购物车！`)
 }
 
@@ -720,10 +739,14 @@ const quickBuy = (product) => {
 
 const removeCartItem = (index) => {
   cartItems.value.splice(index, 1)
+  updateCartSum()
 }
 
 const updateCartSum = () => {
-  // trigger reactivity
+  // 真实实现：数量/商品变更后把购物车快照持久化到 localStorage，刷新页面不丢失
+  try {
+    localStorage.setItem('chunbo_mall_cart', JSON.stringify(cartItems.value))
+  } catch (e) {}
 }
 
 // 提交订单
@@ -731,6 +754,8 @@ const showOrderModal = ref(false)
 const myOrders = ref([])
 
 const loadOrders = async () => {
+  // 未登录不查询订单，避免触发 401
+  if (!currentUser.value) return
   try {
     const res = await axios.get('/api/mall/orders')
     myOrders.value = res.data || []
@@ -906,6 +931,37 @@ const loadSessions = () => {
     activeSessionId.value = sessions[0].id
   }
   persistSessions()
+  syncSessionsFromBackend()
+}
+
+// 从后端同步会话历史标题（数据来源切换：会话列表标题以后端 AI 提炼为准）
+const syncSessionsFromBackend = async () => {
+  const identity = getIdentity()
+  if (!identity || identity === 'guest') return
+  try {
+    const resp = await axios.get('/api/session/history', { params: { bizType: 'mall', userId: identity } })
+    const groups = resp.data || {}
+    const backend = []
+    Object.keys(groups).forEach(k => {
+      (groups[k] || []).forEach(it => backend.push(it))
+    })
+    if (backend.length === 0) return
+    backend.forEach(bs => {
+      const local = chatSessions.value.find(s => s.id === bs.sessionId)
+      if (local) {
+        if (bs.title) local.title = bs.title
+        if (bs.updateTime) local.updatedAt = new Date(bs.updateTime).getTime()
+      } else {
+        chatSessions.value.unshift({
+          id: bs.sessionId,
+          title: bs.title || '历史咨询',
+          createdAt: bs.updateTime ? new Date(bs.updateTime).getTime() : Date.now(),
+          updatedAt: bs.updateTime ? new Date(bs.updateTime).getTime() : Date.now(),
+          messages: getDefaultPharmacistWelcome()
+        })
+      }
+    })
+  } catch (e) {}
 }
 
 const createNewSession = () => {
@@ -938,6 +994,11 @@ const deleteSession = (id) => {
     activeSessionId.value = chatSessions.value[0].id
   }
   persistSessions()
+  // 同步后端删除（DB + Redis 记忆）
+  const identity = getIdentity()
+  if (identity && identity !== 'guest') {
+    axios.delete('/api/session/history', { params: { bizType: 'mall', sessionId: id, userId: identity } }).catch(() => {})
+  }
   ElMessage.success('已删除该会话')
 }
 
@@ -1005,43 +1066,260 @@ const handleSendQuestion = async () => {
   chatLoading.value = true
   const abort = new AbortController()
   pharmacistAbort = abort
+  // 流式会话id：同一会话稳定复用，用于后端停止生成
+  const sid = 'MALL_' + (currentUser.value?.phone || 'guest') + '_' + (activeSession.value?.id || 'default')
+  mallActiveSessionId = sid
+  // 消息气泡直接占位：思考中动画在气泡内展示，首个 DATA 事件到达后自动切换为流式正文（单一气泡）
+  const msg = { sender: 'pharmacist', text: '', recommendations: [] }
+  chatMessages.value.push(msg)
   try {
-    const res = await axios.post('/api/mall/chat', {
-      message: q,
-      role: 'consumer',
-      phone: currentUser.value?.phone || '',
-      userName: currentUser.value?.realName || currentUser.value?.username || '居民顾客'
-    }, { signal: abort.signal })
-    const data = res.data || {}
-    chatMessages.value.push({
-      sender: 'pharmacist',
-      text: data.reply || '已为您分析生活用药方案。',
-      recommendations: data.recommendations || []
+    const resp = await fetch(`/api/mall/chat/stream?message=${encodeURIComponent(q)}&sessionId=${encodeURIComponent(sid)}&phone=${encodeURIComponent(currentUser.value?.phone || '')}&userName=${encodeURIComponent(currentUser.value?.realName || currentUser.value?.username || '居民顾客')}`, {
+      signal: abort.signal
     })
+    if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status)
+    const reader = resp.body.getReader()
+    const dec = new TextDecoder('utf-8')
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const parts = buf.split('\n\n')
+      buf = parts.pop()
+      for (const ev of parts) {
+        const dl = ev.split('\n').find(l => l.startsWith('data:'))
+        if (!dl) continue
+        let piece = dl.slice(5).trim()
+        if (!piece) continue
+        let parsed
+        try { parsed = JSON.parse(piece) } catch (e2) {
+          // 兼容旧纯文本格式
+          msg.text += piece
+          scrollToBottom()
+          continue
+        }
+        if (parsed.eventType === 1001) {
+          // DATA 事件：文字流式追加
+          msg.text += (parsed.eventData || '')
+          scrollToBottom()
+        } else if (parsed.eventType === 1003) {
+          // PARAM 事件：结构化推荐商品卡片
+          if (parsed.eventData && parsed.eventData.recommendations) {
+            msg.recommendations = parsed.eventData.recommendations
+          }
+        }
+        // eventType 1002 (STOP) 忽略
+      }
+    }
+    const m = msg
+    if (!m.text) m.text = '已为您分析生活用药方案。'
   } catch (e) {
-    if (e.name !== 'CanceledError' && e.code !== 'ERR_CANCELED') {
-      chatMessages.value.push({
-        sender: 'pharmacist',
-        text: '您好！遇到身体不适，建议多喝温开水清淡饮食。如需用药可参考右侧分类选品货架或随时再向我咨询。'
-      })
+    if (e.name !== 'AbortError') {
+      const m = msg
+      m.text = m.text || '您好！遇到身体不适，建议多喝温开水清淡饮食。如需用药可参考右侧分类选品货架或随时再向我咨询。'
     }
   } finally {
     if (pharmacistAbort === abort) pharmacistAbort = null
+    mallActiveSessionId = null
     if (activeSession.value) activeSession.value.updatedAt = Date.now()
     chatLoading.value = false
     scrollToBottom()
   }
 }
 
-// ── 停止药师生成（取消当前请求） ──
+// ── 停止药师生成（后端终止 Flux 流 + 前端断开 SSE，参照《SpringAI》笔记标准实现） ──
 let pharmacistAbort = null
+let mallActiveSessionId = null
 const stopPharmacistGeneration = () => {
+  // 先通知后端终止 Flux 输出
+  if (mallActiveSessionId) {
+    fetch(`/api/mall/chat/stop?sessionId=${encodeURIComponent(mallActiveSessionId)}`, { method: 'POST' }).catch(() => {})
+  }
   if (pharmacistAbort) {
     pharmacistAbort.abort()
     pharmacistAbort = null
   }
+  mallActiveSessionId = null
   chatLoading.value = false
   scrollToBottom()
+}
+
+// ── 语音能力：语音录入（ASR）与朗读回答（TTS，语音接口已开放游客） ──
+const isRecordingMall = ref(false)
+let mallMediaRecorder = null
+let mallAudioChunks = []
+let mallRecordStartAt = 0
+
+// 探测某个麦克风设备的实际电平（录 ~0.7s 取峰值）：-1=设备打开失败，0~128=信号峰值
+const probeMicLevel = async (deviceId) => {
+  let ctx = null
+  try {
+    const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true }
+    const s = await navigator.mediaDevices.getUserMedia(constraints)
+    ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') { try { await ctx.resume() } catch (e) {} }
+    const src = ctx.createMediaStreamSource(s)
+    const an = ctx.createAnalyser()
+    an.fftSize = 512
+    src.connect(an)
+    const buf = new Uint8Array(an.frequencyBinCount)
+    let peak = 0
+    const t0 = Date.now()
+    while (Date.now() - t0 < 700) {
+      an.getByteTimeDomainData(buf)
+      for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+      await new Promise(r => setTimeout(r, 60))
+    }
+    s.getTracks().forEach(t => t.stop())
+    return peak
+  } catch (e) {
+    return -1
+  } finally {
+    if (ctx) { try { ctx.close() } catch (e2) {} }
+  }
+}
+
+// 自动选麦：优先用上次有信号的设备；当前默认设备是"哑巴"（峰值≈0，蓝牙耳机 A2DP 模式下麦克风不工作很常见）
+// 时自动探测其它输入设备并切换到有信号的设备，避免录出一整条静音
+const pickBestMic = async () => {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput')
+    if (devs.length <= 1) return null
+    const saved = localStorage.getItem('chunbo_mic_device_id')
+    if (saved && devs.some(d => d.deviceId === saved)) {
+      const p = await probeMicLevel(saved)
+      if (p >= 3) return saved
+    }
+    ElMessage.info('正在检测麦克风设备…')
+    let best = null, bestPeak = 0
+    for (const d of devs.slice(0, 4)) {
+      if (d.deviceId === saved) continue
+      const p = await probeMicLevel(d.deviceId)
+      if (p > bestPeak) { best = d; bestPeak = p }
+    }
+    if (best && bestPeak >= 3) {
+      localStorage.setItem('chunbo_mic_device_id', best.deviceId)
+      ElMessage.success('当前麦克风无信号，已自动切换到：' + (best.label || '未知设备'))
+      return best.deviceId
+    }
+  } catch (e) {}
+  return null
+}
+
+const toggleVoiceInputMall = async () => {
+  if (isRecordingMall.value) {
+    if (mallMediaRecorder) { try { mallMediaRecorder.stop() } catch (e) {} }
+    return
+  }
+  try {
+    // 先自动选麦（跳过无信号的"哑巴"设备），再开正式录音流
+    const micId = await pickBestMic()
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: micId ? { deviceId: { exact: micId } } : true })
+    // WebAudio 处理链：音量放大（自适应AGC）+压限器，解决耳机麦克风采集音量过低
+    let levelTimer = null
+    let maxLevel = 0
+    let recStream = stream
+    let audioCtx = null
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      if (audioCtx.state === 'suspended') { try { await audioCtx.resume() } catch (e) {} }
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 512
+      const compressor = audioCtx.createDynamicsCompressor()
+      const gain = audioCtx.createGain()
+      gain.gain.value = 10
+      const dest = audioCtx.createMediaStreamDestination()
+      source.connect(analyser)
+      analyser.connect(compressor)
+      compressor.connect(gain)
+      gain.connect(dest)
+      recStream = dest.stream
+      const buf = new Uint8Array(analyser.frequencyBinCount)
+      levelTimer = setInterval(() => {
+        analyser.getByteTimeDomainData(buf)
+        let peak = 0
+        for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+        maxLevel = Math.max(maxLevel, peak)
+        // 自适应增益（AGC）：把人声峰值动态拉到约 45% 电平（增益范围 6~30 倍，平滑调整防爆音）
+        if (peak > 3) {
+          const target = Math.min(30, Math.max(6, 58 / peak))
+          gain.gain.value += (target - gain.gain.value) * 0.3
+        }
+      }, 50)
+    } catch (e) { if (audioCtx) { try { audioCtx.close() } catch (e2) {} audioCtx = null } }
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '')
+    mallMediaRecorder = mimeType ? new MediaRecorder(recStream, { mimeType }) : new MediaRecorder(recStream)
+    mallAudioChunks = []
+    mallRecordStartAt = Date.now()
+    mallMediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size) mallAudioChunks.push(ev.data) }
+    mallMediaRecorder.onstop = async () => {
+      isRecordingMall.value = false
+      const recordedMs = Date.now() - mallRecordStartAt
+      stream.getTracks().forEach(t => t.stop())
+      if (levelTimer) { clearInterval(levelTimer); levelTimer = null }
+      if (audioCtx) { try { audioCtx.close() } catch (e) {} audioCtx = null }
+      if (recordedMs < 800) {
+        ElMessage.warning('说话时间太短，请说完一句再结束')
+        return
+      }
+      if (!mallAudioChunks.length) {
+        ElMessage.warning('录音数据为空，请重试')
+        return
+      }
+      const blob = new Blob(mallAudioChunks, { type: mallMediaRecorder.mimeType || 'audio/webm' })
+      console.log('[语音录入] 音频=' + blob.size + '字节 时长≈' + Math.round(recordedMs / 1000) + 's 峰值电平=' + maxLevel)
+      // 静音拒发：原始峰值过低说明设备根本没拾音（音量100也无效，多为蓝牙耳机麦克风通道未激活），发送只会得到 whisper 幻听
+      if (maxLevel > 0 && maxLevel < 8) {
+        ElMessage.error('未检测到有效语音（峰值电平=' + maxLevel + '）：当前麦克风设备没有拾音，调音量无效。'
+          + '蓝牙耳机常见"能听歌但麦克风不工作"，请在 系统设置→声音→输入 切换到其它麦克风设备（如 Realtek），'
+          + '或检查耳机上的麦克风开关后重试')
+        return
+      }
+      if (maxLevel > 0 && maxLevel < 15) {
+        ElMessage.warning('麦克风音量偏低，已自动放大增益；若识别不准请靠近麦克风')
+      }
+      const fd = new FormData()
+      fd.append('file', blob, 'voice.webm')
+      ElMessage.info('正在识别语音…')
+      try {
+        const resp = await fetch('/api/audio/asr', { method: 'POST', body: fd })
+        const data = await resp.json()
+        const txt = (data && (data.text || data.result)) || ''
+        if (txt && /[\u4e00-\u9fa5]/.test(txt)) { userQueryText.value += txt; ElMessage.success('语音识别完成，已填入输入框') }
+        else ElMessage.warning((data && data.message) || '未识别到清晰的中文语音，请靠近麦克风大声说一句再结束')
+      } catch (e) {
+        ElMessage.error('语音识别失败：' + (e.message || '网络错误'))
+      }
+    }
+    mallMediaRecorder.start()
+    isRecordingMall.value = true
+    ElMessage.info('开始录音，说完点击 ⏹ 结束')
+  } catch (e) {
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+  }
+}
+
+let mallTtsAudio = null
+const speakMallMessage = async (msg) => {
+  if (mallTtsAudio) { mallTtsAudio.pause(); mallTtsAudio = null; msg._speaking = false; return }
+  try {
+    const plain = String(msg.text || '').replace(/[#*>`|_~-]/g, '').replace(/\n+/g, ' ').trim().slice(0, 400)
+    if (!plain) return
+    const resp = await fetch('/api/audio/tts-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: plain
+    })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const blob = await resp.blob()
+    mallTtsAudio = new Audio(URL.createObjectURL(blob))
+    msg._speaking = true
+    mallTtsAudio.onended = () => { msg._speaking = false; mallTtsAudio = null }
+    mallTtsAudio.play()
+  } catch (e) {
+    ElMessage.error('语音合成失败：' + (e.message || '网络错误'))
+  }
 }
 
 const formatTime = (timeStr) => {
@@ -1177,12 +1455,31 @@ const handleLogoutMall = () => {
   ElMessage.info('已安全退出商城登录')
 }
 
-onMounted(() => {
+onMounted(async () => {
   initMallUser()
   loadProducts()
   loadOrders()
   loadSessions()
+  // 刷新后恢复浏览位置：等商品渲染完再滚回上次位置
+  nextTick(() => {
+    setTimeout(() => {
+      const el = productScrollEl.value
+      const saved = Number(localStorage.getItem('chunbo_mall_scroll') || 0)
+      if (el && saved > 0) el.scrollTop = saved
+    }, 400)
+  })
 })
+
+// 药品列表滚动位置持久化（节流保存，刷新后恢复到原浏览位置）
+const productScrollEl = ref(null)
+let scrollSaveTimer = null
+const onProductScroll = (e) => {
+  if (scrollSaveTimer) return
+  scrollSaveTimer = setTimeout(() => {
+    scrollSaveTimer = null
+    try { localStorage.setItem('chunbo_mall_scroll', String(Math.round(e.target.scrollTop))) } catch (err) {}
+  }, 200)
+}
 </script>
 
 <style scoped>
@@ -1752,6 +2049,39 @@ onMounted(() => {
 }
 
 /* 思考中：MCP 工具调用展示 */
+/* 思考中：输入框上方细指示条（不再生成独立对话气泡） */
+.thinking-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px dashed #6ee7b7;
+  border-radius: 16px;
+}
+/* 语音录入按钮（输入框同行）与朗读链接 */
+.mall-input-row { display: flex; align-items: center; gap: 8px; }
+.mic-btn-mall {
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  color: #0f766e;
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 50%;
+  cursor: pointer; transition: all 0.15s;
+}
+.mic-btn-mall:hover { background: #e0f2f1; border-color: #0f766e; }
+.mic-btn-mall.recording { background: #fee2e2; border-color: #ef4444; color: #ef4444; animation: mall-mic-pulse 1s ease-in-out infinite; }
+@keyframes mall-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+.mall-tts-row { margin-top: 6px; text-align: right; }
+.tts-link-mall { font-size: 12px; color: #0f766e; cursor: pointer; user-select: none; }
+.tts-link-mall:hover { text-decoration: underline; }
+
 .thinking-box {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;

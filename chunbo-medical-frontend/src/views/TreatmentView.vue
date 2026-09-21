@@ -11,9 +11,9 @@
 
       <div class="header-right">
         <el-radio-group v-model="statusFilter" size="default" class="custom-radio">
-          <el-radio-button label="">全部记录</el-radio-button>
-          <el-radio-button label="pending">待执行接单</el-radio-button>
-          <el-radio-button label="completed">已执行完成</el-radio-button>
+          <el-radio-button value="">全部记录</el-radio-button>
+          <el-radio-button value="pending">待执行接单</el-radio-button>
+          <el-radio-button value="completed">已执行完成</el-radio-button>
         </el-radio-group>
         <el-button type="primary" class="gradient-btn" @click="loadTreatments">
           <el-icon><Refresh /></el-icon> 刷新接单

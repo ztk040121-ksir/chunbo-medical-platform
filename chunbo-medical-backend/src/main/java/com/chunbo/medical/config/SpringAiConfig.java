@@ -4,8 +4,13 @@ import com.chunbo.medical.tools.MedicalClinicTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.memory.InMemoryChatMemory;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +33,9 @@ public class SpringAiConfig {
     @Value("${chunbo.ai.proxy.port:0}")
     private int proxyPort;
 
+    @Value("${chunbo.ai.memory.max:100}")
+    private int maxMessages;
+
     /**
      * 为 Spring AI 的 OpenAI 客户端提供短超时 RestClient，
      * 避免大模型端点不可达时因默认长连接超时(约20s) + 重试导致接口长时间阻塞。
@@ -46,19 +54,53 @@ public class SpringAiConfig {
     }
 
     /**
-     * 会话记忆管理器 (内存持久化，可无缝平替为 RedisChatMemory)
+     * WebClient Builder（流式调用与音频 TTS/ASR 走 Reactor Netty），
+     * 同样需要显式配置 VPN HTTP 代理，否则直连 ohmygpt 会连接超时；
+     * 音频合成/上传较慢，响应超时放宽到 60s。
      */
     @Bean
-    public InMemoryChatMemory inMemoryChatMemory() {
-        return new InMemoryChatMemory();
+    public org.springframework.web.reactive.function.client.WebClient.Builder webClientBuilder() {
+        reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
+                .responseTimeout(java.time.Duration.ofSeconds(60));
+        if (proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0) {
+            httpClient = httpClient.proxy(spec -> spec
+                    .type(reactor.netty.transport.ProxyProvider.Proxy.HTTP)
+                    .host(proxyHost)
+                    .port(proxyPort));
+        }
+        return org.springframework.web.reactive.function.client.WebClient.builder()
+                .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient));
+    }
+
+    /**
+     * 会话记忆管理器：MessageWindowChatMemory（滑动窗口限流） + RedisChatMemoryRepository（Redis 持久化）
+     * 参照《SpringAI》笔记标准实现，最多保存 maxMessages 条，超出自动淘汰最旧消息
+     */
+    @Bean
+    public ChatMemory chatMemory(ChatMemoryRepository chatMemoryRepository) {
+        return MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMemoryRepository)
+                .maxMessages(this.maxMessages)
+                .build();
+    }
+
+    /**
+     * 向量库：SimpleVectorStore（内存实现，教学/演示用，参照《SpringAI》笔记 RAG 标准实现）
+     * 由 RagKnowledgeService 把 rag_docs 诊疗规范切块向量化后写入，检索用 similaritySearch(SearchRequest)。
+     * 知识库源头是静态 md 文件（每次启动重新向量化），故无需 JSON 持久化。
+     */
+    @Bean
+    public VectorStore vectorStore(EmbeddingModel embeddingModel) {
+        return SimpleVectorStore.builder(embeddingModel).build();
     }
 
     /**
      * 构建具备医学人设、工具调用能力及记忆拦截器的 ChatClient
+     * （会话记忆使用 RedisChatMemory 持久化实现，Spring 自动注入 ChatMemory 接口的唯一实现）
      */
     @Bean
     public ChatClient medicalChatClient(ChatModel chatModel,
-                                         InMemoryChatMemory chatMemory,
+                                         ChatMemory chatMemory,
                                          MedicalClinicTools clinicTools) {
         String systemPrompt = """
                 你是由春播万象科技自主研发的专业医疗AI问诊智能体「春播云诊所处方助手」。
@@ -81,10 +123,29 @@ public class SpringAiConfig {
                 // 挂载日志审计 Advisor (记录 Token 与会话耗时)
                 .defaultAdvisors(
                         new SimpleLoggerAdvisor(),
-                        new MessageChatMemoryAdvisor(chatMemory)
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
                 )
                 // 挂载基层医疗工具集
                 .defaultTools(clinicTools)
                 .build();
+    }
+
+    /**
+     * 独立的标题提炼 ChatClient（参照《SpringAI》笔记 AI 提炼标题）
+     * 注意：不能与业务 medicalChatClient 共享同一个 Client 对象，需创建新的裸 Client
+     * （不挂载工具、记忆 advisor，也不挂医疗人设，专门用于把"用户提问+AI回答"提炼成会话标题）
+     */
+    @Bean
+    public ChatClient titleChatClient(ChatModel chatModel) {
+        return ChatClient.builder(chatModel).build();
+    }
+
+    /**
+     * 独立的通用文本处理 ChatClient（参照《SpringAI》笔记通用文本模型）
+     * 专门用于帮写/续写/润色/精简等文本处理，同样不与业务 Client 共享
+     */
+    @Bean
+    public ChatClient textChatClient(ChatModel chatModel) {
+        return ChatClient.builder(chatModel).build();
     }
 }

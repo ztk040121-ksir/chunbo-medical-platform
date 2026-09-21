@@ -42,44 +42,54 @@
             <div class="pane-sub">支持在线大模型、开源本地模型（Ollama）、通义千问，以及添加自定义任何兼容 OpenAI 协议的模型接口</div>
           </div>
           <el-button type="primary" icon="Plus" @click="openAddCustomModelDialog">
-            + 接入自定义大模型
+            接入自定义大模型
           </el-button>
         </div>
 
-        <!-- 当前可用模型提供商网格（内置 + 自定义） -->
-        <div class="model-cards-grid">
-          <div 
-            v-for="provider in allProviders" 
-            :key="provider.id" 
-            class="provider-card"
-            :class="{ active: configForm.provider === provider.id }"
-            @click="selectProvider(provider)"
-          >
-            <div class="p-icon">{{ provider.icon || '🤖' }}</div>
-            <div class="p-info">
-              <div class="p-name-row">
-                <span class="p-name">{{ provider.name }}</span>
-                <el-tag v-if="provider.isCustom" size="small" type="warning" effect="light" class="tag-custom">自定义</el-tag>
+        <!-- 当前可用模型列表（内置 + 自定义，可动态添加多个） -->
+        <el-table :data="allProviders" stripe border class="model-list-table">
+          <el-table-column label="模型" min-width="220">
+            <template #default="scope">
+              <div class="ml-name-cell">
+                <span class="ml-icon">{{ scope.row.icon || '🤖' }}</span>
+                <div>
+                  <div class="ml-name">
+                    {{ scope.row.name }}
+                    <el-tag v-if="scope.row.isCustom" size="small" type="warning" effect="light">自定义</el-tag>
+                    <el-tag v-if="scope.row.mock" size="small" type="info" effect="light">离线</el-tag>
+                  </div>
+                  <div class="ml-desc">{{ scope.row.desc || 'OpenAI 协议兼容接口' }}</div>
+                </div>
               </div>
-              <div class="p-desc">{{ provider.desc || 'OpenAI 协议兼容接口' }}</div>
-              <div class="p-sub-detail">模型: {{ provider.modelName }}</div>
-            </div>
-            <div class="p-actions">
-              <el-tag v-if="configForm.provider === provider.id" type="success" size="small" class="active-badge">当前启用</el-tag>
-              <el-button 
-                v-if="provider.isCustom" 
-                type="danger" 
-                link 
-                size="small" 
-                class="btn-del-provider" 
-                @click.stop="deleteCustomModel(provider.id)"
-                title="删除该自定义模型"
-              >
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-          </div>
-        </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="modelName" label="模型标识" width="180" />
+          <el-table-column prop="baseUrl" label="服务端点" min-width="230" show-overflow-tooltip />
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="scope">
+              <el-tag v-if="configForm.provider === scope.row.id" type="success" size="small">当前启用</el-tag>
+              <span v-else class="ml-inactive">未启用</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" align="center">
+            <template #default="scope">
+              <el-button
+                v-if="configForm.provider !== scope.row.id"
+                type="success"
+                size="small"
+                :loading="switchingId === scope.row.id"
+                @click="enableProvider(scope.row)"
+              >启用</el-button>
+              <el-button
+                v-if="scope.row.isCustom"
+                type="danger"
+                link
+                size="small"
+                @click="deleteCustomModel(scope.row.id)"
+              >删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
 
         <!-- 参数配置表单 -->
         <el-card class="form-card" shadow="never">
@@ -96,27 +106,26 @@
           </template>
 
           <el-form :model="configForm" label-width="160px">
-            <el-form-item label="模型服务标识 / 厂商">
-              <el-input v-model="configForm.provider" :disabled="!isCurrentCustom" style="width: 320px;" placeholder="唯一标识，如 deepseek" />
-            </el-form-item>
-
             <el-form-item label="API 服务端点 (BaseURL)">
-              <el-input 
-                v-model="configForm.baseUrl" 
-                placeholder="如：https://api.ohmygpt.com 或 https://api.deepseek.com" 
+              <el-input
+                v-model="configForm.baseUrl"
+                placeholder="如：https://api.ohmygpt.com 或 https://api.deepseek.com"
                 style="width: 520px;"
               />
               <div class="field-hint">兼容标准 OpenAI 协议服务端点，例如 deepseek、moonshot、openrouter、ollama 等</div>
             </el-form-item>
 
-            <el-form-item label="访问密钥 (API Key)">
-              <el-input 
-                v-model="configForm.apiKey" 
-                type="password" 
-                show-password 
-                placeholder="sk-...（若本地 Ollama 等无密接口可随意输入或留空）" 
+            <el-form-item v-if="!isLocalProvider" label="访问密钥 (API Key)">
+              <el-input
+                v-model="configForm.apiKey"
+                type="password"
+                show-password
+                placeholder="sk-..."
                 style="width: 520px;"
               />
+            </el-form-item>
+            <el-form-item v-else label="访问密钥 (API Key)">
+              <el-tag type="info">本地模型无需配置密钥，留空即可</el-tag>
             </el-form-item>
 
             <el-form-item label="模型名称 (Model)">
@@ -166,8 +175,8 @@
             <el-form-item label="服务端点 (BaseURL)" required>
               <el-input v-model="customModelForm.baseUrl" placeholder="如：https://api.deepseek.com" />
             </el-form-item>
-            <el-form-item label="访问密钥 (API Key)" required>
-              <el-input v-model="customModelForm.apiKey" type="password" show-password placeholder="sk-..." />
+            <el-form-item label="访问密钥 (API Key)">
+              <el-input v-model="customModelForm.apiKey" type="password" show-password placeholder="sk-...（本地 Ollama 等无需密钥可留空）" />
             </el-form-item>
             <el-form-item label="模型标识 (Model)" required>
               <el-input v-model="customModelForm.modelName" placeholder="如：deepseek-chat、moonshot-v1-8k" />
@@ -354,8 +363,8 @@
 
             <el-form-item label="过号患者重新排队">
               <el-radio-group v-model="clinicSettings.expireRequeueMode">
-                <el-radio label="scan">允许扫码或自助机重新激活排队</el-radio>
-                <el-radio label="desk">必须到分诊前台人工激活</el-radio>
+                <el-radio value="scan">允许扫码或自助机重新激活排队</el-radio>
+                <el-radio value="desk">必须到分诊前台人工激活</el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -367,15 +376,15 @@
 
             <el-form-item label="现场排队叫号机制">
               <el-radio-group v-model="clinicSettings.sortMode">
-                <el-radio label="sign">按签到到达先后顺序</el-radio>
-                <el-radio label="appointment">严格按预约挂号序号</el-radio>
+                <el-radio value="sign">按签到到达先后顺序</el-radio>
+                <el-radio value="appointment">严格按预约挂号序号</el-radio>
               </el-radio-group>
             </el-form-item>
 
             <el-form-item label="就诊前必须签到">
               <el-radio-group v-model="clinicSettings.signPolicy">
-                <el-radio label="required">必须到店扫码或前台签到才能叫号</el-radio>
-                <el-radio label="auto">挂号成功自动直接进入待诊队列</el-radio>
+                <el-radio value="required">必须到店扫码或前台签到才能叫号</el-radio>
+                <el-radio value="auto">挂号成功自动直接进入待诊队列</el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -467,7 +476,7 @@ const allProviders = computed(() => {
 const configForm = ref({
   provider: 'ohmygpt',
   baseUrl: 'https://api.ohmygpt.com',
-  apiKey: 'sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77',
+  apiKey: 'sk-YOUR_API_KEY_HERE',
   modelName: 'gpt-4o-mini',
   temperature: 0.3,
   mockEnabled: false
@@ -482,17 +491,38 @@ const isCurrentCustom = computed(() => {
   return customProviders.value.some(x => x.id === configForm.value.provider)
 })
 
+// 本地/离线模型（Ollama、Mock）无需 API Key
+const isLocalProvider = computed(() => {
+  const id = configForm.value.provider
+  return id === 'ollama' || id === 'mock' || configForm.value.mockEnabled === true
+})
+
 const testing = ref(false)
 const saving = ref(false)
 const testResult = ref(null)
+// 正在执行「启用切换」的模型 id（按钮 loading）
+const switchingId = ref(null)
 
 const selectProvider = (provider) => {
   configForm.value.provider = provider.id
   configForm.value.baseUrl = provider.baseUrl
   configForm.value.modelName = provider.modelName
   if (provider.apiKey) configForm.value.apiKey = provider.apiKey
+  else if (provider.id === 'ollama' || provider.id === 'mock') configForm.value.apiKey = ''
   configForm.value.mockEnabled = !!provider.mock
   testResult.value = null
+}
+
+/** 启用模型 = 填充参数 + 立即保存热重载（真正完成后端模型切换） */
+const enableProvider = async (provider) => {
+  selectProvider(provider)
+  switchingId.value = provider.id
+  try {
+    await saveConfigInternal()
+    ElMessage.success('已启用并切换至【' + provider.name + '】模型，网关热重载生效！')
+  } finally {
+    switchingId.value = null
+  }
 }
 
 const testConnection = async () => {
@@ -514,19 +544,23 @@ const testConnection = async () => {
   }
 }
 
+const saveConfigInternal = async () => {
+  await updateAiConfig(configForm.value)
+  // 如果当前选中的是自定义模型，同步更新其在 customProviders 中的字段
+  const customIdx = customProviders.value.findIndex(x => x.id === configForm.value.provider)
+  if (customIdx !== -1) {
+    customProviders.value[customIdx].baseUrl = configForm.value.baseUrl
+    customProviders.value[customIdx].apiKey = configForm.value.apiKey
+    customProviders.value[customIdx].modelName = configForm.value.modelName
+    saveCustomProviders()
+  }
+  window.dispatchEvent(new CustomEvent('ai-models-updated'))
+}
+
 const saveConfig = async () => {
   saving.value = true
   try {
-    await updateAiConfig(configForm.value)
-    // 如果当前选中的是自定义模型，同步更新其在 customProviders 中的字段
-    const customIdx = customProviders.value.findIndex(x => x.id === configForm.value.provider)
-    if (customIdx !== -1) {
-      customProviders.value[customIdx].baseUrl = configForm.value.baseUrl
-      customProviders.value[customIdx].apiKey = configForm.value.apiKey
-      customProviders.value[customIdx].modelName = configForm.value.modelName
-      saveCustomProviders()
-    }
-    window.dispatchEvent(new CustomEvent('ai-models-updated'))
+    await saveConfigInternal()
     ElMessage.success('AI 模型中枢配置已热重载生效！已同步至门诊助手')
   } catch (e) {
     ElMessage.error('保存失败: ' + e.message)
@@ -887,91 +921,41 @@ onMounted(async () => {
   gap: 10px;
 }
 
-/* AI 网关模型卡片 */
-.model-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
+/* AI 网关模型列表 */
+.model-list-table {
   margin-bottom: 20px;
+  border-radius: 10px;
 }
 
-.provider-card {
+.ml-name-cell {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
+  align-items: center;
+  gap: 10px;
 }
 
-.provider-card:hover {
-  border-color: #10b981;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12);
-  transform: translateY(-1px);
-}
-
-.provider-card.active {
-  border-color: #10b981;
-  background: #f0fdf4;
-  box-shadow: 0 0 0 1px #10b981;
-}
-
-.p-icon {
-  font-size: 32px;
+.ml-icon {
+  font-size: 24px;
   line-height: 1;
 }
 
-.p-info {
-  flex: 1;
-}
-
-.p-name-row {
+.ml-name {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: #1e293b;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.p-name {
-  font-weight: 800;
-  font-size: 14.5px;
-  color: #1e293b;
-}
-
-.tag-custom {
-  font-size: 11px;
-}
-
-.p-desc {
+.ml-desc {
   font-size: 12px;
   color: #64748b;
-  margin-top: 4px;
-  line-height: 1.4;
+  margin-top: 2px;
 }
 
-.p-sub-detail {
-  font-size: 11.5px;
-  color: #059669;
-  font-weight: 600;
-  margin-top: 6px;
-  background: rgba(16, 185, 129, 0.08);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-block;
-}
-
-.p-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.btn-del-provider {
-  font-size: 13px !important;
+.ml-inactive {
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .form-card {

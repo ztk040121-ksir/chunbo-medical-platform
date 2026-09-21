@@ -14,17 +14,20 @@ axios.interceptors.request.use(config => {
   return config
 })
 // 响应拦截器：401 跳转登录
+// 仅当原本持有 token（登录态失效/过期）时才清理并刷新一次；
+// 未登录态下的 401 不刷新，否则页面加载期的 401 会触发 reload 死循环（闪屏）
 axios.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401) {
+      const hadToken = !!localStorage.getItem('chunbo_admin_token')
       localStorage.removeItem('chunbo_admin_token')
       localStorage.removeItem('chunbo_admin_role')
       localStorage.removeItem('chunbo_admin_name')
       localStorage.removeItem('chunbo_admin_staff_id')
       localStorage.removeItem('chunbo_admin_dept')
       localStorage.removeItem('chunbo_admin_title')
-      location.reload()
+      if (hadToken) location.reload()
     }
     return Promise.reject(err)
   }

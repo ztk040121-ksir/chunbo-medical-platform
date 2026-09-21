@@ -22,6 +22,7 @@ public class JwtFilter extends OncePerRequestFilter {
             "/api/mall/user/",
             "/api/mall/products",
             "/api/mall/chat",
+            "/api/audio/",   // 语音接口开放给未登录的商城游客（TTS 朗读/ASR 录音）
             "/mcp",
             "/sse",
             "/uploads/",
@@ -70,6 +71,11 @@ public class JwtFilter extends OncePerRequestFilter {
         }
 
         // 接口级角色校验：管理接口仅 ADMIN/HR，医生接口仅 ADMIN
+        // 例外：医生/员工名单是挂号前台的基础数据，任何已登录角色都可读
+        if ("/api/doctor/list".equals(path) && "GET".equalsIgnoreCase(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         if (path.startsWith("/api/admin/") && !"ADMIN".equals(role) && !"HR".equals(role)) {
             writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u7BA1\u7406\u63A5\u53E3");
             return;

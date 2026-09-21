@@ -3,6 +3,7 @@ package com.chunbo.medical.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
+import com.chunbo.medical.service.CurrentUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +35,12 @@ public class PrescriptionController {
 
     @Autowired
     private ClinicRegistrationMapper registrationMapper;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @GetMapping("/list")
     public List<Map<String, Object>> listPrescriptions() {
@@ -183,8 +190,11 @@ public class PrescriptionController {
      */
     @PostMapping(value = {"/manual-create", "/create"})
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> manualCreatePrescription(@RequestBody Map<String, Object> req) {
+    public Map<String, Object> manualCreatePrescription(@RequestBody Map<String, Object> req, jakarta.servlet.http.HttpServletRequest request) {
         Map<String, Object> res = new HashMap<>();
+        // 开单医生兜底 = 当前登录人真实姓名（前端传了 doctorName 则以前端为准）
+        String fallbackDoctor = currentUserService.displayName(request);
+        if (fallbackDoctor == null || fallbackDoctor.isBlank()) fallbackDoctor = "系统用户";
         
         // 1. 获取或建立患者档案（就诊中涵盖患者档案建立）
         Long patientId = null;
@@ -267,7 +277,7 @@ public class PrescriptionController {
         p.setPrescriptionNo("RX" + dateStr + ThreadLocalRandom.current().nextInt(100, 999));
         p.setPatientId(patientId);
         p.setPatientName(patient.getName());
-        p.setDoctorName(req.getOrDefault("doctorName", "张医生 (全科门诊)").toString());
+        p.setDoctorName(req.getOrDefault("doctorName", fallbackDoctor).toString());
         p.setDiagnosis(req.getOrDefault("diagnosis", "风热感冒 / 急性支气管炎").toString());
         p.setAiAdvice(req.getOrDefault("aiAdvice", "医生结合AI辨证开具，忌烟酒辛辣生冷，多饮水").toString());
         p.setType(req.getOrDefault("type", "western").toString());
@@ -335,6 +345,52 @@ public class PrescriptionController {
 
         p.setTotalAmount(total);
         prescriptionMapper.insert(p);
+
+        // 3b. 药品-物资自动联动：处方药品命中联动配置(medicine_supply_link)时，
+        //     自动附加联动物资明细行（如注射药品→注射器、清创药品→纱布），
+        //     联动物资随处方一并划价收费、发药时真实扣减物资库存。
+        try {
+            for (PrescriptionItem pi : new ArrayList<>(savedItems)) {
+                if (pi.getMedicineId() == null) continue;
+                List<Map<String, Object>> links = jdbcTemplate.queryForList(
+                        "SELECT supply_id, supply_name, quantity FROM medicine_supply_link WHERE medicine_id = ?", pi.getMedicineId());
+                // 兜底：药品行为手动输入名称/临时ID时，按药品名模糊匹配联动配置（如名称带【中药饮片】前缀也能命中）
+                if (links.isEmpty() && pi.getMedicineName() != null) {
+                    String nm = pi.getMedicineName();
+                    links = jdbcTemplate.queryForList(
+                            "SELECT supply_id, supply_name, quantity FROM medicine_supply_link WHERE ? LIKE CONCAT('%', medicine_name, '%') OR medicine_name LIKE CONCAT('%', ?, '%')",
+                            nm, nm);
+                }
+                for (Map<String, Object> link : links) {
+                    Long supplyId = Long.valueOf(link.get("supply_id").toString());
+                    boolean alreadyOpened = savedItems.stream().anyMatch(x -> supplyId.equals(x.getMedicineId()));
+                    if (alreadyOpened) continue; // 医生已手动开出该物资，不重复附加
+                    int perQty = 1;
+                    try { perQty = Integer.parseInt(link.get("quantity").toString()); } catch (Exception ignored) {}
+                    int supplyQty = perQty * (pi.getQuantity() != null ? pi.getQuantity() : 1);
+                    Medicine supply = medicineMapper.selectById(supplyId);
+                    PrescriptionItem spi = new PrescriptionItem();
+                    spi.setMedicineId(supplyId);
+                    spi.setMedicineName(supply != null ? supply.getName() : String.valueOf(link.get("supply_name")));
+                    spi.setSpecification(supply != null && supply.getSpecification() != null ? supply.getSpecification() : "医用材料");
+                    spi.setQuantity(supplyQty);
+                    BigDecimal sPrice = (supply != null && supply.getPrice() != null) ? supply.getPrice() : BigDecimal.ZERO;
+                    spi.setPrice(sPrice);
+                    spi.setSubtotal(sPrice.multiply(new BigDecimal(supplyQty)));
+                    spi.setDosage("【联动自动附加】伴随【" + pi.getMedicineName() + "】使用");
+                    spi.setFrequency("按处方");
+                    spi.setRoute("外用/配套");
+                    savedItems.add(spi);
+                    total = total.add(spi.getSubtotal());
+                }
+            }
+            if (p.getTotalAmount().compareTo(total) != 0) {
+                p.setTotalAmount(total);
+                prescriptionMapper.updateById(p);
+            }
+        } catch (Exception e) {
+            // 联动失败不阻断开方主流程
+        }
 
         for (PrescriptionItem pi : savedItems) {
             pi.setPrescriptionId(p.getId());

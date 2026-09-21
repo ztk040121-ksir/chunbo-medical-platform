@@ -3,6 +3,7 @@ package com.chunbo.medical.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
+import com.chunbo.medical.service.CurrentUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,9 @@ public class StocktakeController {
 
     @Autowired
     private MedicineMapper medicineMapper;
+
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @GetMapping("/list")
     public List<ClinicStocktake> getList() {
@@ -46,7 +50,7 @@ public class StocktakeController {
 
     @PostMapping("/create")
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> createStocktake(@RequestBody Map<String, Object> payload) {
+    public Map<String, Object> createStocktake(@RequestBody Map<String, Object> payload, jakarta.servlet.http.HttpServletRequest request) {
         Map<String, Object> res = new HashMap<>();
         String scope = (String) payload.getOrDefault("categoryScope", "全品类");
         String stocktakeNo = "PD" + System.currentTimeMillis();
@@ -60,7 +64,9 @@ public class StocktakeController {
         ClinicStocktake st = new ClinicStocktake();
         st.setStocktakeNo(stocktakeNo);
         st.setCategoryScope(scope);
-        st.setOperatorName("张医生");
+        // 盘点人 = 当前登录人真实姓名（员工档案/医生档案，未登录时兜底登录账号）
+        String operator = currentUserService.displayName(request);
+        st.setOperatorName(operator != null && !operator.isBlank() ? operator : "系统用户");
         st.setStatus("completed");
         st.setRemark("快速盘点生成与损益核算");
 

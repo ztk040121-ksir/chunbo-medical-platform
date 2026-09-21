@@ -14,9 +14,9 @@
       <div class="role-selector-bar">
         <span class="role-label">当前咨询角色画像:</span>
         <el-radio-group v-model="selectedRole" size="small" @change="onRoleChange">
-          <el-radio-button label="director">👨‍⚕️ 诊所主任 (看疗效/学术)</el-radio-button>
-          <el-radio-button label="buyer">💼 采购主管 (看政策/返利)</el-radio-button>
-          <el-radio-button label="cs">👩‍💼 门诊客服 (看资质/物流)</el-radio-button>
+          <el-radio-button value="director">👨‍⚕️ 诊所主任 (看疗效/学术)</el-radio-button>
+          <el-radio-button value="buyer">💼 采购主管 (看政策/返利)</el-radio-button>
+          <el-radio-button value="cs">👩‍💼 门诊客服 (看资质/物流)</el-radio-button>
         </el-radio-group>
       </div>
     </div>

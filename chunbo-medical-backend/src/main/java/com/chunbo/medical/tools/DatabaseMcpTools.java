@@ -1,6 +1,9 @@
 package com.chunbo.medical.tools;
 
+import com.chunbo.medical.config.ToolResultHolder;
+import com.chunbo.medical.constant.AgentConstant;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,7 +47,12 @@ public class DatabaseMcpTools {
     );
 
     @Tool(description = "执行只读 SQL 查询（仅允许 SELECT，最多返回 50 行），用于查询药品、处方、患者、订单等业务数据")
-    public String queryDatabase(@ToolParam(description = "只读 SELECT SQL 语句") String sql) {
+    public String queryDatabase(@ToolParam(description = "只读 SELECT SQL 语句") String sql, ToolContext toolContext) {
+        // ── RBAC：任意 SQL 只读查询能力仅限管理员与人事（fail-closed） ──
+        String role = roleOf(toolContext);
+        if (!"ADMIN".equals(role) && !"HR".equals(role)) {
+            return json("error", "权限不足：仅系统管理员与人事可执行数据库查询");
+        }
         try {
             String s = sql == null ? "" : sql.trim();
             if (s.isEmpty()) return json("error", "SQL 不能为空");
@@ -57,6 +65,7 @@ public class DatabaseMcpTools {
             res.put("success", true);
             res.put("count", rows.size());
             res.put("rows", rows);
+            ToolResultHolder.put(requestIdOf(toolContext), "databaseQuery", res);
             return om.writeValueAsString(res);
         } catch (Exception e) {
             return json("error", e.getMessage());
@@ -64,7 +73,12 @@ public class DatabaseMcpTools {
     }
 
     @Tool(description = "执行数据修改 SQL（仅允许 INSERT/UPDATE/DELETE，目标表必须在白名单内），返回影响行数")
-    public String updateDatabase(@ToolParam(description = "INSERT/UPDATE/DELETE SQL 语句") String sql) {
+    public String updateDatabase(@ToolParam(description = "INSERT/UPDATE/DELETE SQL 语句") String sql, ToolContext toolContext) {
+        // ── RBAC：数据写操作仅限系统管理员（fail-closed） ──
+        String role = roleOf(toolContext);
+        if (!"ADMIN".equals(role)) {
+            return json("error", "权限不足：仅系统管理员可执行数据修改");
+        }
         try {
             String s = sql == null ? "" : sql.trim();
             if (s.isEmpty()) return json("error", "SQL 不能为空");
@@ -83,10 +97,25 @@ public class DatabaseMcpTools {
             res.put("success", true);
             res.put("affectedRows", affected);
             res.put("table", table);
+            ToolResultHolder.put(requestIdOf(toolContext), "databaseUpdate", res);
             return om.writeValueAsString(res);
         } catch (Exception e) {
             return json("error", e.getMessage());
         }
+    }
+
+    /** 从工具上下文安全提取 requestId */
+    private String requestIdOf(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) return null;
+        Object v = toolContext.getContext().get(AgentConstant.REQUEST_ID);
+        return v == null ? null : String.valueOf(v);
+    }
+
+    /** 从工具上下文安全提取当前用户角色，供 RBAC 校验 */
+    private String roleOf(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) return null;
+        Object v = toolContext.getContext().get(AgentConstant.ROLE);
+        return v == null ? null : String.valueOf(v).toUpperCase();
     }
 
     private void checkSafety(String sql) {

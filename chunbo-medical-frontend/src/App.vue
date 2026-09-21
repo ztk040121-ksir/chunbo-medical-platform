@@ -189,11 +189,11 @@ window.addEventListener('switch-tab', (e) => {
   }
 })
 
-// 响应式读取登录医生的真实身份信息
-const currentDoctorName = ref(localStorage.getItem('chunbo_display_name') || '张文浩')
-const currentDoctorId = ref(localStorage.getItem('chunbo_doctor_id') || 'DOC_1002')
-const currentDoctorRole = ref(localStorage.getItem('chunbo_title') || '主治医师 / 调剂药师')
-const currentDepartment = ref(localStorage.getItem('chunbo_department') || '全科慢病门诊 / 智慧药房')
+// 响应式读取登录医生的真实身份信息（未登录时为空，不写死演示身份）
+const currentDoctorName = ref(localStorage.getItem('chunbo_display_name') || '')
+const currentDoctorId = ref(localStorage.getItem('chunbo_doctor_id') || '')
+const currentDoctorRole = ref(localStorage.getItem('chunbo_title') || '')
+const currentDepartment = ref(localStorage.getItem('chunbo_department') || '')
 
 const showProfileDialog = ref(false)
 const stockWarningCount = ref(3)

@@ -5,6 +5,7 @@ import com.chunbo.medical.entity.ClinicRegistration;
 import com.chunbo.medical.entity.Patient;
 import com.chunbo.medical.mapper.ClinicRegistrationMapper;
 import com.chunbo.medical.mapper.PatientMapper;
+import com.chunbo.medical.service.CurrentUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,9 @@ public class RegistrationController {
 
     @Autowired(required = false)
     private PatientMapper patientMapper;
+
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
@@ -84,14 +88,17 @@ public class RegistrationController {
     }
 
     @PostMapping("/create")
-    public ClinicRegistration createRegistration(@RequestBody Map<String, Object> req) {
+    public ClinicRegistration createRegistration(@RequestBody Map<String, Object> req, jakarta.servlet.http.HttpServletRequest request) {
         ClinicRegistration reg = new ClinicRegistration();
         String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         reg.setRegNo("REG" + dateStr + ThreadLocalRandom.current().nextInt(100, 999));
 
         String patientName = req.getOrDefault("patientName", req.getOrDefault("name", "张建国")).toString();
         reg.setPatientName(patientName);
-        reg.setDoctorName(req.getOrDefault("doctorName", "张医生").toString());
+        // 挂号医生兜底 = 当前登录人真实姓名（前端挂号页选了医生则以前端为准）
+        String fallbackDoctor = currentUserService.displayName(request);
+        if (fallbackDoctor == null || fallbackDoctor.isBlank()) fallbackDoctor = "系统用户";
+        reg.setDoctorName(req.getOrDefault("doctorName", fallbackDoctor).toString());
         reg.setDepartment(req.getOrDefault("department", "全科门诊").toString());
         reg.setRegType(req.getOrDefault("regType", "现场挂号").toString());
 

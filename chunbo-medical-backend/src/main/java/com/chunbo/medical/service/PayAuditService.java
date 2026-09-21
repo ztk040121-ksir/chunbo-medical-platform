@@ -82,8 +82,8 @@ public class PayAuditService {
                     "3. 处置决策：判定为高危风险，立即阻断交易并封控商户账户！";
 
             // 自动调用工具执行动作（识别 -> 决策 -> 执行闭环）
-            String freezeResult = auditTools.freezeAccountOrPayment(orderNo, tx.getMerchantId(), "凭证金额伪造虚标", "临时风控冻结");
-            String alertResult = auditTools.sendRiskNotification("企业微信风控应急群", riskLevel, "订单 " + orderNo + " 凭证金额恶意篡改，已阻断出货！");
+            String freezeResult = auditTools.freezeAccountOrPayment(orderNo, tx.getMerchantId(), "凭证金额伪造虚标", "临时风控冻结", null);
+            String alertResult = auditTools.sendRiskNotification("企业微信风控应急群", riskLevel, "订单 " + orderNo + " 凭证金额恶意篡改，已阻断出货！", null);
             actionsTaken = freezeResult + " | " + alertResult;
 
         } else if ("duplicate".equals(anomalyScenario)) {
@@ -98,7 +98,7 @@ public class PayAuditService {
 
             tx.setRiskStatus("疑似风险");
             txMapper.updateById(tx);
-            actionsTaken = auditTools.sendRiskNotification("钉钉运营合规群", riskLevel, "订单 " + orderNo + " 检测到疑似重复截图，已转人工复核");
+            actionsTaken = auditTools.sendRiskNotification("钉钉运营合规群", riskLevel, "订单 " + orderNo + " 检测到疑似重复截图，已转人工复核", null);
 
         } else {
             // 场景 3：合规正常凭证

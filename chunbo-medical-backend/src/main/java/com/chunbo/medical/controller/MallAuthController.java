@@ -63,7 +63,7 @@ public class MallAuthController {
         user.setPassword(PasswordUtil.encode(password)); // BCrypt 强哈希加密
         user.setNickname(displayName);
         user.setPhone(finalPhone);
-        user.setAddress(address.isEmpty() ? "湖南省长沙市岳麓区中海国际社区" : address);
+        user.setAddress(address); // 收货地址由用户自行填写，注册时未填则留空（下单结算时再补），不写死默认地址
         user.setStatus("ENABLE");
         user.setBalance(new BigDecimal("200.00")); // 赠送新人健康体验金
         user.setPoints(200);

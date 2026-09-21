@@ -9,7 +9,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/chunbo_medical?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: ${DB_PASSWORD:12345}
+    password: 12345
 
   data:
     redis:
@@ -19,7 +19,7 @@ spring:
 
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:}
+      api-key: sk-YOUR_API_KEY_HERE
       base-url: https://api.ohmygpt.com
       connect-timeout: 3s
       read-timeout: 8s
@@ -30,6 +30,22 @@ spring:
       embedding:
         options:
           model: text-embedding-ada-002
+      audio:
+        speech:
+          base-url: https://api.ohmygpt.com
+          api-key: sk-YOUR_API_KEY_HERE
+          options:
+            model: tts-1
+            voice: alloy
+            response-format: mp3
+            speed: 1.0
+        transcription:
+          base-url: https://api.ohmygpt.com
+          api-key: sk-YOUR_API_KEY_HERE
+          options:
+            model: whisper-1
+            language: zh      # 强制中文识别（whisper 默认自动检测，短音频常误判为英文）
+            prompt: 以下是基层门诊医生口述的中文症状与用药描述。
     mcp:
       server:
         enabled: true

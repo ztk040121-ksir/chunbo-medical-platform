@@ -1,6 +1,8 @@
 package com.chunbo.medical.tools;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.chunbo.medical.config.ToolResultHolder;
+import com.chunbo.medical.constant.AgentConstant;
 import com.chunbo.medical.entity.ClinicalCase;
 import com.chunbo.medical.entity.Medicine;
 import com.chunbo.medical.entity.Patient;
@@ -11,6 +13,7 @@ import com.chunbo.medical.mapper.PatientMapper;
 import com.chunbo.medical.mapper.PrescriptionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -36,7 +39,7 @@ public class MedicalClinicTools {
     private ClinicalCaseMapper clinicalCaseMapper;
 
     @Tool(description = "根据患者ID查询就诊患者健康档案，包括姓名、年龄、过敏史、既往慢病史。开方前必须优先调用此工具！")
-    public Patient queryPatientProfile(Long patientId) {
+    public Patient queryPatientProfile(Long patientId, ToolContext toolContext) {
         log.info("[AI Tool Calling] 检索患者档案 patientId={}", patientId);
         Patient patient = patientMapper.selectById(patientId);
         if (patient == null) {
@@ -44,38 +47,53 @@ public class MedicalClinicTools {
             patient.setName("未知患者");
             patient.setAllergies("未记录过敏史");
         }
+        // 结构化结果存入 ToolResultHolder，智能体流结束后由 AbstractAgent 提取下发卡片
+        ToolResultHolder.put(requestIdOf(toolContext), "patientProfile", patient);
         return patient;
     }
 
     @Tool(description = "根据患者ID查询历史开立处方及诊断记录，辅助研判既往用药依从性与疗效")
-    public List<Prescription> queryPrescriptionHistory(Long patientId) {
+    public List<Prescription> queryPrescriptionHistory(Long patientId, ToolContext toolContext) {
         log.info("[AI Tool Calling] 检索患者历史处方 patientId={}", patientId);
-        return prescriptionMapper.selectList(
+        List<Prescription> list = prescriptionMapper.selectList(
                 new LambdaQueryWrapper<Prescription>()
                         .eq(Prescription::getPatientId, patientId)
                         .orderByDesc(Prescription::getCreateTime)
                         .last("LIMIT 5")
         );
+        ToolResultHolder.put(requestIdOf(toolContext), "prescriptionHistory", list);
+        return list;
     }
 
     @Tool(description = "根据药品通用名模糊查询诊所药房实时库存、单价及规格包装。推荐处方前必须确保库存充足！")
-    public List<Medicine> queryMedicineStock(String medicineKeyword) {
+    public List<Medicine> queryMedicineStock(String medicineKeyword, ToolContext toolContext) {
         log.info("[AI Tool Calling] 核查药房库存 keyword={}", medicineKeyword);
-        return medicineMapper.selectList(
+        List<Medicine> list = medicineMapper.selectList(
                 new LambdaQueryWrapper<Medicine>()
                         .like(Medicine::getName, medicineKeyword)
                         .gt(Medicine::getStock, 0)
         );
+        ToolResultHolder.put(requestIdOf(toolContext), "medicineStock", list);
+        return list;
     }
 
     @Tool(description = "根据疾病关键词检索基层临床指南、标准用药规范及警示禁忌")
-    public List<ClinicalCase> queryClinicalGuideline(String diseaseKeyword) {
+    public List<ClinicalCase> queryClinicalGuideline(String diseaseKeyword, ToolContext toolContext) {
         log.info("[AI Tool Calling] 检索基层临床指南 keyword={}", diseaseKeyword);
-        return clinicalCaseMapper.selectList(
+        List<ClinicalCase> list = clinicalCaseMapper.selectList(
                 new LambdaQueryWrapper<ClinicalCase>()
                         .like(ClinicalCase::getDiseaseName, diseaseKeyword)
                         .or()
                         .like(ClinicalCase::getTypicalSymptoms, diseaseKeyword)
         );
+        ToolResultHolder.put(requestIdOf(toolContext), "clinicalGuideline", list);
+        return list;
+    }
+
+    /** 从工具上下文安全提取本次请求 requestId（无上下文时返回 null，不污染 ToolResultHolder） */
+    private String requestIdOf(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) return null;
+        Object v = toolContext.getContext().get(AgentConstant.REQUEST_ID);
+        return v == null ? null : String.valueOf(v);
     }
 }

@@ -5,7 +5,7 @@ import com.chunbo.medical.tools.MedicalClinicTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.memory.InMemoryChatMemory;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
@@ -33,7 +33,7 @@ public class AiModelConfigService {
     private static final Logger log = LoggerFactory.getLogger(AiModelConfigService.class);
 
     @Autowired
-    private InMemoryChatMemory chatMemory;
+    private ChatMemory chatMemory;
 
     @Autowired
     private MedicalClinicTools clinicTools;
@@ -50,7 +50,7 @@ public class AiModelConfigService {
     @Value("${chunbo.ai.proxy.port:0}")
     private int proxyPort;
 
-    @Value("${spring.ai.openai.api-key:}")
+    @Value("${spring.ai.openai.api-key:sk-YOUR_API_KEY_HERE}")
     private String defaultApiKey;
 
     @Value("${spring.ai.openai.base-url:https://api.ohmygpt.com}")
@@ -64,6 +64,7 @@ public class AiModelConfigService {
 
     private AiModelConfigDto currentConfig;
     private ChatClient activeChatClient;
+    private org.springframework.ai.chat.model.ChatModel activeChatModel;
 
     private String normalizeBaseUrl(String url) {
         if (url == null) return "https://api.ohmygpt.com";
@@ -118,6 +119,20 @@ public class AiModelConfigService {
         return activeChatClient;
     }
 
+    /**
+     * 返回不带默认工具集的裸 ChatClient（保留记忆 advisor），供 function-calling 智能体按域显式挂载工具。
+     * 避免与 getActiveChatClient 的 defaultTools(clinicTools, webFetchTools) 重复挂载同一批工具报错。
+     */
+    public synchronized ChatClient getBareChatClient() {
+        if (activeChatModel == null) return null;
+        return ChatClient.builder(activeChatModel)
+                .defaultAdvisors(
+                        new SimpleLoggerAdvisor(),
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .build();
+    }
+
     public synchronized boolean isMockEnabled() {
         return Boolean.TRUE.equals(currentConfig.getMockEnabled());
     }
@@ -128,11 +143,14 @@ public class AiModelConfigService {
     private void rebuildChatClient() {
         if (Boolean.TRUE.equals(currentConfig.getMockEnabled())) {
             this.activeChatClient = null;
+            this.activeChatModel = null;
             return;
         }
 
         try {
             String apiKey = currentConfig.getApiKey() != null ? currentConfig.getApiKey().trim() : "";
+            // 本地模型（Ollama 等）无需真实密钥：空 key 兜底为占位符，避免构建失败
+            if (apiKey.isEmpty()) apiKey = "none";
             String baseUrl = normalizeBaseUrl(currentConfig.getBaseUrl());
             String model = currentConfig.getModelName() != null ? currentConfig.getModelName().trim() : "gpt-4o-mini";
             Double temp = currentConfig.getTemperature() != null ? currentConfig.getTemperature() : 0.3;
@@ -154,6 +172,8 @@ public class AiModelConfigService {
                     .defaultOptions(options)
                     .build();
 
+            this.activeChatModel = chatModel;
+
             String systemPrompt = """
                     你是春播科技研发的基层全科医疗AI专家「春播万象」。
                     你的核心职责：
@@ -173,7 +193,7 @@ public class AiModelConfigService {
                     .defaultSystem(systemPrompt)
                     .defaultAdvisors(
                             new SimpleLoggerAdvisor(),
-                            new MessageChatMemoryAdvisor(chatMemory)
+                            MessageChatMemoryAdvisor.builder(chatMemory).build()
                     )
                     .defaultTools(clinicTools, webFetchTools)
                     .build();

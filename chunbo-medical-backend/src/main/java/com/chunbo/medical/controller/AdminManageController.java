@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.chunbo.medical.config.PasswordUtil;
 import com.chunbo.medical.entity.*;
+import com.chunbo.medical.enums.OrderStatusEnum;
 import com.chunbo.medical.mapper.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -408,7 +409,7 @@ public class AdminManageController {
             return ResponseEntity.badRequest().body(res);
         }
 
-        if (order.getStatus() != null && order.getStatus().contains("已发货")) {
+        if (OrderStatusEnum.isShipped(order.getStatus())) {
             res.put("success", false);
             res.put("message", "该订单已完成发货出库，请勿重复发货！单号: " + order.getBargainNotes());
             return ResponseEntity.badRequest().body(res);
@@ -467,7 +468,7 @@ public class AdminManageController {
         }
 
         // 更新订单状态
-        order.setStatus("已发货 / 春播便民速递运输中");
+        order.setStatus(OrderStatusEnum.SHIPPED.getCode());
         String existingNotes = order.getBargainNotes() != null ? order.getBargainNotes() : "";
         order.setBargainNotes(existingNotes + " 【春播健康便民速递单号: " + trackingNo + "，发货人: " + operator + "】");
         mallOrderMapper.updateById(order);
@@ -501,7 +502,7 @@ public class AdminManageController {
             return ResponseEntity.badRequest().body(res);
         }
 
-        order.setStatus("已送达 / 居民已签收");
+        order.setStatus(OrderStatusEnum.DELIVERED.getCode());
         String existingNotes = order.getBargainNotes() != null ? order.getBargainNotes() : "";
         order.setBargainNotes(existingNotes + " 【春播便民速递妥投完成，居民已顺利签收】");
         mallOrderMapper.updateById(order);

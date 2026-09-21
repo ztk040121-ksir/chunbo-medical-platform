@@ -8,9 +8,9 @@
           <span class="title-text">门诊挂号与智能排班中心</span>
         </div>
         <el-radio-group v-model="activeSubTab" size="large" class="custom-radio-group">
-          <el-radio-button label="register">挂号取号管理</el-radio-button>
-          <el-radio-button label="schedule">医生周历排班看板</el-radio-button>
-          <el-radio-button label="settings">挂号规则与号源设置</el-radio-button>
+          <el-radio-button value="register">挂号取号管理</el-radio-button>
+          <el-radio-button value="schedule">医生周历排班看板</el-radio-button>
+          <el-radio-button value="settings">挂号规则与号源设置</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -46,8 +46,8 @@
 
         <div class="view-switch-box">
           <el-radio-group v-model="displayMode" size="small">
-            <el-radio-button label="kanban">看板模式</el-radio-button>
-            <el-radio-button label="table">列表模式</el-radio-button>
+            <el-radio-button value="kanban">看板模式</el-radio-button>
+            <el-radio-button value="table">列表模式</el-radio-button>
           </el-radio-group>
         </div>
       </div>
@@ -69,9 +69,7 @@
         </el-select>
         <el-select v-model="filterDoctor" placeholder="挂号医生" clearable style="width: 150px;">
           <el-option label="全部医生" value="" />
-          <el-option label="张医生" value="张医生" />
-          <el-option label="李医生" value="李医生" />
-          <el-option label="王医生" value="王医生" />
+          <el-option v-for="d in doctorOptions" :key="d" :label="d" :value="d" />
         </el-select>
         <div class="reg-date-nav-bar">
           <el-button 
@@ -131,7 +129,7 @@
             </div>
             <div class="meta-row">
               <span class="meta-item"><el-icon><Phone /></el-icon> {{ item.phone || '13800000000' }}</span>
-              <span class="meta-item"><el-icon><User /></el-icon> {{ item.doctorName || '张医生' }} ({{ item.department || '全科门诊' }})</span>
+              <span class="meta-item"><el-icon><User /></el-icon> {{ item.doctorName || displayName || '系统用户' }} ({{ item.department || '全科门诊' }})</span>
             </div>
             <div class="meta-row desc-row">
               <span class="desc-text"><el-icon><FirstAidKit /></el-icon> 挂号费：¥{{ item.fee || item.regFee || 10.00 }} · {{ item.regType || '现场挂号' }}</span>
@@ -267,6 +265,9 @@
           <el-button type="primary" @click="copyLastWeekSchedule" plain>
             <el-icon><CopyDocument /></el-icon> 复制上周排班
           </el-button>
+          <el-button type="success" plain @click="openTemplateModal">
+            <el-icon><Calendar /></el-icon> 排班模板
+          </el-button>
           <el-button type="primary" class="gradient-btn" @click="openNewScheduleModal">
             <el-icon><Calendar /></el-icon> 设置医生班次
           </el-button>
@@ -344,14 +345,14 @@
           </el-form-item>
           <el-form-item label="现场排队叫号机制">
             <el-radio-group v-model="settings.sortMode">
-              <el-radio label="sign">按签到到达先后顺序</el-radio>
-              <el-radio label="number">严格按预约挂号序号</el-radio>
+              <el-radio value="sign">按签到到达先后顺序</el-radio>
+              <el-radio value="number">严格按预约挂号序号</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="就诊前必须签到">
             <el-radio-group v-model="settings.signPolicy">
-              <el-radio label="required">必须到店扫码或前台签到才能叫号</el-radio>
-              <el-radio label="auto">挂号成功自动直接进入待诊队列</el-radio>
+              <el-radio value="required">必须到店扫码或前台签到才能叫号</el-radio>
+              <el-radio value="auto">挂号成功自动直接进入待诊队列</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -406,8 +407,8 @@
           <el-col :span="12">
             <el-form-item label="患者性别" required>
               <el-radio-group v-model="regForm.gender">
-                <el-radio label="男">男</el-radio>
-                <el-radio label="女">女</el-radio>
+                <el-radio value="男">男</el-radio>
+                <el-radio value="女">女</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -551,9 +552,7 @@
           <el-col :span="12">
             <el-form-item label="主诊医生" required>
               <el-select v-model="regForm.doctorName" style="width: 100%;" @change="onDoctorSelect">
-                <el-option label="张医生 (全科/全天)" value="张医生" />
-                <el-option label="李医生 (中医特聘/上午)" value="李医生" />
-                <el-option label="王医生 (儿科贴敷/下午)" value="王医生" />
+                <el-option v-for="d in doctorOptions" :key="d" :label="d" :value="d" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -611,6 +610,62 @@
       </template>
     </el-dialog>
 
+    <!-- 排班模板管理：保存当前周配置为模板 / 一键应用到当前查看周 -->
+    <el-dialog v-model="showTemplateModal" title="排班模板管理（一键生成整周排班）" width="760px" destroy-on-close>
+      <div class="tpl-toolbar" style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+        <el-input v-model="templateName" placeholder="模板名称，如：周一至周五全天班" style="width: 240px;" />
+        <el-button type="primary" @click="saveScheduleTemplate">保存为模板</el-button>
+        <el-button type="warning" plain @click="fillTemplateFromCurrentWeek">按当前周排班生成</el-button>
+      </div>
+
+      <el-table :data="templateDays" size="small" border>
+        <el-table-column label="星期" width="90">
+          <template #default="scope">{{ ['周一','周二','周三','周四','周五','周六','周日'][scope.row.dayOfWeek - 1] }}</template>
+        </el-table-column>
+        <el-table-column label="是否排班" width="100" align="center">
+          <template #default="scope"><el-switch v-model="scope.row.enabled" /></template>
+        </el-table-column>
+        <el-table-column label="班次" width="200">
+          <template #default="scope">
+            <el-select v-model="scope.row.shiftType" size="small" :disabled="!scope.row.enabled" style="width: 100%;">
+              <el-option label="全天班(08:00-17:30)" value="全天班" />
+              <el-option label="上午班(08:00-12:00)" value="上午班" />
+              <el-option label="下午班(13:30-17:30)" value="下午班" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="号源限额" width="140">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.quota" :min="10" :max="200" size="small" :disabled="!scope.row.enabled" style="width: 100%;" />
+          </template>
+        </el-table-column>
+        <el-table-column label="挂号诊金(元)">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.consultationFee" :precision="2" :step="5" :min="0" size="small" :disabled="!scope.row.enabled" style="width: 100%;" />
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div style="margin-top: 16px;">
+        <div style="font-weight: 700; margin-bottom: 8px;">已保存的模板（应用 = 一键铺满当前查看的周）</div>
+        <el-empty v-if="scheduleTemplates.length === 0" description="还没有保存的模板，配置上方 7 天班次后保存" :image-size="60" />
+        <div v-for="t in scheduleTemplates" :key="t.name"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;">
+          <div>
+            <b>{{ t.name }}</b>
+            <span style="color: #94a3b8; font-size: 12px; margin-left: 8px;">
+              {{ t.days.filter(d => d.enabled).length }} 天排班 ·
+              {{ t.days.filter(d => d.enabled).map(d => ['一','二','三','四','五','六','日'][d.dayOfWeek-1]).join('/') }}
+            </span>
+          </div>
+          <div>
+            <el-button type="success" size="small" @click="applyScheduleTemplate(t)">一键应用</el-button>
+            <el-button type="danger" link size="small" @click="deleteScheduleTemplate(t.name)">删除</el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 弹窗：扫码到店签到模拟 -->
     <el-dialog v-model="showQrSignModal" title="患者到店扫码签到模拟" width="400px" center>
       <div class="qr-sign-box">
@@ -644,6 +699,24 @@ const displayMode = ref('kanban')
 const searchKeyword = ref('')
 const filterDept = ref('')
 const filterDoctor = ref('')
+
+// 医生下拉 = 真实医生档案表（doctor_account），不再写死张/李/王
+const doctorOptions = ref([])
+const displayName = localStorage.getItem('chunbo_display_name') || ''
+const loadDoctorOptions = async () => {
+  let names = []
+  try {
+    const res = await axios.get('/api/doctor/list')
+    // 兼容 {total, data} 包裹与裸数组两种返回
+    const list = Array.isArray(res.data) ? res.data : (res.data?.data || [])
+    names = list.map(d => d.doctorName).filter(Boolean)
+  } catch (e) {
+    console.warn('加载医生列表失败:', e)
+  }
+  if (!names.length) names = [displayName || '系统用户']
+  doctorOptions.value = Array.from(new Set(names))
+}
+
 const todayStr = new Date().toISOString().split('T')[0]
 const selectedRegDate = ref(todayStr)
 
@@ -688,7 +761,7 @@ const loadRegistrations = async () => {
     list.forEach(r => {
       const isConsulting = (r.status === '就诊中' || r.status === '接诊中')
       if (isConsulting) {
-        const doc = r.doctorName || '张医生'
+        const doc = r.doctorName || displayName || '系统用户'
         const itemDate = (r.createTime ? r.createTime.substring(0, 10) : todayStr)
         const key = `${doc}_${itemDate}`
         if (doctorInConsultMap[key]) {
@@ -704,10 +777,11 @@ const loadRegistrations = async () => {
   }
 }
 
-// 加载排班列表
+// 加载排班列表（跟随当前查看的周）
 const loadSchedules = async () => {
   try {
-    const res = await axios.get('/api/schedule/weekly')
+    const start = weekDays.value.length ? weekDays.value[0].fullDate : ''
+    const res = await axios.get('/api/schedule/weekly', { params: start ? { startDate: start } : {} })
     schedules.value = res.data?.schedules || []
   } catch (e) {
     console.error("加载排班失败:", e)
@@ -717,6 +791,7 @@ const loadSchedules = async () => {
 onMounted(() => {
   loadRegistrations()
   loadSchedules()
+  loadDoctorOptions()
   window.addEventListener('patient-registered', () => {
     loadRegistrations()
   })
@@ -842,6 +917,11 @@ const changeWeek = (step) => {
   currentWeekOffset.value += step
 }
 
+// 切换查看周时重载该周排班数据
+watch(currentWeekOffset, () => {
+  loadSchedules()
+})
+
 const getDaySchedules = (dateStr) => {
   return schedules.value.filter(s => s.scheduleDate === dateStr)
 }
@@ -866,7 +946,7 @@ const regForm = ref({
   city: '长沙市',
   district: '开福区',
   department: '全科门诊',
-  doctorName: '张医生',
+  doctorName: displayName || '系统用户',
   fee: 10.00,
   symptoms: '',
   marriage: '',
@@ -882,7 +962,7 @@ const regForm = ref({
 
 const scheduleForm = ref({
   id: null,
-  doctorName: '张医生',
+  doctorName: displayName || '系统用户',
   department: '全科门诊',
   scheduleDate: todayStr,
   shiftType: '全天班',
@@ -942,7 +1022,7 @@ const openNewRegModal = () => {
     city: '',
     district: '',
     department: '全科门诊',
-    doctorName: '张医生',
+    doctorName: displayName || '系统用户',
     fee: 10.00,
     symptoms: '',
     marriage: '',
@@ -986,9 +1066,8 @@ const parseIdCard = () => {
 }
 
 const onDoctorSelect = (val) => {
-  if (val === '张医生') regForm.value.fee = 10.00
-  else if (val === '李医生') regForm.value.fee = 15.00
-  else if (val === '王医生') regForm.value.fee = 12.00
+  // 医生列表已来自真实医生档案，挂号费统一 10 元
+  regForm.value.fee = 10.00
 }
 
 const submitNewRegistration = async () => {
@@ -1058,7 +1137,7 @@ const submitNewRegistration = async () => {
       name: '', gender: '男', idCard: '', phone: '',
       ageYears: 30, ageMonths: 0, ageDays: 0, birthDate: '',
       regType: '现场挂号', province: '湖南省', city: '长沙市', district: '开福区',
-      department: '全科门诊', doctorName: '张医生', fee: 10.00, symptoms: '',
+      department: '全科门诊', doctorName: displayName || '系统用户', fee: 10.00, symptoms: '',
       marriage: '', height: '', weight: '', job: '', company: '',
       wechat: '', insuranceNo: '', accompany: '', accompanyPhone: ''
     })
@@ -1110,7 +1189,7 @@ const handleQuickTempReg = async () => {
       age: 30,
       phone: tempPhone,
       department: '全科门诊',
-      doctorName: '张医生',
+      doctorName: displayName || '系统用户',
       type: '现场挂号',
       regType: '门诊',
       fee: 10.00,
@@ -1177,7 +1256,7 @@ const executeQuickSign = async () => {
 const openNewScheduleModal = () => {
   scheduleForm.value = {
     id: null,
-    doctorName: '张医生',
+    doctorName: displayName || '系统用户',
     department: '全科门诊',
     scheduleDate: todayStr,
     shiftType: '全天班',
@@ -1207,24 +1286,114 @@ const quickAddSchedule = (dateStr) => {
 
 const submitScheduleForm = async () => {
   try {
-    await axios.post('/api/schedule/save', scheduleForm.value)
+    const res = await axios.post('/api/schedule/save', scheduleForm.value)
+    if (res.data.success === false) {
+      ElMessage.error(res.data.message || '排班保存失败！')
+      return
+    }
     ElMessage.success('医生排班班次保存成功！')
     showScheduleModal.value = false
     await loadSchedules()
   } catch (e) {
-    ElMessage.success('排班已保存！')
-    showScheduleModal.value = false
+    ElMessage.error('排班保存失败：' + (e.response?.data?.message || e.message))
   }
 }
 
 const copyLastWeekSchedule = async () => {
   try {
-    await axios.post('/api/schedule/copy-last-week')
-    ElMessage.success('已自动复制上周医生排班规则，一键铺满本周！')
+    // 复制到当前查看的周（上周数据为来源）
+    const start = weekDays.value.length ? weekDays.value[0].fullDate : undefined
+    const res = await axios.post('/api/schedule/copy-last-week', start ? { startDate: start } : {})
+    if (res.data.success === false) {
+      ElMessage.warning(res.data.message || '上周没有可复制的排班！')
+      return
+    }
+    ElMessage.success(res.data.message || '已自动复制上周医生排班规则，一键铺满本周！')
     await loadSchedules()
   } catch (e) {
-    ElMessage.success('上周排班已复制！')
+    ElMessage.error('复制上周排班失败：' + (e.response?.data?.message || e.message))
   }
+}
+
+// ==================== 排班模板（保存当前周配置 / 一键应用模板） ====================
+const showTemplateModal = ref(false)
+const templateName = ref('')
+const scheduleTemplates = ref([])
+// 模板行：一周 7 天的班次配置
+const templateDays = ref([])
+
+const emptyTemplateDays = () => [1, 2, 3, 4, 5, 6, 7].map(d => ({
+  dayOfWeek: d,
+  enabled: d <= 5,
+  shiftType: '全天班',
+  quota: 50,
+  consultationFee: 10.00
+}))
+
+const loadScheduleTemplates = () => {
+  try {
+    scheduleTemplates.value = JSON.parse(localStorage.getItem('chunbo_schedule_templates') || '[]')
+  } catch (e) { scheduleTemplates.value = [] }
+}
+
+const persistScheduleTemplates = () => {
+  try { localStorage.setItem('chunbo_schedule_templates', JSON.stringify(scheduleTemplates.value)) } catch (e) {}
+}
+
+const openTemplateModal = () => {
+  templateDays.value = emptyTemplateDays()
+  templateName.value = ''
+  loadScheduleTemplates()
+  showTemplateModal.value = true
+}
+
+// 用当前周已有排班填充模板（周一~周日首个班次）
+const fillTemplateFromCurrentWeek = () => {
+  const days = emptyTemplateDays()
+  for (const row of days) {
+    const exist = schedules.value.find(s => Number(s.dayOfWeek) === row.dayOfWeek)
+    if (exist) {
+      row.enabled = true
+      row.shiftType = exist.shiftType || '全天班'
+      row.quota = exist.quota || 50
+      row.consultationFee = Number(exist.consultationFee) || 10
+    }
+  }
+  templateDays.value = days
+  ElMessage.success('已按当前周排班生成模板配置，可调整后保存')
+}
+
+const saveScheduleTemplate = () => {
+  const name = (templateName.value || '').trim()
+  if (!name) { ElMessage.warning('请输入模板名称！'); return }
+  if (!templateDays.value.some(d => d.enabled)) { ElMessage.warning('请至少启用一天的班次！'); return }
+  scheduleTemplates.value = scheduleTemplates.value.filter(t => t.name !== name)
+  scheduleTemplates.value.push({ name, days: JSON.parse(JSON.stringify(templateDays.value)), createdAt: new Date().toISOString() })
+  persistScheduleTemplates()
+  ElMessage.success('排班模板【' + name + '】已保存！')
+}
+
+const applyScheduleTemplate = async (tpl) => {
+  try {
+    const start = weekDays.value.length ? weekDays.value[0].fullDate : undefined
+    const res = await axios.post('/api/schedule/apply-template', {
+      department: '全科门诊',
+      startDate: start,
+      days: tpl.days
+    })
+    if (res.data.success === false) { ElMessage.error(res.data.message); return }
+    ElMessage.success(res.data.message || '模板已应用！')
+    showTemplateModal.value = false
+    await loadSchedules()
+  } catch (e) {
+    ElMessage.error('模板应用失败：' + (e.response?.data?.message || e.message))
+  }
+}
+
+const deleteScheduleTemplate = (name) => {
+  scheduleTemplates.value = scheduleTemplates.value.filter(t => t.name !== name)
+  persistScheduleTemplates()
+  ElMessage.success('模板已删除')
 }
 
 const saveSettings = () => {

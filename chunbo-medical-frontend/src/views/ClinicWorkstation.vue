@@ -28,7 +28,7 @@
               <span class="patient-gender-chip">{{ currentPatient.gender }}</span>
               <span class="patient-age-chip">{{ currentPatient.ageText || (currentPatient.age ? currentPatient.age + '岁' : '42岁') }}</span>
               <span class="patient-month-chip">{{ currentPatient.ageMonth ? currentPatient.ageMonth + '月' : '8月' }}</span>
-              <span class="patient-phone-chip">{{ currentPatient.phone || '15111564208' }}</span>
+              <span class="patient-phone-chip">{{ currentPatient.phone || '' }}</span>
               <span class="patient-birth-chip">{{ currentPatient.birthday || '2000-01-01' }}</span>
               <el-tag v-if="isTempPatient" type="warning" size="small" effect="dark" class="temp-patient-tag">
                 临时就诊
@@ -586,12 +586,12 @@
                 <div class="section-head">
                   <span class="title">现病史多部位辨证点选 (HPI)</span>
                   <el-radio-group v-model="selectedBodyPart" size="small">
-                    <el-radio-button label="头面部">头面部</el-radio-button>
-                    <el-radio-button label="颈胸部">颈胸部</el-radio-button>
-                    <el-radio-button label="脘腹部">脘腹部</el-radio-button>
-                    <el-radio-button label="腰背部">腰背部</el-radio-button>
-                    <el-radio-button label="四肢及关节">四肢及关节</el-radio-button>
-                    <el-radio-button label="全身皮肤">全身皮肤</el-radio-button>
+                    <el-radio-button value="头面部">头面部</el-radio-button>
+                    <el-radio-button value="颈胸部">颈胸部</el-radio-button>
+                    <el-radio-button value="脘腹部">脘腹部</el-radio-button>
+                    <el-radio-button value="腰背部">腰背部</el-radio-button>
+                    <el-radio-button value="四肢及关节">四肢及关节</el-radio-button>
+                    <el-radio-button value="全身皮肤">全身皮肤</el-radio-button>
                   </el-radio-group>
                 </div>
 
@@ -610,15 +610,15 @@
                 <div class="symptom-modifiers-bar">
                   <span class="mod-label">发作频次：</span>
                   <el-radio-group v-model="emr.frequency" size="small">
-                    <el-radio label="偶尔">偶尔</el-radio>
-                    <el-radio label="经常">经常</el-radio>
-                    <el-radio label="持续性">持续性</el-radio>
+                    <el-radio value="偶尔">偶尔</el-radio>
+                    <el-radio value="经常">经常</el-radio>
+                    <el-radio value="持续性">持续性</el-radio>
                   </el-radio-group>
                   <span class="mod-label ml-4">发病病程：</span>
                   <el-radio-group v-model="emr.duration" size="small">
-                    <el-radio label="1-3天">1-3天</el-radio>
-                    <el-radio label="1周内">1周内</el-radio>
-                    <el-radio label="半月以上">半月以上</el-radio>
+                    <el-radio value="1-3天">1-3天</el-radio>
+                    <el-radio value="1周内">1周内</el-radio>
+                    <el-radio value="半月以上">半月以上</el-radio>
                   </el-radio-group>
                 </div>
 
@@ -774,6 +774,9 @@
                   </el-button>
                   <el-button type="info" size="small" class="rtmb-btn btn-add-treatment" :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('treatment')">
                     <el-icon><Plus /></el-icon> 诊疗
+                  </el-button>
+                  <el-button type="warning" size="small" class="rtmb-btn btn-add-supply" :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('supply')">
+                    <el-icon><Plus /></el-icon> 物资
                   </el-button>
                   <el-button type="success" size="small" plain class="btn-save-as-tpl" :disabled="isHistoryReadOnly" @click="openSaveTemplateModal">
                     📋 存为模板
@@ -941,11 +944,12 @@
                             <tr v-for="(row, idx) in block.items" :key="'wx_'+block.id+'_'+idx">
                               <td class="text-center">{{ idx + 1 }}</td>
                               <td>
-                                <el-select v-model="row.name" filterable allow-create default-first-option placeholder="检索西药/中成药" size="small" style="width:100%" :disabled="isHistoryReadOnly" @change="onBlockMedSelect(row)">
-                                  <el-option v-for="m in allAvailableMedicines" :key="m.id || m.name" :label="`${m.name} (${m.specification || '标准'}) - ¥${m.price}`" :value="m.name" />
+                                <el-select v-model="row.name" filterable allow-create default-first-option
+                                  :filter-method="filterMedByPinyin" placeholder="检索西药/中成药（支持名称/拼音简码，如 xcz）" size="small" style="width:100%" :disabled="isHistoryReadOnly" @change="onBlockMedSelect(row)">
+                                  <el-option v-for="m in pinyinFilteredMeds" :key="m.id || m.name" :label="`${m.name} (${m.secondaryCategory ? m.secondaryCategory + '·' : ''}${m.specification || '标准'}) - ¥${m.price}`" :value="m.name" />
                                 </el-select>
                               </td>
-                              <td><el-input v-model="row.dose" placeholder="1片" size="small" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" /></td>
+                              <td><el-input v-model="row.dose" :placeholder="'1' + (specUnitOf(row.spec) || '片')" size="small" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" /></td>
                               <td>
                                 <el-select v-model="row.route" size="small" style="width:100%" :disabled="isHistoryReadOnly" @change="syncBlocksToItems">
                                   <el-option label="口服" value="口服" />
@@ -963,7 +967,9 @@
                                 </el-select>
                               </td>
                               <td><el-input-number v-model="row.days" :min="1" :max="30" size="small" style="width:100%" :controls="false" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" /></td>
-                              <td><el-input-number v-model="row.quantity" :min="1" :max="99" size="small" style="width:100%" :controls="false" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" /></td>
+                              <td>
+                                <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" style="width:100%" :controls="false" :disabled="isHistoryReadOnly" @change="onWxQtyChange(row)" />
+                              </td>
                               <td class="text-right">¥{{ (Number(row.unitPrice) || 25).toFixed(2) }}</td>
                               <td class="text-right font-bold">¥{{ ((Number(row.unitPrice) || 25) * (row.quantity || 1)).toFixed(2) }}</td>
                               <td><el-input v-model="row.remark" placeholder="饭后温服" size="small" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" /></td>
@@ -1001,8 +1007,8 @@
                         </div>
                         <div class="rx-section-actions block-header-right">
                           <el-radio-group v-model="block.tcmType" size="small" :disabled="isHistoryReadOnly">
-                            <el-radio-button label="饮片">饮片</el-radio-button>
-                            <el-radio-button label="颗粒">颗粒</el-radio-button>
+                            <el-radio-button value="饮片">饮片</el-radio-button>
+                            <el-radio-button value="颗粒">颗粒</el-radio-button>
                           </el-radio-group>
                           <span class="tcm-dose-label">剂数:</span>
                           <el-input-number v-model="block.tcmDoses" :min="1" :max="30" size="small" style="width:90px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
@@ -1092,7 +1098,7 @@
                           <div class="tbf-right">
                             <span class="tbf-label">高频速加：</span>
                             <span 
-                              v-for="h in commonTcmHerbs.slice(0, 8)" 
+                              v-for="h in allTcmMedicines.slice(0, 8)" 
                               :key="h.name" 
                               class="tbf-chip"
                               @click="quickAddHerbToBlock(block, h)"
@@ -1150,18 +1156,63 @@
                     </div>
                   </div>
                 </div>
+                <!-- 5. 🧰 医用物资开单专区 -->
+                <div class="rx-category-section" v-if="supplyBlocks.length > 0">
+                  <div class="rx-cat-header cat-header-treatment">
+                    <span class="cat-badge">🧰 医用物资开单专区 ({{ supplyBlocks.length }} 张)</span>
+                    <el-button size="small" type="warning" plain :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('supply')">+ 增加物资单</el-button>
+                  </div>
+                  <div class="rx-blocks-subgroup">
+                    <div
+                      v-for="(block, bIdx) in supplyBlocks"
+                      :key="block.id"
+                      class="rx-section-card prescription-block-card block-type-treatment"
+                    >
+                      <div class="rx-section-header block-header">
+                        <div class="block-header-left">
+                          <span class="rx-section-title">{{ block.title }}</span>
+                          <el-tag size="small" type="warning" class="block-type-tag">医用物资</el-tag>
+                          <span class="block-rx-no">单号: {{ block.rxNo }}</span>
+                        </div>
+                        <div class="rx-section-actions block-header-right">
+                          <span class="block-subtotal">金额: ¥{{ getBlockTotal(block).toFixed(2) }}</span>
+                          <el-button type="danger" link size="small" class="btn-del-block" :disabled="isHistoryReadOnly" @click="removePrescriptionBlock(block.id)">
+                            <el-icon><Delete /></el-icon> 删除整单
+                          </el-button>
+                        </div>
+                      </div>
+                      <div class="block-body-treatment">
+                        <div class="treatment-rows-wrap">
+                          <div class="treatment-row" v-for="(item, idx) in block.items" :key="'supply_'+block.id+'_'+idx">
+                            <el-select v-model="item.medicineId" filterable placeholder="从药房物资库选择" size="small" style="width:260px" :disabled="isHistoryReadOnly" @change="(sid) => pickSupplyForItem(item, sid)">
+                              <el-option v-for="m in allSupplyMedicines" :key="m.id" :value="m.id"
+                                :label="(m.name || '') + (m.specification ? ' (' + m.specification + ')' : '') + ' · 库存' + (m.stock != null ? m.stock : '—')" />
+                            </el-select>
+                            <el-tag v-if="item.isLinkage" size="small" type="success" effect="plain">🔗联动</el-tag>
+                            <el-input-number v-model="item.quantity" :min="1" size="small" style="width:100px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
+                            <span class="treat-unit">{{ item.unit || '件' }}</span>
+                            <span class="treat-subtotal">¥{{ ((Number(item.unitPrice)||0) * (item.quantity||1)).toFixed(2) }}</span>
+                            <el-button type="danger" link size="small" :disabled="isHistoryReadOnly" @click="removeBlockItem(block, idx)">删除</el-button>
+                          </div>
+                        </div>
+                        <el-button size="small" plain type="warning" class="btn-add-item" :disabled="isHistoryReadOnly || !canPrescribe" @click="addBlockItem(block)">
+                          + 添加物资
+                        </el-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
               </div>
-
-              <!-- 无处方单时的引导占位区 -->
               <div class="rx-blocks-empty" v-else>
                 <div class="rbe-icon">📋</div>
                 <div class="rbe-title">当前尚未开立门诊处方单</div>
-                <div class="rbe-desc">请点击上方按钮添加【贴敷处方】、【西/中成药】、【中药处方】或【诊疗项目】</div>
+                <div class="rbe-desc">请点击上方按钮添加【贴敷处方】、【西/中成药】、【中药处方】、【诊疗项目】或【医用物资】</div>
                 <div class="rbe-actions">
                   <el-button type="warning" plain :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('patch')">+ 贴敷处方</el-button>
                   <el-button type="primary" plain :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('western')">+ 西/中成药</el-button>
                   <el-button type="success" plain :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('tcm')">+ 中药处方</el-button>
+                  <el-button type="warning" plain :disabled="isHistoryReadOnly || !canPrescribe" @click="addNewPrescriptionBlock('supply')">+ 医用物资</el-button>
                 </div>
               </div>
 
@@ -1469,6 +1520,16 @@
                     </div>
                   </div>
 
+                  <!-- MCP 工具调用与数据核验过程（生成中展示，完成后彻底隐藏只保留正文） -->
+                  <div class="ai-tool-call-box" v-if="!msg.processDone && msg.processSteps && msg.processSteps.length">
+                    <div class="tool-call-row">
+                      <span class="tool-label">⚡ 工具执行与数据核验：</span>
+                      <span class="tool-tags-wrap process-steps-col">
+                        <span v-for="(st, sIdx) in msg.processSteps" :key="sIdx" class="process-step-line">{{ st }}</span>
+                      </span>
+                    </div>
+                  </div>
+
                   <!-- DeepSeek-R1 风格临床推理思考折叠卡 -->
                   <div class="reasoning-fold" v-if="msg.thinking">
                     <div class="reasoning-toggle" @click="msg._showThink = !msg._showThink">
@@ -1480,8 +1541,16 @@
 
                   <!-- 回复正文 (支持平滑流式字符与闪烁光标) -->
                   <div class="msg-bubble assistant-bubble" v-if="msg.content || msg.isStreaming">
+                    <div v-if="!msg.content && msg.isStreaming" class="ai-thinking-hint">
+                      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                      <span style="font-size:12px;color:#64748b;margin-left:6px;">正在结合病历与知识库辨证思考…</span>
+                    </div>
                     <div v-html="renderMd(msg.content)"></div>
                     <span class="typing-cursor" v-if="msg.isStreaming">▋</span>
+                    <!-- 朗读回答（TTS） -->
+                    <div class="msg-tts-row" v-if="msg.content && !msg.isStreaming">
+                      <span class="tts-toggle" @click="speakAiMessage(msg, idx)">{{ msg._speaking ? '⏹ 停止朗读' : '🔊 朗读回答' }}</span>
+                    </div>
                   </div>
 
                   <!-- 推荐处方卡片与一键采纳 (实现发送病历后给出处方卡片，点击一键采纳直接填写左侧) -->
@@ -1555,21 +1624,26 @@
               @keydown.enter.prevent="sendAiMessage"
             />
             <div class="modern-chat-bottom">
+              <div class="mic-btn" :class="{ recording: isRecording }" @click="toggleVoiceInput"
+                   :title="isRecording ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
+                <el-icon v-if="!isRecording" :size="17"><Microphone /></el-icon>
+                <span v-else style="font-size: 13px;">⏹</span>
+              </div>
               <span class="chat-key-hint">Enter 发送</span>
-              <el-button 
+              <el-button
                 v-if="!chatTyping"
-                type="primary" 
-                size="small" 
-                class="modern-send-btn" 
+                type="primary"
+                size="small"
+                class="modern-send-btn"
                 @click="sendAiMessage"
               >
                 发送
               </el-button>
-              <el-button 
+              <el-button
                 v-else
-                type="danger" 
-                size="small" 
-                class="modern-send-btn" 
+                type="danger"
+                size="small"
+                class="modern-send-btn"
                 @click="stopGeneration"
               >
                 ⏹ 停止
@@ -1622,11 +1696,11 @@
         </el-form-item>
         <el-form-item label="会员等级">
           <el-radio-group v-model="wsMemberForm.level">
-            <el-radio label="慢病签约会员">
+            <el-radio value="慢病签约会员">
               <span class="font-bold text-amber">🥈 慢病签约会员</span>
               <span class="text-xs text-slate-500"> (9折开药 · 送300积分)</span>
             </el-radio>
-            <el-radio label="VIP会员">
+            <el-radio value="VIP会员">
               <span class="font-bold text-emerald">💎 VIP白金会员</span>
               <span class="text-xs text-slate-500"> (85折开药 · 送800积分)</span>
             </el-radio>
@@ -1676,8 +1750,8 @@
         </el-form-item>
         <el-form-item label="性别" required>
           <el-radio-group v-model="tempPatientForm.gender">
-            <el-radio label="男">男</el-radio>
-            <el-radio label="女">女</el-radio>
+            <el-radio value="男">男</el-radio>
+            <el-radio value="女">女</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="年龄/岁" required>
@@ -1749,11 +1823,11 @@
         <div class="pay-method-zone">
           <div class="method-title">结算收款方式：</div>
           <el-radio-group v-model="instantPayMethod" size="default">
-            <el-radio-button label="wechat">🟢 微信扫码</el-radio-button>
-            <el-radio-button label="alipay">🔵 支付宝</el-radio-button>
-            <el-radio-button label="yibao">🛡️ 医保结算</el-radio-button>
-            <el-radio-button label="cash">💵 现金收款</el-radio-button>
-            <el-radio-button label="member">💳 会员储值</el-radio-button>
+            <el-radio-button value="wechat">🟢 微信扫码</el-radio-button>
+            <el-radio-button value="alipay">🔵 支付宝</el-radio-button>
+            <el-radio-button value="yibao">🛡️ 医保结算</el-radio-button>
+            <el-radio-button value="cash">💵 现金收款</el-radio-button>
+            <el-radio-button value="member">💳 会员储值</el-radio-button>
           </el-radio-group>
         </div>
 
@@ -1845,7 +1919,7 @@
             <el-tag size="small" type="danger">{{ selectedHistoryVisit.visitType }}</el-tag>
           </div>
           <div class="hd-sub-line">
-            接诊医生：{{ selectedHistoryVisit.doctor || '张医生' }} · 就诊科室：中医全科门诊 · 结算状态：<el-tag size="small" type="success">已结清 (¥{{ selectedHistoryVisit.totalFee.toFixed(2) }})</el-tag>
+            接诊医生：{{ selectedHistoryVisit.doctor || currentUserName }} · 就诊科室：中医全科门诊 · 结算状态：<el-tag size="small" type="success">已结清 (¥{{ selectedHistoryVisit.totalFee.toFixed(2) }})</el-tag>
           </div>
         </div>
 
@@ -1993,7 +2067,14 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import axios from 'axios'
 
 const queueTab = ref('waiting')
-const rightPanelTab = ref('history') // 'history' | 'ai' | 'template'
+// 右栏子标签持久化：刷新后停留在原标签（就诊记录/ai/模板），不再跳回就诊记录
+const RIGHT_PANEL_TAB_KEY = 'chunbo_right_panel_tab'
+const RIGHT_PANEL_TABS = ['history', 'ai', 'template']
+const rightPanelTab = ref(RIGHT_PANEL_TABS.includes(localStorage.getItem(RIGHT_PANEL_TAB_KEY))
+  ? localStorage.getItem(RIGHT_PANEL_TAB_KEY) : 'history')
+watch(rightPanelTab, (t) => {
+  if (t) localStorage.setItem(RIGHT_PANEL_TAB_KEY, t)
+})
 const historySearchKey = ref('')
 const tplSearchKey = ref('')
 const historyDetailDrawerVisible = ref(false)
@@ -2079,7 +2160,7 @@ const loadInitialDateStore = () => {
             const stillWaiting = []
             b.waiting.forEach(p => {
               if (p) {
-                if (isClosedStatus(p.status) || p.patientName === '刘舒强' || p.id === 1001) {
+                if (isClosedStatus(p.status)) {
                   p.status = (p.status === '已退' || p.status === '已退号') ? '已退号' : ((p.status === '过号' || p.status === '已过号') ? '过号' : '已结诊')
                   if (!b.done.some(d => d && (d.id === p.id || (d.patientName === p.patientName && d.phone === p.phone)))) {
                     b.done.unshift(p)
@@ -2100,84 +2181,9 @@ const loadInitialDateStore = () => {
   } catch (e) {}
   return null
 }
-const defaultDateStore = {
-  [todayKey]: { // 今天 (真实当前日期)
-    waiting: [
-      { 
-        id: 1002, 
-        queueNumber: `${todayKey.substring(5)}-02`, 
-        patientName: '张伟', 
-        gender: '男', 
-        age: 42, 
-        ageText: '42岁', 
-        phone: '13900001111', 
-        birthday: '1984-05-12', 
-        department: '全科慢病门诊', 
-        doctorName: '张医生', 
-        fee: 10.00, 
-        status: '待诊', 
-        symptoms: '腰膝酸软，胃脘痞满',
-        memberLevel: '普通居民',
-        discountRate: 1.0,
-        memberExpiry: '',
-        balance: 0.0,
-        points: 0
-      }
-    ],
-    done: [
-      { 
-        id: 1001, 
-        queueNumber: `${todayKey.substring(5)}-01`, 
-        patientName: '刘舒强', 
-        gender: '女', 
-        age: 26, 
-        ageText: '26岁8月', 
-        phone: '15111564208', 
-        birthday: '2000-01-01', 
-        department: '中医全科门诊', 
-        doctorName: '张医生', 
-        fee: 10.00, 
-        status: '已结诊', 
-        symptoms: '反复牙龈肿痛，咳嗽，恶寒低热',
-        memberLevel: '慢病签约会员',
-        discountRate: 0.9,
-        memberExpiry: '2027-09-17',
-        balance: 600.0,
-        points: 600
-      },
-      { id: 1000, queueNumber: `${todayKey.substring(5)}-00`, patientName: '王丽华', gender: '女', age: 31, ageText: '31岁', phone: '13812345678', birthday: '1995-10-20', department: '特色贴敷科', doctorName: '张医生', fee: 10.00, status: '已结诊', symptoms: '颈肩酸痛伴活动受限' }
-    ]
-  },
-  [yesterdayKey]: { // 昨天
-    waiting: [
-      { id: 2001, queueNumber: `${yesterdayKey.substring(5)}-01`, patientName: '李建国', gender: '男', age: 52, ageText: '52岁', phone: '13700002222', birthday: '1974-03-15', department: '中医全科门诊', doctorName: '张医生', fee: 10.00, status: '待诊', symptoms: '慢性胃炎伴胃脘胀痛3天' },
-      { id: 2002, queueNumber: `${yesterdayKey.substring(5)}-02`, patientName: '赵秀兰', gender: '女', age: 60, ageText: '60岁', phone: '13611113333', birthday: '1966-07-08', department: '全科慢病门诊', doctorName: '张医生', fee: 10.00, status: '待诊', symptoms: '高血压头晕伴心悸失眠' }
-    ],
-    done: [
-      { id: 2003, queueNumber: `${yesterdayKey.substring(5)}-03`, patientName: '曹文', gender: '男', age: 33, ageText: '33岁', phone: '13522224444', birthday: '1993-11-19', department: '特色贴敷科', doctorName: '张医生', fee: 10.00, status: '已结诊', symptoms: '急性扁桃体炎咽痛发热' }
-    ]
-  },
-  [dayBeforeYesterdayKey]: { // 前天 (用户重点强调：前天接诊中的患者与状态100%保存)
-    waiting: [
-      { id: 3001, queueNumber: `${dayBeforeYesterdayKey.substring(5)}-01`, patientName: '孙浩', gender: '男', age: 35, ageText: '35岁', phone: '13833335555', birthday: '1991-09-02', department: '中医全科门诊', doctorName: '张医生', fee: 10.00, status: '待诊', symptoms: '偏头痛伴恶心呕吐，视物模糊' },
-      { id: 3002, queueNumber: `${dayBeforeYesterdayKey.substring(5)}-02`, patientName: '钱大明', gender: '男', age: 45, ageText: '45岁', phone: '13855557777', birthday: '1981-08-11', department: '全科慢病门诊', doctorName: '张医生', fee: 10.00, status: '待诊', symptoms: '腰椎间盘突出下肢麻木' },
-      { id: 3003, queueNumber: `${dayBeforeYesterdayKey.substring(5)}-03`, patientName: '吴美丽', gender: '女', age: 29, ageText: '29岁', phone: '13799998888', birthday: '1997-04-14', department: '妇科中医调理', doctorName: '张医生', fee: 10.00, status: '待诊', symptoms: '痛经小腹冷痛经期延长' }
-    ],
-    done: [
-      { id: 3004, queueNumber: `${dayBeforeYesterdayKey.substring(5)}-04`, patientName: '周芳', gender: '女', age: 45, ageText: '45岁', phone: '13944446666', birthday: '1981-01-25', department: '特色贴敷科', doctorName: '张医生', fee: 10.00, status: '已结诊', symptoms: '更年期潮热盗汗心烦' }
-    ]
-  },
-  '2026-09-01': {
-    waiting: [],
-    done: [
-      { id: 1001, queueNumber: '09/01-01', patientName: '刘舒强', gender: '女', age: 26, ageText: '26岁8月', phone: '15111564208', birthday: '2000-01-01', department: '中医全科门诊', doctorName: '张医生', fee: 10.00, status: '已结诊', symptoms: '痛经，月经不调，少腹冷痛', memberLevel: '慢病签约会员', discountRate: 0.9, memberExpiry: '2027-09-17', balance: 600.0, points: 600 },
-      { id: 4002, queueNumber: '09/01-02', patientName: '赵强', gender: '男', age: 39, ageText: '39岁', phone: '13912344321', birthday: '1987-12-05', department: '全科门诊', doctorName: '张医生', fee: 10.00, status: '已结诊', symptoms: '顽固性失眠多梦健忘' }
-    ]
-  }
-}
 
 // ── 各患者在各日期的草稿与处方完整快照存根 (保证切换日期和患者时100%状态保存) ──
-const dateConsultationStore = ref(loadInitialDateStore() || defaultDateStore)
+const dateConsultationStore = ref(loadInitialDateStore() || {})
 
 const loadInitialDraftStore = () => {
   try {
@@ -2189,98 +2195,7 @@ const loadInitialDraftStore = () => {
   } catch (e) {}
   return null
 }
-const defaultDraftStore = {
-  [`1001_${todayKey}`]: {
-    emr: {
-      chiefComplaint: '反复牙龈肿痛，咳嗽，恶寒低热',
-      presentIllness: '患者近3天无明显诱因出现牙龈肿痛，伴轻微咳嗽，咽干微痛，恶寒低热。',
-      allergies: '青霉素类、磺胺类',
-      pastHistory: '否认高血压、糖尿病及重大手术外伤史',
-      frequency: '经常',
-      duration: '1-3天',
-      symptomsList: ['反复牙龈肿痛', '咳嗽', '发烧'],
-      tongue: '舌质红，苔薄黄微干',
-      pulse: '脉浮数',
-      diagnosis: '急性上呼吸道感染伴牙龈炎',
-      tcmDiagnosis: '风热犯肺，胃火上攻证',
-      medicalAdvice: '1. 遵医嘱规范用药；2. 饮食清淡，忌辛辣刺激；3. 保持室内空气流通。'
-    },
-    treatmentItems: [{ category: '治疗理疗', name: '按 摩', quantity: 1, price: 35.00, remark: '局部疏通理气' }],
-    patchRxItems: [],
-    westernRxItems: [{ medicineId: 201, name: '感冒灵颗粒', dose: '1袋', frequency: 'tid', route: '口服', days: 3, quantity: 1, unit: '盒', unitPrice: 22.50, remark: '开水冲服' }],
-    tcmRxItems: [],
-    status: '已结诊'
-  },
-  [`2001_${yesterdayKey}`]: { // 昨天的李建国
-    emr: {
-      chiefComplaint: '慢性胃炎伴胃脘胀痛3天，嗳气反酸',
-      presentIllness: '患者既往有慢性胃炎病史5年，近3天因进食冷饮后诱发胃脘隐痛胀满，遇冷加重，喜温喜按。',
-      allergies: '无已知药物过敏',
-      pastHistory: '慢性浅表性胃炎病史5年，高血压病史2年',
-      frequency: '持续性',
-      duration: '1-3天',
-      symptomsList: ['胃痛', '胃胀', '反酸'],
-      tongue: '舌体稍胖，苔白滑',
-      pulse: '脉沉弱或迟缓',
-      diagnosis: '慢性胃炎（急性发作）',
-      tcmDiagnosis: '脾胃虚寒证',
-      medicalAdvice: '1. 规律饮食，忌食生冷寒凉；2. 腹部注意防寒保暖；3. 贴敷处如有不适随诊。'
-    },
-    treatmentItems: [{ category: '体质调理', name: '艾灸温经通络', quantity: 1, price: 40.00, remark: '神阙中脘艾灸' }],
-    patchRxItems: [{ medicineId: 101, name: '消肿止痛贴 (温中贴)', dose: '10', acupoints: '中脘穴、神阙穴、足三里穴', frequency: '1次/天', days: 3, quantity: 3, unitPrice: 35.00, remark: '生姜汁调和' }],
-    westernRxItems: [{ medicineId: 202, name: '阿莫西林胶囊', dose: '0.5g', frequency: 'tid', route: '口服', days: 5, quantity: 1, unit: '盒', unitPrice: 15.00, remark: '饭后服用' }],
-    tcmRxItems: [
-      { medicineId: 305, name: '白术 (生白术)', dose: '15', frequency: '1剂/天', days: 3, unitPrice: 2.40, remark: '健脾益气' },
-      { medicineId: 306, name: '茯苓 (白茯苓块)', dose: '12', frequency: '1剂/天', days: 3, unitPrice: 2.00, remark: '利水渗湿' }
-    ],
-    status: '待诊'
-  },
-  [`3001_${dayBeforeYesterdayKey}`]: { // 前天接诊中的孙浩
-    emr: {
-      chiefComplaint: '偏头痛反复发作2天，伴恶心，左侧颞部搏动性跳痛',
-      presentIllness: '患者2天前因工作劳累后出现左侧头部胀痛搏动，伴恶心欲呕，遇强光加剧。',
-      allergies: '对头孢类药物皮试阳性',
-      pastHistory: '偏头痛病史3年，无高血压史',
-      frequency: '经常',
-      duration: '1-3天',
-      symptomsList: ['偏头痛', '恶心呕吐'],
-      tongue: '舌质红，苔薄黄',
-      pulse: '脉弦紧',
-      diagnosis: '血管神经性头痛',
-      tcmDiagnosis: '肝胆火旺，风邪上扰证',
-      medicalAdvice: '1. 避强光噪音，保证充足睡眠；2. 避免情绪激动焦虑；3. 头部避免迎风受凉。'
-    },
-    treatmentItems: [{ category: '治疗理疗', name: '头部穴位推拿', quantity: 1, price: 50.00, remark: '疏风通络' }],
-    patchRxItems: [{ medicineId: 101, name: '消肿止痛贴 (定痛贴)', dose: '8', acupoints: '太阳穴、风池穴', frequency: '1次/天', days: 2, quantity: 2, unitPrice: 35.00, remark: '穴位外贴' }],
-    westernRxItems: [{ medicineId: 203, name: '布洛芬缓释胶囊', dose: '0.3g', frequency: 'prn', route: '口服', days: 2, quantity: 1, unit: '盒', unitPrice: 25.00, remark: '头痛剧烈时服' }],
-    tcmRxItems: [
-      { medicineId: 308, name: '柴胡 (北柴胡)', dose: '10', frequency: '1剂/天', days: 3, unitPrice: 3.00, remark: '疏肝解郁' }
-    ],
-    status: '待诊'
-  },
-  [`3002_${dayBeforeYesterdayKey}`]: { // 前天接诊中的钱大明
-    emr: {
-      chiefComplaint: '腰痛伴右侧坐骨神经放射性酸痛3天',
-      presentIllness: '搬重物后突发腰部僵硬酸胀，右下肢后侧牵拉酸麻，夜间翻身困难。',
-      allergies: '无已知药物过敏',
-      pastHistory: '腰肌劳损病史2年',
-      frequency: '持续性',
-      duration: '1-3天',
-      symptomsList: ['腰痛', '肢体麻木'],
-      tongue: '舌质紫暗有瘀斑，苔白',
-      pulse: '脉弦涩',
-      diagnosis: '腰椎间盘突出症',
-      tcmDiagnosis: '气滞血瘀，络脉痹阻证',
-      medicalAdvice: '1. 卧硬板床休息；2. 避免腰部剧烈扭转与负重；3. 坚持穴位贴敷。'
-    },
-    treatmentItems: [{ category: '治疗理疗', name: '腰椎牵引理疗', quantity: 1, price: 45.00, remark: '舒经活络' }],
-    patchRxItems: [{ medicineId: 101, name: '消肿止痛贴 (通络贴)', dose: '10', acupoints: '命门穴、肾俞穴、腰阳关穴', frequency: '1次/天', days: 3, quantity: 3, unitPrice: 35.00, remark: '穴位敷贴' }],
-    westernRxItems: [{ medicineId: 203, name: '布洛芬缓释胶囊', dose: '0.3g', frequency: 'bid', route: '口服', days: 3, quantity: 1, unit: '盒', unitPrice: 25.00, remark: '饭后服' }],
-    tcmRxItems: [{ medicineId: 307, name: '当归 (全当归片)', dose: '12', frequency: '1剂/天', days: 3, unitPrice: 4.50, remark: '活血行气' }],
-    status: '待诊'
-  }
-}
-const consultationDraftStore = ref(loadInitialDraftStore() || defaultDraftStore)
+const consultationDraftStore = ref(loadInitialDraftStore() || {})
 
 
 
@@ -2825,179 +2740,56 @@ const appendPastHistory = (tag) => {
   }
 }
 // ═══ 诊所可用中西药字典、处方块状态与计算属性 (统一前置声明，彻底根除 TDZ 依赖断裂) ═══
-const defaultClinicMeds = [
-  { id: 101, name: '消肿止痛贴 0.4g*20贴/盒', specification: '0.4g*20贴/盒', price: 35.00, primaryCategory: '贴敷' },
-  { id: 102, name: '温经散寒贴', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 103, name: '清热消积贴', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 104, name: '活血止痛穴位贴', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 105, name: '熄风定痛贴', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 106, name: '小儿止咳化痰贴 (院内制剂)', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 107, name: '温中散寒贴 (暖脐温胃)', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 108, name: '通络定痛贴 (腰腿颈肩)', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 109, name: '三伏固表贴 (冬病夏治)', specification: '院内特色制剂', price: 35.00, primaryCategory: '贴敷' },
-  { id: 201, name: '感冒灵颗粒', specification: '10g*9袋/盒', price: 22.50, primaryCategory: '中成药' },
-  { id: 202, name: '布洛芬缓释胶囊', specification: '0.3g*20粒/盒', price: 25.00, primaryCategory: '西药' },
-  { id: 203, name: '头孢克肟分散片', specification: '0.1g*12片/盒', price: 32.00, primaryCategory: '西药' },
-  { id: 204, name: '右旋糖酐铁口服液', specification: '10ml*10支/盒', price: 48.00, primaryCategory: '西药' },
-  { id: 205, name: '复合维生素B片', specification: '100片/瓶', price: 15.00, primaryCategory: '西药' },
-  { id: 206, name: '阿莫西林胶囊', specification: '0.25g*24粒', price: 15.00, primaryCategory: '西药' },
-  { id: 207, name: '双黄连口服液', specification: '10ml*10支', price: 28.00, primaryCategory: '中成药' },
-  { id: 301, name: '甘草 (生甘草片)', specification: '饮片(1g)', price: 1.50, primaryCategory: '中药' },
-  { id: 302, name: '金银花 (优质初开花)', specification: '饮片(1g)', price: 3.20, primaryCategory: '中药' },
-  { id: 303, name: '连翘 (青翘)', specification: '饮片(1g)', price: 2.80, primaryCategory: '中药' },
-  { id: 304, name: '当归 (全当归)', specification: '饮片(1g)', price: 4.50, primaryCategory: '中药' },
-  { id: 305, name: '白芍 (炒白芍)', specification: '饮片(1g)', price: 3.00, primaryCategory: '中药' },
-  { id: 306, name: '黄芩 (炒黄芩)', specification: '饮片(1g)', price: 2.10, primaryCategory: '中药' },
-  { id: 307, name: '白术 (生白术)', specification: '饮片(1g)', price: 2.40, primaryCategory: '中药' },
-  { id: 308, name: '柴胡 (北柴胡)', specification: '饮片(1g)', price: 3.00, primaryCategory: '中药' },
-  { id: 309, name: '菊花 (杭白菊)', specification: '饮片(1g)', price: 2.50, primaryCategory: '中药' },
-  { id: 310, name: '黄芪', specification: '饮片(1g)', price: 3.50, primaryCategory: '中药' },
-  { id: 311, name: '生姜', specification: '饮片(1g)', price: 1.00, primaryCategory: '中药' }
-]
 
-// 贴敷特色药品列表
-const allAvailablePlasters = ref([
-  { id: 101, name: '消肿止痛贴 0.4g*20贴/盒', specification: '0.4g*20贴/盒', price: 35.00 },
-  { id: 102, name: '温经散寒贴', specification: '5贴/盒', price: 35.00 },
-  { id: 103, name: '清热消积贴', specification: '5贴/盒', price: 35.00 },
-  { id: 104, name: '活血止痛穴位贴', specification: '6贴/袋', price: 35.00 },
-  { id: 105, name: '熄风定痛贴', specification: '5贴/盒', price: 35.00 },
-  { id: 106, name: '小儿止咳化痰贴 (院内制剂)', specification: '院内制剂 6贴', price: 35.00 },
-  { id: 107, name: '温中散寒贴 (暖脐温胃)', specification: '暖脐温胃 5贴', price: 35.00 },
-  { id: 108, name: '通络定痛贴 (腰腿颈肩)', specification: '腰腿颈肩 5贴', price: 35.00 },
-  { id: 109, name: '三伏固表贴 (冬病夏治)', specification: '冬病夏治 6贴', price: 35.00 }
-])
-
-// 常用中药药材库
-const commonTcmHerbs = [
-  { name: '黄芪', price: 0.20, defaultDose: 15 },
-  { name: '党参', price: 0.15, defaultDose: 10 },
-  { name: '当归', price: 0.25, defaultDose: 10 },
-  { name: '炒白术', price: 0.12, defaultDose: 10 },
-  { name: '茯苓', price: 0.12, defaultDose: 12 },
-  { name: '柴胡', price: 0.18, defaultDose: 9 },
-  { name: '金银花', price: 0.30, defaultDose: 10 },
-  { name: '连翘', price: 0.25, defaultDose: 10 },
-  { name: '陈皮', price: 0.10, defaultDose: 6 },
-  { name: '炙甘草', price: 0.08, defaultDose: 6 },
-  { name: '白芍', price: 0.16, defaultDose: 10 },
-  { name: '熟地黄', price: 0.18, defaultDose: 15 },
-  { name: '川芎', price: 0.15, defaultDose: 9 },
-  { name: '法半夏', price: 0.22, defaultDose: 9 },
-  { name: '麦冬', price: 0.20, defaultDose: 10 },
-  { name: '丹参', price: 0.14, defaultDose: 15 },
-  { name: '桔梗', price: 0.12, defaultDose: 9 },
-  { name: '防风', price: 0.16, defaultDose: 9 },
-  { name: '山药', price: 0.12, defaultDose: 15 },
-  { name: '枸杞子', price: 0.15, defaultDose: 10 }
-]
-
-// 经典经方速选库
-const classicTcmFormulas = [
-  {
-    name: '小柴胡汤',
-    desc: '和解少阳，用于往来寒热、胸胁苦满、心烦喜呕',
-    herbs: [
-      { name: '柴胡', dose: 12, unitPrice: 0.18, remark: '' },
-      { name: '黄芩', dose: 9, unitPrice: 0.16, remark: '' },
-      { name: '党参', dose: 9, unitPrice: 0.15, remark: '' },
-      { name: '法半夏', dose: 9, unitPrice: 0.22, remark: '姜制' },
-      { name: '炙甘草', dose: 6, unitPrice: 0.08, remark: '' },
-      { name: '生姜', dose: 6, unitPrice: 0.05, remark: '' },
-      { name: '大枣', dose: 6, unitPrice: 0.06, remark: '擘' }
-    ]
-  },
-  {
-    name: '补中益气汤',
-    desc: '补中益气，升阳举陷，用于脾胃虚弱、中气下陷',
-    herbs: [
-      { name: '黄芪', dose: 15, unitPrice: 0.20, remark: '' },
-      { name: '党参', dose: 10, unitPrice: 0.15, remark: '' },
-      { name: '炒白术', dose: 10, unitPrice: 0.12, remark: '' },
-      { name: '当归', dose: 10, unitPrice: 0.25, remark: '' },
-      { name: '陈皮', dose: 6, unitPrice: 0.10, remark: '' },
-      { name: '升麻', dose: 6, unitPrice: 0.12, remark: '' },
-      { name: '柴胡', dose: 6, unitPrice: 0.18, remark: '' },
-      { name: '炙甘草', dose: 5, unitPrice: 0.08, remark: '' }
-    ]
-  },
-  {
-    name: '四君子汤',
-    desc: '益气健脾，脾胃气虚之基础方',
-    herbs: [
-      { name: '党参', dose: 10, unitPrice: 0.15, remark: '' },
-      { name: '炒白术', dose: 10, unitPrice: 0.12, remark: '' },
-      { name: '茯苓', dose: 10, unitPrice: 0.12, remark: '' },
-      { name: '炙甘草', dose: 6, unitPrice: 0.08, remark: '' }
-    ]
-  },
-  {
-    name: '银翘散',
-    desc: '辛凉透表，清热解毒，用于风热感冒初期',
-    herbs: [
-      { name: '金银花', dose: 12, unitPrice: 0.30, remark: '' },
-      { name: '连翘', dose: 12, unitPrice: 0.25, remark: '' },
-      { name: '桔梗', dose: 9, unitPrice: 0.12, remark: '' },
-      { name: '薄荷', dose: 6, unitPrice: 0.10, remark: '后下' },
-      { name: '荆芥', dose: 6, unitPrice: 0.08, remark: '' },
-      { name: '牛蒡子', dose: 9, unitPrice: 0.15, remark: '' },
-      { name: '甘草', dose: 5, unitPrice: 0.08, remark: '' }
-    ]
-  },
-  {
-    name: '二陈汤',
-    desc: '燥湿化痰，理气和中，主治湿痰证',
-    herbs: [
-      { name: '法半夏', dose: 10, unitPrice: 0.22, remark: '' },
-      { name: '陈皮', dose: 10, unitPrice: 0.10, remark: '' },
-      { name: '茯苓', dose: 12, unitPrice: 0.12, remark: '' },
-      { name: '炙甘草', dose: 6, unitPrice: 0.08, remark: '' }
-    ]
-  },
-  {
-    name: '平胃散',
-    desc: '燥湿运脾，行气和胃，主治湿滞脾胃证',
-    herbs: [
-      { name: '苍术', dose: 10, unitPrice: 0.14, remark: '' },
-      { name: '厚朴', dose: 9, unitPrice: 0.16, remark: '姜制' },
-      { name: '陈皮', dose: 9, unitPrice: 0.10, remark: '' },
-      { name: '炙甘草', dose: 6, unitPrice: 0.08, remark: '' }
-    ]
-  }
-]
 
 const allMedicines = ref([])
 
-const allAvailableMedicines = computed(() => {
-  const map = new Map()
-  defaultClinicMeds.forEach(m => map.set(m.name, m))
-  if (allMedicines.value && allMedicines.value.length > 0) {
-    allMedicines.value.forEach(m => map.set(m.name, m))
+// 贴敷特色药品列表（从后端药品库按「特色贴敷」分类或贴/膏/敷类过滤，杜绝写死价格）
+const allAvailablePlasters = computed(() => {
+  const list = allMedicines.value || []
+  return list.filter(m => {
+    if (m.primaryCategory === '特色贴敷') return true
+    const c = ((m.primaryCategory || '') + (m.category || '') + (m.name || ''))
+    return c.includes('贴') || c.includes('膏') || c.includes('敷')
+  })
+})
+
+// 从后端真实药品库加载字典（价格/规格/库存均来自 medicine 表）
+const loadMedicines = async () => {
+  try {
+    const res = await axios.get('/api/medicines')
+    if (Array.isArray(res.data) && res.data.length > 0) {
+      allMedicines.value = res.data
+    }
+  } catch (e) {
+    console.warn('加载药品字典失败:', e)
   }
-  return Array.from(map.values())
+}
+
+// 经典经方库（数据源：后端 tcm_formula 表，替代前端写死的经方模板）
+const classicTcmFormulas = ref([])
+const loadTcmFormulas = async () => {
+  try {
+    const res = await axios.get('/api/tcm-formulas')
+    if (Array.isArray(res.data)) {
+      classicTcmFormulas.value = res.data
+    }
+  } catch (e) {
+    console.warn('加载经典经方库失败:', e)
+  }
+}
+
+const allAvailableMedicines = computed(() => {
+  return Array.isArray(allMedicines.value) ? allMedicines.value : []
 })
 
 const allTcmMedicines = computed(() => {
-  const tcmList = allAvailableMedicines.value.filter(m => 
-    m.category === '中药' || 
-    m.primaryCategory === '中药' || 
-    (m.specification && (m.specification.includes('g') || m.specification.includes('饮片'))) ||
-    (m.name && (m.name.includes('草') || m.name.includes('黄') || m.name.includes('参') || m.name.includes('皮') || m.name.includes('花') || m.name.includes('术') || m.name.includes('苓') || m.name.includes('归') || m.name.includes('芍') || m.name.includes('地') || m.name.includes('夏') || m.name.includes('芎') || m.name.includes('梗') || m.name.includes('翘') || m.name.includes('柴') || m.name.includes('风') || m.name.includes('朴') || m.name.includes('枳') || m.name.includes('麦') || m.name.includes('枣') || m.name.includes('姜') || m.name.includes('麻') || m.name.includes('杏') || m.name.includes('贝') || m.name.includes('丹') || m.name.includes('连')))
+  const tcmList = allAvailableMedicines.value.filter(m =>
+    m.category === '中药' ||
+    m.primaryCategory === '中药' ||
+    (m.specification && (m.specification.includes('g') || m.specification.includes('饮片')))
   )
-  const map = new Map()
-  tcmList.forEach(m => map.set(m.name, m))
-  commonTcmHerbs.forEach(h => {
-    if (!map.has(h.name)) {
-      map.set(h.name, {
-        id: 'tcm_' + h.name,
-        name: h.name,
-        specification: '标准饮片',
-        price: h.price || 0.15,
-        category: '中药'
-      })
-    }
-  })
-  return Array.from(map.values())
+  return tcmList
 })
 
 // ── 基础处方数据源 ──
@@ -3016,6 +2808,24 @@ const patchBlocks = computed(() => prescriptionBlocks.value.filter(b => b.type =
 const westernBlocks = computed(() => prescriptionBlocks.value.filter(b => b.type === 'western'))
 const tcmBlocks = computed(() => prescriptionBlocks.value.filter(b => b.type === 'tcm'))
 const treatmentBlocks = computed(() => prescriptionBlocks.value.filter(b => b.type === 'treatment'))
+const supplyBlocks = computed(() => prescriptionBlocks.value.filter(b => b.type === 'supply'))
+
+// 医用物资字典（medicine 表 primaryCategory=医用材料，供门诊物资开单选择）
+const allSupplyMedicines = computed(() => {
+  return (allMedicines.value || []).filter(m => m.primaryCategory === '医用材料')
+})
+
+// 物资开单：选中物资后带出真实档案ID/规格/单价
+const pickSupplyForItem = (item, supplyId) => {
+  const m = allSupplyMedicines.value.find(x => x.id === supplyId)
+  if (m) {
+    item.medicineId = m.id
+    item.name = m.name
+    item.specification = m.specification || ''
+    item.unitPrice = Number(m.price || 0)
+    item.unit = m.unit || '件'
+  }
+}
 
 // 处方块类型标签与名称
 const getBlockTagType = (type) => {
@@ -3048,6 +2858,9 @@ const getBlockTotal = (block) => {
   }
   if (block.type === 'treatment') {
     return block.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0)
+  }
+  if (block.type === 'supply') {
+    return block.items.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1), 0)
   }
   return 0
 }
@@ -3088,14 +2901,131 @@ const onBlockPlasterSelect = (row) => {
 
 const onBlockMedSelect = (row) => {
   if (!row) return
+  medSearchKey.value = '' // 选中后清空检索词，避免下次打开下拉仍被过滤
   const m = allAvailableMedicines.value.find(x => x.name === row.name)
   if (m) {
     row.medicineId = m.id
     row.unitPrice = Number(m.price) || 25
     if (m.specification) row.spec = m.specification
+    // 单次用量单位与规格单位匹配（规格 12g*11袋/盒 → 单次用量默认 1袋）
+    const unit = specUnitOf(row.spec) || '片'
+    row.dose = '1' + unit
   }
   syncBlocksToItems()
   saveCurrentPatientState()
+  applySupplyLinkage(row)
+}
+
+// 药品检索：支持名称或拼音简码（拼音码字段的实际用途），如输 bsa 检索「苯磺酸氨氯地平片」
+// 当前登录医生真实姓名（单据开单人/接诊医生兜底，杜绝写死）
+const currentUserName = localStorage.getItem('chunbo_display_name') || localStorage.getItem('chunbo_username') || '系统用户'
+const medSearchKey = ref('')
+const filterMedByPinyin = (q) => { medSearchKey.value = (q || '').trim() }
+const pinyinFilteredMeds = computed(() => {
+  const k = medSearchKey.value.toLowerCase()
+  if (!k) return allAvailableMedicines.value
+  return allAvailableMedicines.value.filter(m =>
+    (m.name || '').includes(k) || (m.pinyinCode || '').toLowerCase().includes(k)
+  )
+})
+
+// 联动配置缓存：避免每次改数量都请求后端
+const linkCache = {}
+const fetchLinksFor = async (row) => {
+  const key = (row.medicineId ? 'id:' + row.medicineId : '') + '|' + (row.name || '')
+  if (linkCache[key]) return linkCache[key]
+  try {
+    const res = await axios.get('/api/pharmacy/supply-links', { params: { medicineId: row.medicineId || '', medicineName: row.name || '' } })
+    const links = Array.isArray(res.data) ? res.data : []
+    linkCache[key] = links
+    return links
+  } catch (e) { return [] }
+}
+
+// 联动物资统一进入「医用物资开单专区」（不混入西药处方单）
+const ensureSupplyBlock = () => {
+  let b = prescriptionBlocks.value.find(x => x.type === 'supply')
+  if (!b) {
+    b = {
+      id: Date.now(),
+      type: 'supply',
+      title: '🧰 医用物资开单（联动自动生成）',
+      rxNo: 'SL' + Date.now().toString().slice(-6),
+      items: []
+    }
+    prescriptionBlocks.value.push(b)
+  }
+  return b
+}
+
+/** 药品-物资开方实时联动：选中联动药品的当下，把联动物资自动加进「物资开单专区」（带🔗标识；后端提交时另有防重兜底） */
+const applySupplyLinkage = async (row) => {
+  try {
+    if (!row || (!row.medicineId && !row.name)) return
+    const links = await fetchLinksFor(row)
+    for (const link of links) {
+      const perQty = Number(link.quantity) || 1
+      const rowQty = Number(row.quantity) || 1
+      const supplyId = link.supply_id
+      const supplyName = link.supply_name
+      const sb = ensureSupplyBlock()
+      const dupRow = sb.items.find(it => it.isLinkage && (String(it.medicineId) === String(supplyId) || it.name === supplyName))
+      if (dupRow) {
+        // 已有联动行：按触发药品累加各自份额
+        if (!dupRow._contrib) dupRow._contrib = {}
+        dupRow._contrib[row.name] = perQty * rowQty
+        dupRow.quantity = Object.values(dupRow._contrib).reduce((a, b) => a + b, 0)
+        ElMessage.success('【' + supplyName + '】联动数量已累加至 ×' + dupRow.quantity)
+        continue
+      }
+      sb.items.push({
+        medicineId: supplyId,
+        name: supplyName,
+        specification: link.supply_specification || '',
+        unit: specUnitOf(link.supply_specification) || '件',
+        quantity: perQty * rowQty,
+        unitPrice: Number(link.supply_price) || 0,
+        remark: '🔗联动自动附加',
+        isLinkage: true,
+        _contrib: { [row.name]: perQty * rowQty }
+      })
+      ElMessage.success('已按联动配置在【物资开单专区】自动附加【' + supplyName + ' ×' + (perQty * rowQty) + '】')
+    }
+    if (links.length > 0) {
+      syncBlocksToItems()
+      saveCurrentPatientState()
+    }
+  } catch (e) {
+    console.warn('联动查询失败:', e)
+  }
+}
+
+/** 修改联动药品数量时，联动物资数量随之同步（该药份额 = 每份联动数 × 药品数量） */
+const syncLinkageQty = async (row) => {
+  const links = await fetchLinksFor(row)
+  if (!links.length) return
+  const rowQty = Number(row.quantity) || 1
+  for (const link of links) {
+    const perQty = Number(link.quantity) || 1
+    for (const b of prescriptionBlocks.value.filter(x => x.type === 'supply')) {
+      const target = b.items.find(it => it.isLinkage && (String(it.medicineId) === String(link.supply_id) || it.name === link.supply_name))
+      if (!target) continue
+      if (!target._contrib) target._contrib = {}
+      target._contrib[row.name] = perQty * rowQty
+      target.quantity = Object.values(target._contrib).reduce((a, b) => a + b, 0)
+    }
+  }
+  syncBlocksToItems()
+  saveCurrentPatientState()
+}
+
+// 从规格串提取开方单位（"5mg*7片/盒" → "盒"；无 / 时取末尾单位字）
+const specUnitOf = (spec) => {
+  if (!spec) return ''
+  const s = String(spec)
+  if (s.includes('/')) return s.split('/').pop() || ''
+  const m = s.match(/([袋盒瓶支贴丸片粒包罐套卷块副])$/)
+  return m ? m[1] : ''
 }
 
 const onTcmMedSelect = (it) => {
@@ -3171,6 +3101,18 @@ const addNewPrescriptionBlock = (type) => {
       ]
     }
     ElMessage.success('已添加【诊疗项目' + cnNum + '】')
+  } else if (type === 'supply') {
+    newBlock = {
+      id: 'block_supply_' + Date.now(),
+      blockNo: countOfType,
+      type: 'supply',
+      title: '🧰 医用物资开单' + cnNum,
+      rxNo: 'SL' + Date.now().toString().slice(-6),
+      items: [
+        { medicineId: null, name: '', specification: '', quantity: 1, unit: '件', unitPrice: 0, remark: '' }
+      ]
+    }
+    ElMessage.success('已添加【物资开单' + cnNum + '】，请从药房物资库选择')
   }
   if (newBlock) {
     prescriptionBlocks.value = [...prescriptionBlocks.value, newBlock]
@@ -3186,6 +3128,11 @@ const removePrescriptionBlock = (blockId) => {
     cancelButtonText: '取消',
     type: 'warning'
   }).then(() => {
+    const block = prescriptionBlocks.value.find(b => b.id === blockId)
+    // 删除整单时，被删药品贡献的联动物资份额也要同步扣回/移除
+    if (block && block.type !== 'supply') {
+      cleanupLinkageForRemovedMeds(block.items.map(it => it.name).filter(Boolean))
+    }
     prescriptionBlocks.value = prescriptionBlocks.value.filter(b => b.id !== blockId)
     syncBlocksToItems()
     saveCurrentPatientState()
@@ -3203,16 +3150,55 @@ const addBlockItem = (block) => {
     block.items.push({ medicineId: null, name: '', dose: 10, unitPrice: 0.15, remark: '' })
   } else if (block.type === 'treatment') {
     block.items.push({ category: '治疗理疗', name: '', quantity: 1, price: 20, remark: '' })
+  } else if (block.type === 'supply') {
+    block.items.push({ medicineId: null, name: '', specification: '', quantity: 1, unit: '件', unitPrice: 0, remark: '' })
   }
   syncBlocksToItems()
   saveCurrentPatientState()
 }
 
+/** 删除药品后同步清理联动物资：扣回该药份额，份额清零移除物资行，联动物资单空则移除整单 */
+const cleanupLinkageForRemovedMeds = (medNames) => {
+  if (!medNames || !medNames.length) return
+  for (const b of prescriptionBlocks.value.filter(x => x.type === 'supply')) {
+    for (const it of [...b.items]) {
+      if (!it.isLinkage || !it._contrib) continue
+      let changed = false
+      for (const n of medNames) {
+        if (n in it._contrib) { delete it._contrib[n]; changed = true }
+      }
+      if (!changed) continue
+      const rest = Object.values(it._contrib).reduce((a, c) => a + c, 0)
+      if (rest <= 0) {
+        b.items.splice(b.items.indexOf(it), 1)
+      } else {
+        it.quantity = rest
+      }
+    }
+    // 物资单被清空且是联动自动生成的 → 移除整单
+    if (b.items.length === 0 && b.title && b.title.includes('联动自动生成')) {
+      prescriptionBlocks.value.splice(prescriptionBlocks.value.indexOf(b), 1)
+    }
+  }
+}
+
 // 移除处方块中某一行
 const removeBlockItem = (block, idx) => {
+  const removed = block.items[idx]
   block.items.splice(idx, 1)
+  // 删除联动药品行时，同步移除/重算物资开单专区里它贡献的联动物资数量
+  if (removed && removed.name) {
+    cleanupLinkageForRemovedMeds([removed.name])
+  }
   syncBlocksToItems()
   saveCurrentPatientState()
+}
+
+// 西药行数量变化：同步明细 + 联动物资数量跟随
+const onWxQtyChange = (row) => {
+  syncBlocksToItems()
+  saveCurrentPatientState()
+  syncLinkageQty(row)
 }
 
 const getTcmFilteredForBlock = (block) => {
@@ -3321,12 +3307,14 @@ const syncItemsToBlocks = () => {
 
 const importClassicFormulaToBlock = (block, formula) => {
   formula.herbs.forEach(h => {
+    // 药材单价从后端药品库按名匹配真实价格（经方表只存药材名+剂量，不写死价格）
+    const med = allMedicines.value.find(m => (m.name || '').includes(h.name) || h.name.includes(m.name || ''))
     block.items.push({
       medicineId: Date.now() + Math.random(),
       name: h.name,
       dose: h.dose,
-      unitPrice: h.unitPrice,
-      remark: h.remark || ''
+      unitPrice: med ? med.price : 0,
+      remark: ''
     })
   })
   syncBlocksToItems()
@@ -3396,79 +3384,35 @@ const patientProfile = computed(() => {
   const p = currentPatient.value || {}
   const name = p.patientName || p.name || ''
   const phone = p.phone || ''
-  
-  if (name === '刘舒强' || phone === '15111564208') {
-    return {
-      visits: 94,
-      totalCost: '8787.04',
-      tags: [
-        { label: '🏷️ 贴敷调理', type: 'success' },
-        { label: '宝爸宝妈', type: 'info' },
-        { label: '抽烟', type: 'warning' },
-        { label: '脾气好', type: 'primary' }
-      ],
-      birthday: p.birthday || '2000-01-01',
-      weight: '85.0 kg',
-      marriage: '离异',
-      height: '185.0 cm',
-      company: '春播科技',
-      job: '工程师',
-      wechat: 'wx_liu888',
-      idCard: p.idCard || '43010520000101****',
-      insuranceNo: 'YB430198271',
-      createdDate: '2025-05-21',
-      accompany: '刘先生',
-      accompanyPhone: '13876543210',
-      remarks: p.remarks || '体质偏寒湿，易过敏，贴敷时密切观察局部皮肤',
-      address: p.address || '湖南省 / 长沙市 / 开福区 芙蓉北路街道'
-    }
-  } else if (name === '张伟' || phone === '13900001111') {
-    return {
-      visits: 12,
-      totalCost: '1260.00',
-      tags: [
-        { label: '慢性病管理', type: 'warning' },
-        { label: '定期复查', type: 'primary' },
-        { label: '按时服药', type: 'success' }
-      ],
-      birthday: p.birthday || '1984-05-12',
-      weight: '72.0 kg',
-      marriage: '已婚',
-      height: '175.0 cm',
-      company: '长沙建筑设计院',
-      job: '建筑工程师',
-      wechat: 'wx_zhangw',
-      idCard: p.idCard || '43010519840512****',
-      insuranceNo: 'YB4301840512',
-      createdDate: '2024-03-10',
-      accompany: '张女士',
-      accompanyPhone: '13900001112',
-      remarks: p.remarks || '轻度腰肌劳损，既往胃脘痞满，纳差',
-      address: p.address || '湖南省 / 长沙市 / 岳麓区 麓谷街道'
-    }
-  } else {
-    return {
-      visits: p.visitCount || 1,
-      totalCost: (p.totalFee || 10.00).toFixed(2),
-      tags: [
-        { label: p.gender === '女' ? '女就诊人' : '男就诊人', type: 'info' },
-        { label: '门诊建档', type: 'success' }
-      ],
-      birthday: p.birthday || '未填写',
-      weight: p.weight ? (p.weight + ' kg') : '未填写',
-      marriage: p.marriage || '未填写',
-      height: p.height ? (p.height + ' cm') : '未填写',
-      company: p.company || '未填写',
-      job: p.job || '未填写',
-      wechat: p.wechat || '未填写',
-      idCard: p.idCard ? (p.idCard.length > 8 ? p.idCard.substring(0, 6) + '********' + p.idCard.slice(-4) : p.idCard) : '未填写',
-      insuranceNo: p.insuranceNo || '未填写',
-      createdDate: p.createTime ? p.createTime.substring(0, 10) : '未填写',
-      accompany: p.accompany || '未填写',
-      accompanyPhone: p.accompanyPhone || '未填写',
-      remarks: p.remarks || p.symptoms || '未填写',
-      address: p.address || '未填写'
-    }
+  // 从后端患者档案库匹配真实档案（过敏史/慢病史/会员等级等）
+  const profile = dbPatients.value.find(x =>
+    (p.patientId && x.id === p.patientId) ||
+    (name && x.name === name) ||
+    (phone && x.phone === phone)
+  ) || {}
+  const memberLevel = profile.memberLevel || p.memberLevel || '普通居民'
+  const allergies = profile.allergies || ''
+  return {
+    visits: '—',   // 就诊次数需后端按挂号/处方统计，暂未接入
+    totalCost: '—', // 累计消费需后端统计，暂未接入
+    tags: [
+      { label: memberLevel, type: 'success' },
+      { label: (allergies && allergies !== '无' && allergies !== '无已知药物过敏') ? '⚠️ 有过敏史' : '无过敏史', type: 'info' }
+    ],
+    birthday: p.ageText || (p.age ? p.age + '岁' : '未填写'),  // 挂号表无生日字段，用年龄展示
+    weight: p.weight ? (p.weight + ' kg') : '未填写',          // 挂号采集的真实体重
+    marriage: p.marriage || '未填写',                           // 挂号采集的真实婚姻状况
+    height: p.height ? (p.height + ' cm') : '未填写',           // 挂号采集的真实身高
+    company: p.company || '未填写',                             // 挂号采集的真实单位
+    job: p.job || '未填写',                                     // 挂号采集的真实职业
+    wechat: p.wechat || '未填写',                               // 挂号采集的真实微信
+    idCard: profile.idCard ? (profile.idCard.length > 8 ? profile.idCard.substring(0, 6) + '********' + profile.idCard.slice(-4) : profile.idCard) : '未填写',
+    insuranceNo: p.insuranceNo || '未填写',                     // 挂号采集的真实医保号
+    createdDate: profile.createTime ? profile.createTime.substring(0, 10) : '未填写',
+    accompany: p.accompany || '未填写',                         // 挂号采集的真实陪护人
+    accompanyPhone: p.accompanyPhone || '未填写',
+    remarks: profile.remarks || p.remarks || p.symptoms || '未填写',
+    address: profile.address || p.address || '未填写'
   }
 })
 
@@ -3642,7 +3586,7 @@ const submitTempPatientRegularize = async () => {
     }
 
     // 4. 同步更新日历队列桶
-    const bucket = dateQueues[queueDate.value]
+    const bucket = dateConsultationStore.value[queueDate.value]
     if (bucket && bucket.waiting) {
       const bItem = bucket.waiting.find(p => p.id === currentPatient.value.id)
       if (bItem) {
@@ -3705,7 +3649,7 @@ const handleQuickDirectConsult = async () => {
     age: 30,
     phone: tempPhone,
     department: '全科门诊',
-    doctorName: '张医生',
+    doctorName: currentUserName,
     type: '现场挂号',
     regType: '门诊',
     fee: 10.00,
@@ -3799,8 +3743,8 @@ const openAuxDialog = () => {
 const submitAuxCard = async () => {
   if (!currentPatient.value) return
   const p = currentPatient.value
-  const targetName = p.patientName || p.name || '刘舒强'
-  const targetPhone = p.phone || '15111564208'
+  const targetName = p.patientName || p.name || ''
+  const targetPhone = p.phone || ''
   const level = '家庭附属卡'
   const discountRate = 0.85
   const expiry = '2027-09-17'
@@ -3864,8 +3808,8 @@ const submitAuxCard = async () => {
 const submitWorkstationMember = async () => {
   if (!currentPatient.value) return
   const p = currentPatient.value
-  const targetName = p.patientName || p.name || '刘舒强'
-  const targetPhone = p.phone || '15111564208'
+  const targetName = p.patientName || p.name || ''
+  const targetPhone = p.phone || ''
   const level = wsMemberForm.value.level
   const discountRate = level === 'VIP会员' ? 0.85 : 0.9
   const expiry = wsMemberForm.value.expiry || '2027-09-17'
@@ -4018,6 +3962,16 @@ const printPastVisit = (p) => {
 }
 
 const dbPatients = ref([])
+
+// 加载后端真实患者档案列表（供会员办理查重、患者档案回显），避免重复建档
+const loadDbPatients = async () => {
+  try {
+    const res = await axios.get('/api/patients')
+    dbPatients.value = Array.isArray(res.data) ? res.data : []
+  } catch (e) {
+    console.warn('加载患者档案列表失败:', e)
+  }
+}
 
 // 病历表单
 const switchTab = inject('switchTab', null)
@@ -4355,6 +4309,7 @@ const loadAllChatSessions = () => {
         currentSessionId.value = data.currentSessionId || data.sessions[0].id
         const active = chatSessionList.value.find(s => s.id === currentSessionId.value) || chatSessionList.value[0]
         chatMessages.value = active.messages || []
+        syncClinicSessionsFromBackend()
         return
       }
     }
@@ -4362,42 +4317,55 @@ const loadAllChatSessions = () => {
     console.warn('加载本地会话异常', e)
   }
 
-  // 默认种子会话（包含刘舒强真实病历辨证问答）
+  // 无历史会话时创建空会话（不再预置写死的病历种子数据）
   const initialSession = {
     id: 'sess_' + Date.now(),
-    patientId: 1001,
-    patientName: '刘舒强',
-    title: '【刘舒强】反复牙龈肿痛与特色贴敷辨证',
+    patientId: null,
+    patientName: '',
+    title: '新建问诊会话',
     createdAt: formatNowTime(),
     updatedAt: formatNowTime(),
-    messages: [
-      {
-        role: 'user',
-        content: '请根据患者刘舒强（女，26岁）主诉反复牙龈肿痛、伴轻微咳嗽恶寒2天，进行四诊辨证与处方推荐。'
-      },
-      {
-        role: 'assistant',
-        knowledgeBases: ['《中医内科学·牙痛口疮篇》', '《伤寒杂病论经方大辞典》', '《穴位贴敷特色疗法规范》'],
-        mcpTools: ['mcp_herb_check (十八反十九畏实时审查)', 'mcp_rx_optimizer'],
-        thinking: '1. 分析主诉：牙龈肿痛红热，伴轻微咳嗽、恶寒发热，舌质红、苔薄黄微干，脉浮数。\n2. 辨证结论：属【风热犯表、胃火上炎证】。病位在胃络与肺卫，当表里双解。\n3. 治法与处方：清胃凉血、疏风清热。宜特色止痛利咽穴位贴敷（贴敷天突+大椎穴）配合清胃化裁中药及抗炎对症西药。',
-        thinkingTime: 1.8,
-        _showThink: true,
-        content: '根据患者病史及舌脉辨证，患者为典型的**风热袭表兼胃火炽盛证**。治以疏风利咽、清胃泻火消肿。\n\n已为您匹配中西协同与特色穴位贴敷方案，处方已通过十八反十九畏审查，点击下方可一键采纳！',
-        isStreaming: false,
-        rxItems: [
-          { category: '特色贴敷', name: '消肿止痛贴 (止咳利咽)', dose: '10g', unitPrice: 35.00 },
-          { category: '中药', name: '清胃散加减方 (生地黄、黄连、丹皮、升麻)', dose: '7剂', unitPrice: 56.00 },
-          { category: '西药', name: '感冒灵颗粒 (口服)', dose: '1盒', unitPrice: 22.50 }
-        ],
-        advice: '清淡饮食，禁辛辣油腻及生冷；贴敷4-6小时揭除，若局部发红微痒属温通反应；温水送服中药。'
-      }
-    ]
+    messages: []
   }
 
   chatSessionList.value = [initialSession]
   currentSessionId.value = initialSession.id
-  chatMessages.value = initialSession.messages
+  chatMessages.value = []
   saveAllChatSessions()
+  syncClinicSessionsFromBackend()
+}
+
+// 从后端同步会话历史标题（数据来源切换：会话列表标题以后端 AI 提炼为准）
+const syncClinicSessionsFromBackend = async () => {
+  const docId = localStorage.getItem('chunbo_doctor_id')
+  const token = localStorage.getItem('chunbo_jwt_token')
+  if (!docId || !token) return
+  try {
+    const resp = await fetch(`/api/session/history?bizType=medical&userId=${encodeURIComponent(docId)}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    if (!resp.ok) return
+    const groups = await resp.json()
+    const backend = []
+    Object.keys(groups).forEach(k => {
+      (groups[k] || []).forEach(it => backend.push(it))
+    })
+    if (backend.length === 0) return
+    backend.forEach(bs => {
+      const local = chatSessionList.value.find(s => s.id === bs.sessionId)
+      if (local) {
+        if (bs.title) local.title = bs.title
+      } else {
+        chatSessionList.value.unshift({
+          id: bs.sessionId,
+          title: bs.title || '历史问诊会话',
+          createdAt: bs.updateTime || formatNowTime(),
+          updatedAt: bs.updateTime || formatNowTime(),
+          messages: []
+        })
+      }
+    })
+  } catch (e) {}
 }
 
 // 组件 setup 阶段立即执行本地会话恢复，保证页面首屏渲染即刻拥有历史记忆
@@ -4546,6 +4514,15 @@ const deleteChatSession = (sessionId) => {
         }
       }
       saveAllChatSessions()
+      // 同步后端删除（DB + Redis 记忆）
+      const docId = localStorage.getItem('chunbo_doctor_id')
+      const token = localStorage.getItem('chunbo_jwt_token')
+      if (docId && token) {
+        fetch(`/api/session/history?bizType=medical&sessionId=${encodeURIComponent(sessionId)}&userId=${encodeURIComponent(docId)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        }).catch(() => {})
+      }
       ElMessage.success('历史会话已删除！')
     }
   }).catch(() => {})
@@ -4578,7 +4555,7 @@ const onModelChange = async (val) => {
         await axios.post('/api/settings/ai', {
           provider: matched.provider || matched.id,
           baseUrl: matched.baseUrl || 'https://api.ohmygpt.com',
-          apiKey: matched.apiKey || 'sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77',
+          apiKey: matched.apiKey || 'sk-YOUR_API_KEY_HERE',
           modelName: matched.modelName,
           mockEnabled: !!matched.mock
         })
@@ -4870,16 +4847,48 @@ const sendChatMessage = async () => {
   }
 
   // 3. 接入后端真实智能体（SSE 流式 + RAG 知识库 + Function Calling 工具）
-  const aiMsg = { role: 'assistant', knowledgeBases: [], thinking: '', thinkingTime: 0, _showThink: false, content: '', isStreaming: true, rxItems: [], advice: '' }
+  const aiMsg = { role: 'assistant', knowledgeBases: [], thinking: '', thinkingTime: 0, _showThink: false, content: '', isStreaming: true, rxItems: [], advice: '', processSteps: [], processDone: false, _showProcess: false, _speaking: false }
   chatMessages.value.push(aiMsg)
   scrollChatBottom()
 
-  const pid = currentPatient.value ? (currentPatient.value.patientId || 1) : 1
+  // 解析真实患者档案ID：候诊对象只有挂号id，需按姓名/手机号回查患者档案（否则后端默认患者1=张建国）
+  let pid = currentPatient.value?.patientId || null
+  const regName = currentPatient.value ? (currentPatient.value.patientName || currentPatient.value.name || '') : ''
+  const regPhone = currentPatient.value?.phone || ''
+  if (!pid && regName) {
+    try {
+      const res = await axios.get('/api/patients')
+      const list = Array.isArray(res.data) ? res.data : []
+      // 姓名精确匹配优先（第一遍只按姓名），手机号仅作第二遍兜底——避免测试数据手机号撞库匹配到别的患者
+      let hit = list.find(x => (x.name || '').trim() === regName.trim())
+      if (!hit && regPhone) hit = list.find(x => x.phone === regPhone)
+      if (hit && hit.id) { pid = hit.id; currentPatient.value.patientId = hit.id }
+    } catch (e) {}
+  }
+  // 没有接诊患者时不再硬编码 patientId=1（张建国）：不传 patientId，由后端提示先接诊或按消息中姓名匹配
+
+  // 病历摘要注入：AI 辨证基于真实病历而非模板数据
+  const emrParts = []
+  if (emr.value.chiefComplaint) emrParts.push('主诉：' + emr.value.chiefComplaint)
+  if (emr.value.symptomsList && emr.value.symptomsList.length) emrParts.push('症状：' + emr.value.symptomsList.join('、'))
+  if (emr.value.presentIllness) emrParts.push('现病史：' + emr.value.presentIllness)
+  if (emr.value.pastHistory) emrParts.push('既往史：' + emr.value.pastHistory)
+  if (emr.value.allergies) emrParts.push('过敏史：' + emr.value.allergies)
+  if (emr.value.tongue) emrParts.push('舌象：' + emr.value.tongue)
+  if (emr.value.pulse) emrParts.push('脉象：' + emr.value.pulse)
+  if (emr.value.diagnosis) emrParts.push('初步诊断：' + emr.value.diagnosis)
+  if (emr.value.tcmDiagnosis) emrParts.push('中医辨证：' + emr.value.tcmDiagnosis)
+  const emrContext = emrParts.join('；')
+
   const token = localStorage.getItem('chunbo_jwt_token')
+  const docId = localStorage.getItem('chunbo_doctor_id') || ''
+  const sid = currentSessionId.value || ('S' + Date.now())
+  chatActiveSessionId = sid
   const abort = new AbortController()
   chatAbort = abort
   try {
-    const resp = await fetch(`/api/medical/chat/stream?sessionId=${encodeURIComponent(currentSessionId.value || 'S' + Date.now())}&patientId=${pid}&message=${encodeURIComponent(text)}`, {
+    const pidParam = pid ? `&patientId=${pid}` : ''
+    const resp = await fetch(`/api/medical/chat/stream?sessionId=${encodeURIComponent(sid)}${pidParam}&message=${encodeURIComponent(text)}&doctorId=${encodeURIComponent(docId)}${emrContext ? '&emr=' + encodeURIComponent(emrContext) : ''}`, {
       headers: { 'Authorization': 'Bearer ' + token },
       signal: abort.signal
     })
@@ -4887,6 +4896,16 @@ const sendChatMessage = async () => {
     const reader = resp.body.getReader()
     const dec = new TextDecoder('utf-8')
     let buf = ''
+    // 平滑流式渲染：token 先入缓冲，匀速吐字（约80字/秒），彻底消除"憋一下全出来"
+    let pendingText = ''
+    const renderTimer = setInterval(() => {
+      if (pendingText.length > 0) {
+        const take = pendingText.length > 500 ? 5 : 2
+        aiMsg.content += pendingText.slice(0, take)
+        pendingText = pendingText.slice(take)
+        scrollChatBottom()
+      }
+    }, 25)
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -4896,17 +4915,33 @@ const sendChatMessage = async () => {
       for (const ev of parts) {
         const dl = ev.split('\n').find(l => l.startsWith('data:'))
         if (!dl) continue
-        let piece = dl.slice(5)
-        if (piece === '[DONE]') continue
-        if (piece.startsWith('__KBREF__')) {
-          // RAG 真实命中的知识库文档标题
-          aiMsg.knowledgeBases = piece.slice(9).split('|').filter(Boolean)
+        let piece = dl.slice(5).trim()
+        if (!piece) continue
+        let parsed
+        try { parsed = JSON.parse(piece) } catch (e2) {
+          // 兼容旧纯文本格式
+          pendingText += piece
           continue
         }
-        aiMsg.content += piece
-        scrollChatBottom()
+        if (parsed.eventType === 1001) {
+          // DATA 事件：文字进入平滑缓冲
+          pendingText += (parsed.eventData || '')
+        } else if (parsed.eventType === 1003) {
+          // PARAM 事件：知识库标题 + 处方卡片结构化数据
+          const d = parsed.eventData || {}
+          if (d.kbTitles) aiMsg.knowledgeBases = d.kbTitles
+          if (d.rxItems) aiMsg.rxItems = d.rxItems
+        } else if (parsed.eventType === 1004) {
+          // PROCESS 事件：MCP 工具调用与数据核验过程（生成中展示、完成后隐藏）
+          const d = parsed.eventData || {}
+          if (Array.isArray(d.steps)) aiMsg.processSteps = d.steps
+        }
+        // eventType 1002 (STOP) 忽略
       }
     }
+    clearInterval(renderTimer)
+    aiMsg.content += pendingText
+    pendingText = ''
   } catch (e) {
     if (e.name !== 'AbortError') {
       aiMsg.content += '\n\n⚠️ 连接 AI 服务失败：' + (e.message || '未知错误')
@@ -4914,19 +4949,212 @@ const sendChatMessage = async () => {
   } finally {
     if (chatAbort === abort) chatAbort = null
     aiMsg.isStreaming = false
+    aiMsg.processDone = true
     chatTyping.value = false
     saveChatForCurrentPatient()
     scrollChatBottom()
   }
 }
 
-// ── 停止生成（中断当前流式回答） ──
+// ── 停止生成（后端终止 Flux 流 + 前端断开 SSE，参照《SpringAI》笔记标准实现） ──
 let chatAbort = null
+let chatActiveSessionId = null
+
+// ── 语音能力：语音录入（ASR）与朗读回答（TTS） ──
+const isRecording = ref(false)
+let mediaRecorder = null
+let audioChunks = []
+let recordStartAt = 0
+
+// 探测某个麦克风设备的实际电平（录 ~0.7s 取峰值）：-1=设备打开失败，0~128=信号峰值
+const probeMicLevel = async (deviceId) => {
+  let ctx = null
+  try {
+    const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true }
+    const s = await navigator.mediaDevices.getUserMedia(constraints)
+    ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') { try { await ctx.resume() } catch (e) {} }
+    const src = ctx.createMediaStreamSource(s)
+    const an = ctx.createAnalyser()
+    an.fftSize = 512
+    src.connect(an)
+    const buf = new Uint8Array(an.frequencyBinCount)
+    let peak = 0
+    const t0 = Date.now()
+    while (Date.now() - t0 < 700) {
+      an.getByteTimeDomainData(buf)
+      for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+      await new Promise(r => setTimeout(r, 60))
+    }
+    s.getTracks().forEach(t => t.stop())
+    return peak
+  } catch (e) {
+    return -1
+  } finally {
+    if (ctx) { try { ctx.close() } catch (e2) {} }
+  }
+}
+
+// 自动选麦：优先用上次有信号的设备；当前默认设备是"哑巴"（峰值≈0，蓝牙耳机 A2DP 模式下麦克风不工作很常见）
+// 时自动探测其它输入设备并切换到有信号的设备，避免录出一整条静音
+const pickBestMic = async () => {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput')
+    if (devs.length <= 1) return null
+    const saved = localStorage.getItem('chunbo_mic_device_id')
+    if (saved && devs.some(d => d.deviceId === saved)) {
+      const p = await probeMicLevel(saved)
+      if (p >= 3) return saved
+    }
+    ElMessage.info('正在检测麦克风设备…')
+    let best = null, bestPeak = 0
+    for (const d of devs.slice(0, 4)) {
+      if (d.deviceId === saved) continue
+      const p = await probeMicLevel(d.deviceId)
+      if (p > bestPeak) { best = d; bestPeak = p }
+    }
+    if (best && bestPeak >= 3) {
+      localStorage.setItem('chunbo_mic_device_id', best.deviceId)
+      ElMessage.success('当前麦克风无信号，已自动切换到：' + (best.label || '未知设备'))
+      return best.deviceId
+    }
+  } catch (e) {}
+  return null
+}
+
+const toggleVoiceInput = async () => {
+  if (isRecording.value) {
+    if (mediaRecorder) { try { mediaRecorder.stop() } catch (e) {} }
+    return
+  }
+  try {
+    // 先自动选麦（跳过无信号的"哑巴"设备），再开正式录音流
+    const micId = await pickBestMic()
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: micId ? { deviceId: { exact: micId } } : true })
+    // WebAudio 处理链：音量放大（自适应AGC）+压限器，解决耳机麦克风采集音量过低导致 whisper 听不到人声
+    let levelTimer = null
+    let maxLevel = 0
+    let recStream = stream
+    let audioCtx = null
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      if (audioCtx.state === 'suspended') { try { await audioCtx.resume() } catch (e) {} }
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 512
+      const compressor = audioCtx.createDynamicsCompressor()
+      const gain = audioCtx.createGain()
+      gain.gain.value = 10
+      const dest = audioCtx.createMediaStreamDestination()
+      source.connect(analyser)
+      analyser.connect(compressor)
+      compressor.connect(gain)
+      gain.connect(dest)
+      recStream = dest.stream
+      const buf = new Uint8Array(analyser.frequencyBinCount)
+      levelTimer = setInterval(() => {
+        analyser.getByteTimeDomainData(buf)
+        let peak = 0
+        for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i] - 128); if (v > peak) peak = v }
+        maxLevel = Math.max(maxLevel, peak)
+        // 自适应增益（AGC）：把人声峰值动态拉到约 45% 电平（增益范围 6~30 倍，平滑调整防爆音）
+        if (peak > 3) {
+          const target = Math.min(30, Math.max(6, 58 / peak))
+          gain.gain.value += (target - gain.gain.value) * 0.3
+        }
+      }, 50)
+    } catch (e) { if (audioCtx) { try { audioCtx.close() } catch (e2) {} audioCtx = null } }
+    // 显式 opus 编码的 webm，whisper 对该格式识别最稳（录的是放大后的处理流）
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '')
+    mediaRecorder = mimeType ? new MediaRecorder(recStream, { mimeType }) : new MediaRecorder(recStream)
+    audioChunks = []
+    recordStartAt = Date.now()
+    mediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size) audioChunks.push(ev.data) }
+    mediaRecorder.onstop = async () => {
+      isRecording.value = false
+      const recordedMs = Date.now() - recordStartAt
+      stream.getTracks().forEach(t => t.stop())
+      if (levelTimer) { clearInterval(levelTimer); levelTimer = null }
+      if (audioCtx) { try { audioCtx.close() } catch (e) {} audioCtx = null }
+      if (recordedMs < 800) {
+        ElMessage.warning('说话时间太短，请按住说完一句再结束')
+        return
+      }
+      if (!audioChunks.length) {
+        ElMessage.warning('录音数据为空，请重试')
+        return
+      }
+      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' })
+      console.log('[语音录入] 音频=' + blob.size + '字节 时长≈' + Math.round(recordedMs / 1000) + 's 峰值电平=' + maxLevel)
+      // 静音拒发：原始峰值过低说明设备根本没拾音（音量100也无效，多为蓝牙耳机麦克风通道未激活），发送只会得到 whisper 幻听
+      if (maxLevel > 0 && maxLevel < 8) {
+        ElMessage.error('未检测到有效语音（峰值电平=' + maxLevel + '）：当前麦克风设备没有拾音，调音量无效。'
+          + '蓝牙耳机常见"能听歌但麦克风不工作"，请在 系统设置→声音→输入 切换到其它麦克风设备（如 Realtek），'
+          + '或检查耳机上的麦克风开关后重试')
+        return
+      }
+      if (maxLevel > 0 && maxLevel < 15) {
+        ElMessage.warning('麦克风音量偏低，已自动放大增益；若识别不准请靠近麦克风')
+      }
+      const token = localStorage.getItem('chunbo_jwt_token')
+      const fd = new FormData()
+      fd.append('file', blob, 'voice.webm')
+      ElMessage.info('正在识别语音…')
+      try {
+        const resp = await fetch('/api/audio/asr', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd })
+        const data = await resp.json()
+        const txt = (data && (data.text || data.result)) || ''
+        if (txt && /[\u4e00-\u9fa5]/.test(txt)) { chatInput.value += txt; ElMessage.success('语音识别完成，已填入输入框') }
+        else ElMessage.warning((data && data.message) || '未识别到清晰的中文语音，请靠近麦克风大声说一句再结束')
+      } catch (e) {
+        ElMessage.error('语音识别失败：' + (e.message || '网络错误'))
+      }
+    }
+    mediaRecorder.start()
+    isRecording.value = true
+    ElMessage.info('开始录音，说完点击 ⏹ 结束')
+  } catch (e) {
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+  }
+}
+
+let currentTtsAudio = null
+const speakAiMessage = async (msg) => {
+  if (currentTtsAudio) { currentTtsAudio.pause(); currentTtsAudio = null; msg._speaking = false; return }
+  try {
+    const token = localStorage.getItem('chunbo_jwt_token')
+    const plain = String(msg.content || '').replace(/[#*>`|_~-]/g, '').replace(/\n+/g, ' ').trim().slice(0, 400)
+    if (!plain) return
+    const resp = await fetch('/api/audio/tts-stream', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'text/plain' },
+      body: plain
+    })
+    if (!resp.ok) throw new Error('HTTP ' + resp.status)
+    const blob = await resp.blob()
+    currentTtsAudio = new Audio(URL.createObjectURL(blob))
+    msg._speaking = true
+    currentTtsAudio.onended = () => { msg._speaking = false; currentTtsAudio = null }
+    currentTtsAudio.play()
+  } catch (e) {
+    ElMessage.error('语音合成失败：' + (e.message || '网络错误'))
+  }
+}
+
 const stopGeneration = () => {
+  // 先通知后端终止 Flux 输出（takeWhile 检测标记后中断，并保存半截回答到会话记忆）
+  if (chatActiveSessionId) {
+    const token = localStorage.getItem('chunbo_jwt_token')
+    fetch(`/api/medical/chat/stop?sessionId=${encodeURIComponent(chatActiveSessionId)}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).catch(() => {})
+  }
   if (chatAbort) {
     chatAbort.abort()
     chatAbort = null
   }
+  chatActiveSessionId = null
   chatTyping.value = false
   const streaming = chatMessages.value.find(m => m.isStreaming)
   if (streaming) {
@@ -5009,6 +5237,9 @@ const adoptRxFromMsg = (msg) => {
       count++
     }
   })
+
+  // 1.5 关键：把四类处方明细同步到处方单区块，否则左侧始终显示"尚未开立处方"（与历史处方引用同机制）
+  syncItemsToBlocks()
 
   // 2. 直接替换生活医嘱
   if (msg.advice) {
@@ -5156,49 +5387,42 @@ const aiGenerateFullEmr = async () => {
     return
   }
   isAiGeneratingEmr.value = true
-  ElMessage.info('AI 临床引擎正在根据主诉进行四诊辨证与病历规范化润色...')
-
-  setTimeout(() => {
-    const cc = emr.value.chiefComplaint
-    if (cc.includes('牙龈') || cc.includes('咳嗽') || cc.includes('热')) {
-      emr.value.presentIllness = '患者近3天无明显诱因出现反复牙龈肿痛，伴轻微咳嗽，咽干微痛，恶寒低热。无头晕恶心，无胸闷心悸。自服抗炎药效果欠佳，遂来我诊所就诊。'
-      emr.value.tongue = '舌质红，苔薄黄微干'
-      emr.value.pulse = '脉浮数'
-      emr.value.diagnosis = '急性上呼吸道感染伴牙周炎'
-      emr.value.tcmDiagnosis = '风热犯肺，胃火上攻证'
-      emr.value.medicalAdvice = '1. 饮食清淡，忌食辛辣油腻及坚硬刺激性食物；\n2. 保持口腔清洁，饭后淡盐水漱口；\n3. 多饮温水，注意防风避寒，按时用药复诊。'
-    } else if (cc.includes('头痛') || cc.includes('偏头')) {
-      emr.value.presentIllness = '患者2天前因工作劳累受凉后突发左侧颞部搏动性跳痛，呈阵发性加重，伴恶心欲呕，遇强光强噪音时加剧。纳差，夜寐欠安。'
-      emr.value.tongue = '舌红苔薄黄'
-      emr.value.pulse = '脉弦紧'
-      emr.value.diagnosis = '血管神经性头痛（偏头痛）'
-      emr.value.tcmDiagnosis = '肝火上攻，风阳偏盛证'
-      emr.value.medicalAdvice = '1. 保持环境安静避光，保证每日8小时充足休息；\n2. 避免情绪过度激动或焦虑；\n3. 配合头部穴位贴敷与经络推拿疏导。'
-    } else if (cc.includes('胃') || cc.includes('胀') || cc.includes('反酸')) {
-      emr.value.presentIllness = '患者反复胃脘隐痛胀满3天，进食生冷食物后诱发加重，喜温喜按，伴嗳气频作、胃纳不佳，大便稍溏。'
-      emr.value.tongue = '舌质淡胖有齿痕，苔白滑'
-      emr.value.pulse = '脉沉缓无力'
-      emr.value.diagnosis = '慢性浅表性胃炎（急性发作）'
-      emr.value.tcmDiagnosis = '脾胃虚寒，气机阻滞证'
-      emr.value.medicalAdvice = '1. 规律少食多餐，严格禁食冷饮、冰冻水果与生冷食物；\n2. 注意腹部神阙穴防寒保暖；\n3. 建议配合艾灸中脘温通调理。'
-    } else {
-      emr.value.presentIllness = `患者自诉上述不适反复发作${emr.value.duration||'3天'}，程度${emr.value.frequency||'频发'}，近来症状加重影响日常生活，无发热寒战。`
-      emr.value.tongue = '舌质红，苔薄白'
-      emr.value.pulse = '脉弦滑'
-      emr.value.diagnosis = '门诊初诊对症分型'
-      emr.value.tcmDiagnosis = '脏腑辨证气血不和'
-      emr.value.medicalAdvice = '1. 遵医嘱规范用药；\n2. 规律作息，避免劳累；\n3. 门诊随诊。'
-    }
-    saveCurrentPatientState()
-    runAiPrescriptionAudit()
-    isAiGeneratingEmr.value = false
-    ElNotification({
-      title: 'AI 规范化病历已生成！',
-      message: '已智能填充标准化现病史、舌苔脉象、中医辨证分型与生活医嘱，并完成处方合理用药审查。',
-      type: 'success',
-      duration: 3500
+  ElMessage.info('正在通过 AI 大模型生成病历（现病史/舌脉/诊断）...')
+  try {
+    const token = localStorage.getItem('chunbo_jwt_token')
+    const resp = await fetch('/api/medical/chat/generate-emr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        chiefComplaint: emr.value.chiefComplaint,
+        duration: emr.value.duration || '',
+        frequency: emr.value.frequency || ''
+      })
     })
-  }, 500)
+    const data = await resp.json()
+    if (data && data.success && data.presentIllness) {
+      emr.value.presentIllness = data.presentIllness
+      emr.value.tongue = data.tongue || ''
+      emr.value.pulse = data.pulse || ''
+      emr.value.diagnosis = data.diagnosis || ''
+      emr.value.tcmDiagnosis = data.tcmDiagnosis || ''
+      emr.value.medicalAdvice = data.medicalAdvice || ''
+      saveCurrentPatientState()
+      runAiPrescriptionAudit()
+      ElNotification({
+        title: 'AI 病历已生成！',
+        message: '已由大模型生成规范化现病史、舌苔脉象、中西医诊断与生活医嘱，并完成处方合理用药审查。',
+        type: 'success',
+        duration: 3500
+      })
+    } else {
+      ElMessage.warning((data && data.message) || 'AI 病历生成失败，请稍后重试')
+    }
+  } catch (e) {
+    ElMessage.error('AI 病历生成失败：' + (e.message || '网络错误'))
+  } finally {
+    isAiGeneratingEmr.value = false
+  }
 }
 
 const applyClinicalReasoning = (chief, fullReset = false) => {
@@ -5209,7 +5433,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     selectedBodyPart.value = '脘腹部'
     if (fullReset) emr.value.diagnosis = '急性胃肠功能紊乱 / 胃脘隐痛 (待查)'
     if (fullReset) emr.value.tcmDiagnosis = '脾胃虚弱兼湿热阻滞证 / 寒湿阻滞肠胃'
-    aiAdvice.value = `【DeepSeek-R1 实时辨证推理】：患者以主诉【${text || '肚子疼/腹痛'}】就诊，四诊合参辩证属【脾胃虚弱、气机阻滞肠胃】。治法宜健脾和胃、行气导滞止痛。方选加减保和丸合香砂养胃汤，配合神阙穴(脐疗)+足三里特色温经和胃散寒贴，温中健运、理气消积止痛，标本兼顾，疗效确切。`
+    aiAdvice.value = `【辨证辅助建议】：患者以主诉【${text || '肚子疼/腹痛'}】就诊，四诊合参辩证属【脾胃虚弱、气机阻滞肠胃】。治法宜健脾和胃、行气导滞止痛。方选加减保和丸合香砂养胃汤，配合神阙穴(脐疗)+足三里特色温经和胃散寒贴，温中健运、理气消积止痛，标本兼顾，疗效确切。`
 
     currentRecommendedItems.value = [
       {
@@ -5252,7 +5476,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     selectedBodyPart.value = '颈胸部'
     if (fullReset) emr.value.diagnosis = '急性上呼吸道感染 (急性咽炎)'
     if (fullReset) emr.value.tcmDiagnosis = '外感风热犯表证 / 痰热郁肺证'
-    aiAdvice.value = `【DeepSeek-R1 实时辨证推理】：患者以主诉【${text || '咽痛低热/咳嗽'}】就诊，辨属外感风热犯肺、肺失宣降。治宜疏风清热、宣肺利咽止咳。推荐选用抗病毒口服液合桑菊饮加减，并配合大椎穴与双肺俞穴特色中药穴位贴敷，透邪外达，清咽退热。`
+    aiAdvice.value = `【辨证辅助建议】：患者以主诉【${text || '咽痛低热/咳嗽'}】就诊，辨属外感风热犯肺、肺失宣降。治宜疏风清热、宣肺利咽止咳。推荐选用抗病毒口服液合桑菊饮加减，并配合大椎穴与双肺俞穴特色中药穴位贴敷，透邪外达，清咽退热。`
 
     currentRecommendedItems.value = [
       {
@@ -5295,7 +5519,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     selectedBodyPart.value = '头面部'
     if (fullReset) emr.value.diagnosis = '血管神经性头痛 / 原发性高血压 (1级)'
     if (fullReset) emr.value.tcmDiagnosis = '肝郁化火证 / 肝阳上亢证'
-    aiAdvice.value = `【DeepSeek-R1 实时辨证推理】：患者主诉【${text || '头晕头痛'}】，辨证属【肝阳上亢、经络不畅】。治宜平肝潜阳、清利头目。方选天麻钩藤饮合丹栀逍遥丸化裁，配合双侧太阳穴与大椎穴特色降逆平肝贴敷，镇静通络，缓解头胀头晕。`
+    aiAdvice.value = `【辨证辅助建议】：患者主诉【${text || '头晕头痛'}】，辨证属【肝阳上亢、经络不畅】。治宜平肝潜阳、清利头目。方选天麻钩藤饮合丹栀逍遥丸化裁，配合双侧太阳穴与大椎穴特色降逆平肝贴敷，镇静通络，缓解头胀头晕。`
 
     currentRecommendedItems.value = [
       {
@@ -5338,7 +5562,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     selectedBodyPart.value = '腰背部'
     if (fullReset) emr.value.diagnosis = '腰肌劳损 / 骨关节退行性病变 (痹症)'
     if (fullReset) emr.value.tcmDiagnosis = '风寒湿痹阻络证 / 气血瘀滞证'
-    aiAdvice.value = `【DeepSeek-R1 实时辨证推理】：患者主诉【${text || '腰膝关节酸痛'}】，辨属风寒湿邪客于经络，气滞血瘀不通则痛。治宜温经散寒、祛风通络止痛。推荐选用活血舒筋中药，并在肾俞穴与阿是穴行生姜汁特色温敷贴，透皮直达病灶，迅速改善局部酸胀。`
+    aiAdvice.value = `【辨证辅助建议】：患者主诉【${text || '腰膝关节酸痛'}】，辨属风寒湿邪客于经络，气滞血瘀不通则痛。治宜温经散寒、祛风通络止痛。推荐选用活血舒筋中药，并在肾俞穴与阿是穴行生姜汁特色温敷贴，透皮直达病灶，迅速改善局部酸胀。`
 
     currentRecommendedItems.value = [
       {
@@ -5380,7 +5604,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
   else if (!text) {
     if (fullReset) emr.value.diagnosis = ''
     if (fullReset) emr.value.tcmDiagnosis = ''
-    aiAdvice.value = '💡 请在上方主诉栏输入或点击智能热词（如：肚子疼、咽痛咳嗽、头晕头痛、腰膝酸痛等），DeepSeek-R1 AI Copilot 将根据患者实际病情实时推导演进、生成专属诊疗方案！'
+    aiAdvice.value = '💡 请在上方主诉栏输入或点击智能热词（如：肚子疼、咽痛咳嗽、头晕头痛、腰膝酸痛等），辨证助手将根据患者实际病情给出诊疗建议！'
     currentRecommendedItems.value = []
     if (fullReset) {
       emr.value.symptomsList = []
@@ -5394,7 +5618,7 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
   else {
     if (fullReset) emr.value.diagnosis = `${text} (待进一步临床查体排查)`
     if (fullReset) emr.value.tcmDiagnosis = '气机不调 / 脏腑功能紊乱'
-    aiAdvice.value = `【DeepSeek-R1 实时辨证推理】：针对患者口述主诉【${text}】，系统已建立专属病情推理路径。建议查体明确局部压痛与体征，方药建议结合四诊辨证个体化加减，配合相应经络腧穴行特色贴敷理疗。`
+    aiAdvice.value = `【辨证辅助建议】：针对患者口述主诉【${text}】，系统已建立专属病情推理路径。建议查体明确局部压痛与体征，方药建议结合四诊辨证个体化加减，配合相应经络腧穴行特色贴敷理疗。`
     currentRecommendedItems.value = [
       {
         category: '中成药',
@@ -5554,13 +5778,7 @@ const selectQueuePatient = (p) => {
   const targetName = p.patientName || p.name
   try {
     const memStore = JSON.parse(localStorage.getItem('chunbo_member_store') || '{}')
-    if (targetName === '刘舒强' || targetPhone === '15111564208') {
-      p.memberLevel = '慢病签约会员'
-      p.discountRate = 0.9
-      p.memberExpiry = '2027-09-17'
-      p.balance = p.balance || 600.0
-      p.points = p.points || 600
-    } else {
+    {
       const mem = (targetPhone && memStore[targetPhone]) || (targetName && memStore[targetName])
       const dbP = dbPatients.value.find(x => (targetPhone && x.phone === targetPhone) || (targetName && x.name === targetName))
       if (mem && mem.memberLevel && mem.memberLevel !== '普通居民' && mem.memberLevel !== '普通患者' && (Number(mem.discountRate) < 1.0 || mem.memberExpiry)) {
@@ -5964,15 +6182,13 @@ const triggerAiDiagnosis = () => {
 }
 
 const startVoiceInput = () => {
-  ElMessage.success('语音录入已就绪，已模拟口述【脘腹隐痛胀满，纳呆便溏】并录入！')
-  emr.value.chiefComplaint = '脘腹隐痛胀满，伴食欲不振'
-  applyClinicalReasoning(emr.value.chiefComplaint, true)
+  // 复用真实的语音录入（MediaRecorder + 后端 ASR），不再写死模拟口述
+  toggleVoiceInput()
 }
 
 const simulateTongueAnalysis = () => {
-  emr.value.tongue = '舌面分析：舌质淡红、舌苔微腻、舌边微有齿痕'
-  emr.value.pulse = '脉象：脉濡缓或弦滑'
-  ElMessage.success('AI 视觉舌面多模态识别完成！已精准更新舌脉四诊依据！')
+  // 舌象多模态识别需接入图像模型，暂未开通；如实提示而非伪造识别结果
+  ElMessage.info('舌象识别需图像模型支持，暂未接入，请手动填写舌脉信息')
 }
 
 const validateAllergies = () => {
@@ -6116,7 +6332,7 @@ const confirmInstantPayment = async () => {
       patientId: currentPatient.value.patientId || finishedPatientId || 1,
       patientName: finishedPatientName,
       idCard: currentPatient.value.idCard || '',
-      doctorName: currentPatient.value.doctorName || '张医生',
+      doctorName: currentPatient.value.doctorName || currentUserName,
       diagnosis: emr.value.diagnosis || '门诊确诊',
       totalAmount: totalRxAmount.value,
       status: 'PAID',
@@ -6254,7 +6470,7 @@ const finishConsultationToBilling = async () => {
             patientId: currentPatient.value.patientId || finishedPatientId || 1,
             patientName: finishedPatientName,
             idCard: currentPatient.value.idCard || '',
-            doctorName: currentPatient.value.doctorName || '张医生',
+            doctorName: currentPatient.value.doctorName || currentUserName,
             diagnosis: emr.value.diagnosis || '门诊诊断',
             totalAmount: totalRxAmount.value,
             status: 'PENDING_PAYMENT',
@@ -6459,13 +6675,28 @@ const completeAndBill = async () => {
           totalPrice: (Number(it.price) || 35.00) * (it.quantity || 1)
         })
       })
+      // 6. 医用物资开单（真实物资档案ID，随处方划价、发药扣物资库存）
+      supplyBlocks.value.forEach(block => {
+        block.items.forEach(it => {
+          if (!it.medicineId || !it.name) return
+          allSubmittedItems.push({
+            medicineId: it.medicineId,
+            medicineName: `【物资】${it.name}`,
+            specification: it.specification || '',
+            dosage: '门诊物资领用',
+            quantity: it.quantity || 1,
+            unitPrice: Number(it.unitPrice) || 0,
+            totalPrice: (Number(it.unitPrice) || 0) * (it.quantity || 1)
+          })
+        })
+      })
 
       const postData = {
         // 传患者档案 id + 身份证号：同身份证不同姓名/手机号也归一到同一条档案
         patientId: currentPatient.value.patientId || currentPatient.value.id || 1,
         patientName: currentPatient.value.patientName,
         idCard: currentPatient.value.idCard || '',
-        doctorName: currentPatient.value.doctorName || '张医生',
+        doctorName: currentPatient.value.doctorName || currentUserName,
         diagnosis: emr.value.diagnosis,
         aiAdvice: aiAdvice.value,
         totalAmount: totalRxAmount.value,
@@ -6498,7 +6729,13 @@ onMounted(async () => {
     // 立即全量载入当前执业医生的 AI 临床会话历史与多轮对话记忆，彻底防止刷新后会话丢失
     loadAllChatSessions()
     await loadPatientsQueue()
+    loadMedicines()
+    loadTcmFormulas()
   } catch (e) {}
+
+  // 挂号页取号/更新挂号后，接诊队列实时同步（否则挂号后切回接诊页队列不刷新）
+  window.addEventListener('patient-registered', () => { loadPatientsQueue() })
+  window.addEventListener('registration-updated', () => { loadPatientsQueue() })
 
   // 当前患者变化时自动重载其历史就诊记录（须在 currentPatient 声明之后注册）。
   // immediate: 刷新页面时 loadPatientsQueue 会先自动选中一位患者（早于 watch 注册），
@@ -9524,6 +9761,126 @@ onMounted(async () => {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
+}
+
+/* MCP 过程步骤行 + 完成后收起标签 */
+.process-steps-col {
+  gap: 3px !important;
+}
+.process-step-line {
+  font-size: 11px !important;
+  color: #475569 !important;
+  line-height: 1.45 !important;
+  word-break: break-all !important;
+}
+/* 等待首 token 时的思考提示 */
+.ai-thinking-hint {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 2px 0 !important;
+}
+.ai-thinking-hint .dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #0f766e !important;
+  margin-right: 4px !important;
+  opacity: 0.4 !important;
+  animation: think-blink 1.2s infinite !important;
+}
+.ai-thinking-hint .dot:nth-child(2) { animation-delay: 0.2s !important; }
+.ai-thinking-hint .dot:nth-child(3) { animation-delay: 0.4s !important; }
+@keyframes think-blink {
+  0%, 100% { opacity: 0.25 !important; }
+  50% { opacity: 1 !important; }
+}
+.process-done-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-top: 4px !important;
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  color: #64748b !important;
+  background: #f1f5f9 !important;
+  border: 1px dashed #cbd5e1 !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+}
+.process-done-chip:hover {
+  color: #0f766e !important;
+  border-color: #0f766e !important;
+}
+
+/* 朗读回答按钮 */
+.msg-tts-row {
+  margin-top: 6px !important;
+  text-align: right !important;
+}
+.tts-toggle {
+  font-size: 12px !important;
+  color: #0f766e !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+.tts-toggle:hover {
+  text-decoration: underline !important;
+}
+
+/* 语音录入按钮 */
+.chat-input-with-mic {
+  position: relative !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+}
+.mic-btn {
+  flex: 0 0 auto !important;
+  width: 40px !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+}
+.modern-chat-bottom .mic-btn {
+  width: 28px !important;
+  height: 28px !important;
+}
+.modern-chat-bottom .mic-btn .el-icon {
+  color: #0f766e !important;
+}
+.modern-chat-bottom .mic-btn.recording .el-icon,
+.modern-chat-bottom .mic-btn.recording span {
+  color: #ef4444 !important;
+}
+.modern-chat-bottom .mic-btn {
+  width: 28px !important;
+  height: 28px !important;
+}
+.modern-chat-bottom .mic-btn .el-icon {
+  color: #0f766e !important;
+}
+.modern-chat-bottom .mic-btn.recording .el-icon,
+.modern-chat-bottom .mic-btn.recording span {
+  color: #ef4444 !important;
+}
+.mic-btn:hover {
+  background: #e0f2f1 !important;
+  border-color: #0f766e !important;
+}
+.mic-btn.recording {
+  background: #fee2e2 !important;
+  border-color: #ef4444 !important;
+  animation: mic-pulse 1s ease-in-out infinite !important;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35) !important; }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0) !important; }
 }
 
 .reasoning-body {

@@ -1,5 +1,8 @@
 package com.chunbo.medical.tools;
 
+import com.chunbo.medical.config.ToolResultHolder;
+import com.chunbo.medical.constant.AgentConstant;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -18,7 +21,7 @@ import java.time.Duration;
 public class WebFetchTools {
 
     @Tool(description = "抓取指定网页内容并转为纯文本，用于查询公开网络资料、文献、新闻（需传入完整 http/https 链接）")
-    public String fetchWebpage(@ToolParam(description = "要抓取的网页完整 URL，如 https://example.com/page") String url) {
+    public String fetchWebpage(@ToolParam(description = "要抓取的网页完整 URL，如 https://example.com/page") String url, ToolContext toolContext) {
         if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
             return "请提供合法的 http/https 网页链接。";
         }
@@ -39,10 +42,18 @@ public class WebFetchTools {
             if (text.length() > 3000) {
                 text = text.substring(0, 3000) + "\n…（内容过长已截断）";
             }
+            ToolResultHolder.put(requestIdOf(toolContext), "webpageContent", text);
             return text;
         } catch (Exception e) {
             return "网页抓取失败：" + (e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    /** 从工具上下文安全提取 requestId */
+    private String requestIdOf(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) return null;
+        Object v = toolContext.getContext().get(AgentConstant.REQUEST_ID);
+        return v == null ? null : String.valueOf(v);
     }
 
     private String htmlToText(String html) {

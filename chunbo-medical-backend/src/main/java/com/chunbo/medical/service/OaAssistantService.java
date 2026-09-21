@@ -42,6 +42,16 @@ public class OaAssistantService {
         return salarySlipMapper.selectList(qw);
     }
 
+    /** 按工号或姓名查询工资条（工号优先，未命中再按姓名匹配），避免"传姓名却硬回退 DOC_1001 查错人" */
+    public List<OaSalarySlip> getSalarySlipsByIdOrName(String key) {
+        LambdaQueryWrapper<OaSalarySlip> qw = new LambdaQueryWrapper<>();
+        if (key != null && !key.isEmpty()) {
+            qw.and(w -> w.eq(OaSalarySlip::getDoctorId, key).or().eq(OaSalarySlip::getDoctorName, key));
+        }
+        qw.orderByDesc(OaSalarySlip::getSalaryMonth);
+        return salarySlipMapper.selectList(qw);
+    }
+
     public List<OaPlasterRecord> getPlasterRecords() {
         return plasterRecordMapper.selectList(new LambdaQueryWrapper<OaPlasterRecord>().orderByDesc(OaPlasterRecord::getTherapyDate));
     }
