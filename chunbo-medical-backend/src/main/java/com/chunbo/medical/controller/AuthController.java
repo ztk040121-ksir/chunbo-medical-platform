@@ -3,7 +3,9 @@ package com.chunbo.medical.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.config.JwtUtil;
 import com.chunbo.medical.config.PasswordUtil;
+import com.chunbo.medical.entity.DoctorAccount;
 import com.chunbo.medical.entity.StaffAccount;
+import com.chunbo.medical.mapper.DoctorAccountMapper;
 import com.chunbo.medical.mapper.StaffAccountMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,9 @@ public class AuthController {
 
     @Autowired
     private StaffAccountMapper staffAccountMapper;
+
+    @Autowired
+    private DoctorAccountMapper doctorAccountMapper;
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> body) {
@@ -76,6 +81,53 @@ public class AuthController {
             result.put("staffId", account.getStaffId());
             result.put("department", account.getDepartment());
             result.put("title", account.getTitle());
+            return ResponseEntity.ok(result);
+        }
+
+        // 医生账号表（sys_doctor_account）：医生账号注册与授权页注册的账号在这里
+        DoctorAccount doctorAccount = null;
+        try {
+            doctorAccount = doctorAccountMapper.selectOne(
+                    new LambdaQueryWrapper<DoctorAccount>().eq(DoctorAccount::getUsername, username)
+            );
+        } catch (Exception e) {
+            // DB fallback
+        }
+        if (doctorAccount != null) {
+            // BCrypt 校验；历史明文密码兼容比对并自动迁移加密
+            boolean ok;
+            if (doctorAccount.getPassword().startsWith("$2a$") || doctorAccount.getPassword().startsWith("$2b$")) {
+                ok = PasswordUtil.matches(password, doctorAccount.getPassword());
+            } else {
+                ok = password.equals(doctorAccount.getPassword());
+                if (ok) {
+                    doctorAccount.setPassword(PasswordUtil.encode(password));
+                    doctorAccountMapper.updateById(doctorAccount);
+                }
+            }
+            if (!ok) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "密码错误，请重新输入");
+                return ResponseEntity.status(401).body(error);
+            }
+            if ("DISABLE".equalsIgnoreCase(doctorAccount.getStatus())) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "该医生账号已被停用，请联系系统管理员");
+                return ResponseEntity.status(401).body(error);
+            }
+            String token = jwtUtil.generateToken(username, "DOCTOR");
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("token", token);
+            result.put("role", "DOCTOR");
+            result.put("username", username);
+            result.put("displayName", doctorAccount.getDoctorName());
+            result.put("doctorId", doctorAccount.getDoctorId());
+            result.put("staffId", doctorAccount.getDoctorId());
+            result.put("department", doctorAccount.getDepartment());
+            result.put("title", doctorAccount.getTitle());
             return ResponseEntity.ok(result);
         }
 

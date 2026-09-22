@@ -18,7 +18,7 @@
 
         <div class="login-tab-title">
           <h3>中台统一身份认证</h3>
-          <span class="version-tag">RBAC 安全系统 v2.0.0</span>
+          <span class="version-tag">RBAC 安全系统 v3.0.0</span>
         </div>
 
 
@@ -109,10 +109,10 @@
       <!-- 主体区域：左侧导航 + 右侧内容 -->
       <div class="admin-main">
         <aside class="admin-sidebar">
-          <!-- 1. 经营分析大屏 (医生/人事/管理员可见，商户不可见) -->
-          <div 
-            v-if="currentUserRole !== 'MERCHANT'"
-            class="menu-item" 
+          <!-- 1. 经营分析大屏（按角色中台权限配置动态显示） -->
+          <div
+            v-if="canSeeTab('analytics')"
+            class="menu-item"
             :class="{ active: currentTab === 'analytics' }"
             @click="currentTab = 'analytics'"
           >
@@ -120,10 +120,10 @@
             <span class="menu-label">诊所经营分析大屏</span>
           </div>
 
-          <!-- 2. 商城订单履约与发货 (商户、最高管理员专属) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN' || currentUserRole === 'MERCHANT'"
-            class="menu-item" 
+          <!-- 2. 商城订单履约与发货 -->
+          <div
+            v-if="canSeeTab('mall-orders')"
+            class="menu-item"
             :class="{ active: currentTab === 'mall-orders' }"
             @click="currentTab = 'mall-orders'"
           >
@@ -131,10 +131,10 @@
             <span class="menu-label">商城订单履约与发货</span>
           </div>
 
-          <!-- 3. 商城商品管理与进销存 (商户、最高管理员可见) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN' || currentUserRole === 'MERCHANT'"
-            class="menu-item" 
+          <!-- 3. 商城商品管理与进销存 -->
+          <div
+            v-if="canSeeTab('mall-products')"
+            class="menu-item"
             :class="{ active: currentTab === 'mall-products' }"
             @click="currentTab = 'mall-products'"
           >
@@ -142,10 +142,10 @@
             <span class="menu-label">商城商品与进销存</span>
           </div>
 
-          <!-- 4. 商城注册用户管理 (商户、最高管理员可见) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN' || currentUserRole === 'MERCHANT'"
-            class="menu-item" 
+          <!-- 4. 商城注册用户管理 -->
+          <div
+            v-if="canSeeTab('mall-users')"
+            class="menu-item"
             :class="{ active: currentTab === 'mall-users' }"
             @click="currentTab = 'mall-users'"
           >
@@ -153,9 +153,10 @@
             <span class="menu-label">商城注册用户管理</span>
           </div>
 
-          <!-- 5. 工资条管理 (全员可见：医生/商户看自己，人事/管理员看全院并能发放) -->
-          <div 
-            class="menu-item" 
+          <!-- 5. 工资条管理 (医生/商户看自己，人事/管理员看全院并能发放) -->
+          <div
+            v-if="canSeeTab('salary')"
+            class="menu-item"
             :class="{ active: currentTab === 'salary' }"
             @click="currentTab = 'salary'"
           >
@@ -163,10 +164,10 @@
             <span class="menu-label">{{ (currentUserRole === 'DOCTOR' || currentUserRole === 'MERCHANT') ? '我的工资条明细' : '工资条发放与核算' }}</span>
           </div>
 
-          <!-- 6. OA 请假独立审批中心 (商户不可见；医生发起，人事/管理员审批) -->
-          <div 
-            v-if="currentUserRole !== 'MERCHANT'"
-            class="menu-item" 
+          <!-- 6. OA 请假独立审批中心 (医生发起，人事/管理员审批) -->
+          <div
+            v-if="canSeeTab('approval')"
+            class="menu-item"
             :class="{ active: currentTab === 'approval' }"
             @click="currentTab = 'approval'"
           >
@@ -174,38 +175,18 @@
             <span class="menu-label">{{ currentUserRole === 'DOCTOR' ? '我的OA请假申请' : 'OA 请假独立审批中心' }}</span>
           </div>
 
-          <!-- 7. 医生账号注册与授权 (仅人事、管理员可见) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN' || currentUserRole === 'HR'"
-            class="menu-item" 
+          <!-- 7. 医护账号与权限管理 (仅人事、管理员) -->
+          <div
+            v-if="canSeeTab('doctors')"
+            class="menu-item"
             :class="{ active: currentTab === 'doctors' }"
             @click="currentTab = 'doctors'"
           >
             <span class="menu-icon">👨‍⚕️</span>
-            <span class="menu-label">医生账号注册与授权</span>
+            <span class="menu-label">医护账号与权限管理</span>
           </div>
 
-          <!-- 8. 员工角色与权限矩阵 (仅人事、管理员可见) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN' || currentUserRole === 'HR'"
-            class="menu-item" 
-            :class="{ active: currentTab === 'roles' }"
-            @click="currentTab = 'roles'"
-          >
-            <span class="menu-icon">👥</span>
-            <span class="menu-label">员工角色与权限矩阵</span>
-          </div>
-
-          <!-- 9. 人事与商户账号管理 (仅最高管理员专属) -->
-          <div 
-            v-if="currentUserRole === 'ADMIN'"
-            class="menu-item" 
-            :class="{ active: currentTab === 'hr-management' }"
-            @click="currentTab = 'hr-management'"
-          >
-            <span class="menu-icon">🏛️</span>
-            <span class="menu-label">人事与商户中台管理</span>
-          </div>
+          <!-- 9. 人事与商户账号管理已并入「医护账号与权限管理」 -->
         </aside>
 
         <main class="admin-content">
@@ -368,7 +349,7 @@
               </div>
 
               <!-- 问答展示流式对话框 -->
-              <div class="chat-box" ref="chatBoxRef" style="height: 360px;">
+              <div class="chat-box" ref="chatBoxRef" style="height: 560px;">
                 <div 
                   v-for="(msg, idx) in chatMessages" 
                   :key="idx" 
@@ -376,6 +357,17 @@
                   :class="msg.role"
                 >
                   <div class="msg-sender">{{ msg.role === 'user' ? ('👤 提问 (' + currentUserName + ')') : '🤖 春播中台AI调度指挥助手' }}</div>
+                  <!-- 用户发送的附件：文件卡片（图标 + 文件名 + 大小），与主流 AI 对话样式一致 -->
+                  <div v-if="msg.attachment" class="msg-file-card">
+                    <img v-if="msg.attachment.fileType === 'image' && msg.attachment.previewUrl" :src="msg.attachment.previewUrl" class="file-card-icon-img" alt="" />
+                    <div v-else class="file-card-icon">{{ (msg.attachment.fileType || 'file') === 'excel' ? 'XLSX' : '文件' }}</div>
+                    <div class="file-card-info">
+                      <div class="file-card-name">{{ msg.attachment.fileName }}</div>
+                      <div class="file-card-size">{{ msg.attachment.sizeLabel || '' }}</div>
+                    </div>
+                  </div>
+                  <!-- 用户发送的图片附件直接在气泡内显示 -->
+                  <div v-if="msg.image" class="msg-image"><img :src="msg.image" alt="上传的图片" /></div>
                   <div class="msg-content" v-html="renderMarkdown(msg.content)"></div>
                   <div class="msg-tts-line" v-if="msg.role === 'assistant' && msg.content && !chatLoading">
                     <span class="tts-link" @click="speakAdminMessage(msg)">{{ msg._speaking ? '⏹ 停止朗读' : '🔊 朗读回答' }}</span>
@@ -383,17 +375,34 @@
                 </div>
               </div>
 
+              <!-- 附件预览：文件卡片样式（图标 + 文件名 + 大小 + 删除），独立一行不挤占输入栏 -->
+              <div v-if="chatAttachment" class="chat-attachment-row">
+                <div class="file-card">
+                  <img v-if="chatAttachment.fileType === 'image' && chatAttachment.previewUrl" :src="chatAttachment.previewUrl" class="file-card-icon-img" alt="" />
+                  <div v-else class="file-card-icon">XLSX</div>
+                  <div class="file-card-info">
+                    <div class="file-card-name">{{ chatAttachment.fileName }}</div>
+                    <div class="file-card-size">{{ chatAttachment.sizeLabel || (chatAttachment.fileType === 'excel' ? 'Excel' : '图片') }}</div>
+                  </div>
+                  <span class="file-card-remove" @click="removeAttachment">✕</span>
+                </div>
+              </div>
+
               <!-- 智能指令输入栏 -->
               <div class="chat-input-bar">
+                <div class="mic-btn-admin" @click="triggerFileUpload" title="上传工资表（图片或 Excel），AI 提取表格并发工资">
+                  <el-icon :size="17"><Upload /></el-icon>
+                </div>
+                <input ref="chatFileInput" type="file" accept="image/*,.xlsx,.xls" style="display:none" @change="handleFileSelect" />
                 <div class="mic-btn-admin" :class="{ recording: isRecordingAdmin }" @click="toggleVoiceInputAdmin"
                      :title="isRecordingAdmin ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
                   <el-icon v-if="!isRecordingAdmin" :size="17"><Microphone /></el-icon>
                   <span v-else style="font-size: 13px;">⏹</span>
                 </div>
-                <el-input 
-                  v-model="inputQuery" 
-                  placeholder="请输入中台调度指令：例如「生成全院工资表」、「查商城待发货订单」、「药房低库存预警」、「发货订单 B2C2026...」" 
-                  size="default" 
+                <el-input
+                  v-model="inputQuery"
+                  placeholder="请输入中台调度指令：例如「生成全院工资表」、「查商城待发货订单」、「药房低库存预警」、「发货订单 B2C2026...」"
+                  size="default"
                   clearable
                   @keyup.enter="sendAssistantQuery"
                 >
@@ -497,10 +506,7 @@
             <div class="module-hero-banner">
               <div>
                 <h2 class="hero-title">📦 春播商城订单履约与进销存出库中心</h2>
-                <p class="hero-sub">查看用户在线购药订单，商户或管理员手动核准并点击【📦 一键发货出库】，系统将自动扣减药品库存、录入春播健康便民速递单号并生成出库审计台账（非自动发货，保障药品出库合规）。</p>
-              </div>
-              <div class="hero-actions">
-                <el-button type="primary" size="small" @click="loadMallOrders">🔄 刷新订单列表</el-button>
+                <p class="hero-sub">查看用户在线购药订单，商户或管理员手动核准并点击【📦 一键发货出库】，系统将自动扣减药品库存、录入春播健康便民速递单号并生成出库审计台账（非自动发货，保障药品出库合规）。列表自动加载，刷新浏览器即可同步最新订单。</p>
               </div>
             </div>
 
@@ -540,9 +546,17 @@
               </span>
             </div>
 
+            <!-- 搜索 / 删除 / 分页工具栏 -->
+            <div class="batch-salary-toolbar">
+              <el-input v-model="ordersPager.state.search" placeholder="搜索订单号 / 收货人 / 状态…" size="small" clearable style="width: 240px;" />
+              <el-button size="small" type="danger" plain :disabled="!orderSelection.length" @click="batchDeleteRows('/api/admin/mall/order/batch-delete', orderSelection.map(r => r.id), '商城订单', loadMallOrders)">🗑 删除选中</el-button>
+              <el-pagination style="margin-left: auto;" v-model:current-page="ordersPager.state.page" v-model:page-size="ordersPager.state.size" :page-sizes="[10, 20, 50]" :total="ordersPager.total" layout="total, sizes, prev, pager, next" size="small" />
+            </div>
+
             <!-- 订单表格 -->
             <div class="admin-table-card">
-              <el-table :data="filteredMallOrders" stripe size="small" max-height="560">
+              <el-table :data="ordersPager.paged" stripe size="small" max-height="560" @selection-change="orderSelection = $event">
+                <el-table-column type="selection" width="42" />
                 <el-table-column prop="orderNo" label="订单号" width="180">
                   <template #default="scope">
                     <span style="font-family: monospace; font-weight: bold; color: #0284c7;">{{ scope.row.orderNo }}</span>
@@ -575,38 +589,37 @@
                     <span>{{ formatTime(scope.row.createTime) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="发货履约操作" width="180" fixed="right" align="center">
+                <el-table-column label="发货履约操作" width="240" fixed="right" align="center">
                   <template #default="scope">
                     <!-- 1. 待发货出库 -->
-                    <el-button 
+                    <el-button
                       v-if="!scope.row.status || (!scope.row.status.includes('已发货') && !scope.row.status.includes('已送达'))"
-                      type="success" 
-                      size="small" 
+                      type="success"
+                      size="small"
                       style="font-weight: bold; box-shadow: 0 2px 4px rgba(22, 163, 74, 0.2);"
                       @click="openShipConfirmModal(scope.row)"
                     >
                       📦 一键发货出库
                     </el-button>
                     <!-- 2. 已送达 / 居民已签收 (终态) -->
-                    <div v-else-if="scope.row.status && scope.row.status.includes('已送达')" style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                    <div v-else-if="scope.row.status && scope.row.status.includes('已送达')" style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                       <el-tag type="success" size="small" effect="dark" style="font-weight: bold; background: #059669; border-color: #059669;">
                         ✅ 已送达 / 居民已签收
                       </el-tag>
-                      <span style="font-size: 11px; color: #15803d; font-family: monospace; font-weight: 600;">妥投完成</span>
                     </div>
-                    <!-- 3. 已发货运输中 -> 支持一键点击确认送达 -->
-                    <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                    <!-- 3. 已发货运输中 -> 一行横排：状态 + 确认送达 -->
+                    <div v-else style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                       <el-tag type="success" size="small" effect="plain" style="font-weight: bold;">
-                        🚚 春播便民速递运输中
+                        🚚 运输中
                       </el-tag>
-                      <el-button 
-                        type="primary" 
-                        size="small" 
+                      <el-button
+                        type="primary"
+                        size="small"
                         plain
                         style="font-size: 11px; padding: 2px 8px; height: 24px; font-weight: bold;"
                         @click="confirmDeliverOrder(scope.row)"
                       >
-                        ✅ 确认已送达
+                        ✅ 确认送达
                       </el-button>
                     </div>
                   </template>
@@ -616,63 +629,144 @@
           </div>
 <!-- 2. 工资条管理 -->
           <div v-else-if="currentTab === 'salary'" class="tab-pane">
-            <div class="pane-header">
-              <div>
-                <h3>💼 {{ currentUserRole === 'DOCTOR' ? '我的月度工资条与绩效明细' : '诊所医护员工资条核算中枢' }}</h3>
-                <span class="sub-desc" v-if="currentUserRole === 'DOCTOR'">当前仅展示医生本人 [{{ currentUserName }}] 的核算记录</span>
-                <span class="sub-desc" v-else>支持按月核算发放、贴敷绩效提成与中台 AI 报表调度</span>
-              </div>
-              <div v-if="currentUserRole === 'ADMIN' || currentUserRole === 'HR'">
-                <el-button type="success" size="small" @click="showIssueSalaryDialog = true">
-                  + 核算并发放新工资条
-                </el-button>
-              </div>
-            </div>
-
-            <div class="salary-full-card">
-              <div class="sub-card-header flex-between">
+            <!-- 医生/商户视角：只读个人台账 -->
+            <template v-if="currentUserRole === 'DOCTOR' || currentUserRole === 'MERCHANT'">
+              <div class="pane-header">
                 <div>
-                  <span>📋</span>
-                  <b>{{ currentUserRole === 'DOCTOR' ? '个人历史工资核算台账' : '全院医护员工资发放台账' }}</b>
-                  <span style="font-size: 12px; color: #64748b; margin-left: 10px;">由人事与院办依据临床工时、门诊开方、特色理疗及商城履约真实提成核发</span>
+                  <h3>💼 我的月度工资条与绩效明细</h3>
+                  <span class="sub-desc">当前仅展示 [{{ currentUserName }}] 的核算记录</span>
                 </div>
-                <div v-if="currentUserRole === 'ADMIN' || currentUserRole === 'HR'">
-                  <el-button type="primary" size="small" plain @click="askAssistant('全院薪酬发放汇总表'); currentTab = 'analytics'">
-                    🤖 前往大屏调取 AI 薪资报表
+              </div>
+              <div class="salary-full-card">
+                <div class="sub-card-header flex-between">
+                  <div><span>📋</span><b>个人历史工资核算台账</b></div>
+                </div>
+                <el-table :data="displaySalarySlips" stripe size="small" style="width: 100%;">
+                  <el-table-column prop="doctorId" label="员工工号" width="120" />
+                  <el-table-column prop="doctorName" label="员工姓名" width="110" />
+                  <el-table-column prop="salaryMonth" label="归属月份" width="100" />
+                  <el-table-column prop="baseSalary" label="基本底薪" width="110">
+                    <template #default="scope"><span>¥{{ scope.row.baseSalary }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="clinicCommission" label="门诊/电商提成" width="120">
+                    <template #default="scope"><span class="text-success">+¥{{ scope.row.clinicCommission }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="plasterCommission" label="贴敷理疗/合规奖" width="130">
+                    <template #default="scope"><span class="text-success font-bold">+¥{{ scope.row.plasterCommission }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="netSalary" label="实发工资" min-width="130">
+                    <template #default="scope"><b class="text-danger" style="font-size: 14px;">¥{{ scope.row.netSalary }}</b></template>
+                  </el-table-column>
+                  <el-table-column prop="status" label="发放状态" width="100" align="center">
+                    <template #default="scope">
+                      <el-tag type="success" size="small" effect="dark">{{ scope.row.status || '已发放' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="createTime" label="发放时间" width="160">
+                    <template #default="scope">
+                      <span style="font-size: 12px; color: #64748b;">{{ (scope.row.createTime || '').replace('T', ' ').slice(0, 19) }}</span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </template>
+
+            <!-- ADMIN/HR 视角：主区域=全员薪酬核算与发放，下方=发放记录台账 -->
+            <template v-else>
+              <div class="pane-header">
+                <div>
+                  <h3>💼 全员薪酬核算与工资发放中枢</h3>
+                  <span class="sub-desc">自动加载全院工作人员 · 上传工资表按工号/姓名自动填充 · 支持勾选发放 / 单独发放 / 批量发放 · 同员工同月重发自动覆盖</span>
+                </div>
+                <div>
+                  <el-button size="small" plain @click="showSlipHistoryDialog = true">📋 发放记录</el-button>
+                </div>
+              </div>
+
+              <div class="salary-full-card">
+                <div class="batch-salary-toolbar">
+                  <span style="font-size: 13px;">发薪日期：</span>
+                  <el-date-picker v-model="salaryBoardMonth" type="date" value-format="YYYY-MM-DD" :clearable="false" style="width: 140px" size="small" @change="loadBatchSalaryBoard" />
+                  <el-button type="warning" plain size="small" @click="triggerBatchExcelUpload">⬆ 上传工资表填充</el-button>
+                  <input ref="batchSalaryExcelInput" type="file" accept=".xlsx,.xls" style="display:none" @change="handleBatchExcelFill" />
+                  <el-button size="small" plain @click="aiCalcAllRows" :loading="batchAiAllLoading">🤖 全员AI测算</el-button>
+                  <el-input v-model="salaryBoardPager.state.search" placeholder="搜索工号 / 姓名 / 角色…" size="small" clearable style="width: 190px; margin-left: auto;" />
+                  <span style="font-size: 12px; color: #64748b;">
+                    已勾选 <b>{{ batchSelection.length }}</b> 人 · 本表应发合计 <b class="text-danger">¥{{ batchTotalAmount.toFixed(2) }}</b>
+                  </span>
+                  <el-button type="danger" plain size="small" :disabled="!batchSelection.length" @click="deleteSalaryBoardRows(batchSelection)">🗑 删除选中</el-button>
+                  <el-button type="success" size="small" :disabled="!batchSelection.length" :loading="distributeLoading" @click="submitBatchSalary(batchSelection)">
+                    💰 发放勾选员工
                   </el-button>
                 </div>
+                <el-table ref="batchSalaryTableRef" :data="salaryBoardPager.paged" @selection-change="onBatchSelectionChange" :row-class-name="({ row }) => (row.hasAccount === false ? 'no-account-row' : '')" size="small" max-height="420" border style="width: 100%;">
+                  <el-table-column type="selection" width="42" :selectable="row => row.hasAccount !== false" />
+                  <el-table-column label="工号" width="115">
+                    <template #default="{ row }">
+                      <span :style="row.hasAccount === false ? 'color:#dc2626;' : ''">{{ row.staffId || '—' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="姓名" width="100">
+                    <template #default="{ row }">
+                      <span :style="row.hasAccount === false ? 'color:#dc2626;' : ''">{{ row.name || '—' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="角色" width="92">
+                    <template #default="{ row }">
+                      <el-tag size="small" effect="plain">{{ row.roleLabel || '员工' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="基本底薪" width="140">
+                    <template #default="{ row }">
+                      <el-input-number v-model="row.baseSalary" :min="0" :step="100" size="small" style="width: 100%;" controls-position="right" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="门诊/电商提成" width="140">
+                    <template #default="{ row }">
+                      <el-input-number v-model="row.clinicCommission" :min="0" :step="100" size="small" style="width: 100%;" controls-position="right" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="贴敷理疗/合规奖" width="140">
+                    <template #default="{ row }">
+                      <el-input-number v-model="row.plasterCommission" :min="0" :step="100" size="small" style="width: 100%;" controls-position="right" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="社保代扣" width="120">
+                    <template #default="{ row }">
+                      <el-input-number v-model="row.deductionSocial" :min="0" :step="50" size="small" style="width: 100%;" controls-position="right" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="个税" width="110">
+                    <template #default="{ row }">
+                      <el-input-number v-model="row.tax" :min="0" :step="10" size="small" style="width: 100%;" controls-position="right" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="实发工资" min-width="110">
+                    <template #default="{ row }">
+                      <b class="text-danger" style="font-size: 13px;">¥{{ batchRowNet(row).toFixed(2) }}</b>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="来源" width="210">
+                    <template #default="{ row }">
+                      <el-tag size="small" :type="row.sourceType || 'info'" effect="light" style="white-space: normal; line-height: 1.3;">{{ row.source || '待发放' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="252" fixed="right">
+                    <template #default="{ row, $index }">
+                      <template v-if="row.hasAccount !== false">
+                        <el-button size="small" text type="primary" :loading="row._aiLoading" @click="aiCalcBatchRow(row)">测算</el-button>
+                        <el-button size="small" text type="success" :loading="row._paying" @click="paySingleRow(row)">发放</el-button>
+                      </template>
+                      <span v-else style="font-size: 11px; color: #dc2626;">⚠️ 无账号不可发</span>
+                      <el-button size="small" text type="danger" @click="deleteSalaryBoardRows([row])">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <div style="display: flex; justify-content: flex-end; padding: 8px 4px 0 0;">
+                  <el-pagination v-model:current-page="salaryBoardPager.state.page" v-model:page-size="salaryBoardPager.state.size" :page-sizes="[10, 20, 50]" :total="salaryBoardPager.total" layout="total, sizes, prev, pager, next" size="small" />
+                </div>
               </div>
-              <el-table :data="displaySalarySlips" stripe size="small" style="width: 100%;">
-                <el-table-column prop="doctorId" label="员工工号" width="120" />
-                <el-table-column prop="doctorName" label="员工姓名" width="110" />
-                <el-table-column prop="salaryMonth" label="归属月份" width="100" />
-                <el-table-column prop="baseSalary" label="基本底薪" width="110">
-                  <template #default="scope">
-                    <span>¥{{ scope.row.baseSalary }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="clinicCommission" label="门诊/电商提成" width="120">
-                  <template #default="scope">
-                    <span class="text-success">+¥{{ scope.row.clinicCommission }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="plasterCommission" label="贴敷理疗/合规奖" width="130">
-                  <template #default="scope">
-                    <span class="text-success font-bold">+¥{{ scope.row.plasterCommission }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="netSalary" label="实发工资" min-width="130">
-                  <template #default="scope">
-                    <b class="text-danger" style="font-size: 14px;">¥{{ scope.row.netSalary }}</b>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="status" label="发放状态" width="100" align="center">
-                  <template #default="scope">
-                    <el-tag type="success" size="small" effect="dark">{{ scope.row.status }}</el-tag>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
+            </template>
           </div>
 
           <!-- 3. OA 独立审批中心 -->
@@ -717,7 +811,11 @@
 
               <el-card>
                 <template #header><b>📋 我的请假记录与审批进度跟踪</b></template>
-                <el-table :data="displayApprovals" stripe size="small">
+                <div class="batch-salary-toolbar">
+                  <el-input v-model="myApprovalsPager.state.search" placeholder="搜索假别 / 状态 / 事由…" size="small" clearable style="width: 220px;" />
+                  <el-pagination style="margin-left: auto;" v-model:current-page="myApprovalsPager.state.page" v-model:page-size="myApprovalsPager.state.size" :page-sizes="[10, 20, 50]" :total="myApprovalsPager.total" layout="total, sizes, prev, pager, next" size="small" />
+                </div>
+                <el-table :data="myApprovalsPager.paged" stripe size="small">
                   <el-table-column prop="id" label="单号" width="70" />
                   <el-table-column prop="applicantName" label="申请人" width="100" />
                   <el-table-column prop="approvalType" label="假别" width="100" />
@@ -745,7 +843,13 @@
                     <el-tag type="warning">具备独立批准与驳回权限</el-tag>
                   </div>
                 </template>
-                <el-table :data="approvals" stripe size="small">
+                <div class="batch-salary-toolbar">
+                  <el-input v-model="approvalsPager.state.search" placeholder="搜索申请人 / 假别 / 状态…" size="small" clearable style="width: 240px;" />
+                  <el-button size="small" type="danger" plain :disabled="!approvalSelection.length" @click="batchDeleteRows('/api/assistant/approvals/batch-delete', approvalSelection.map(r => r.id), '审批单', loadApprovals)">🗑 删除选中</el-button>
+                  <el-pagination style="margin-left: auto;" v-model:current-page="approvalsPager.state.page" v-model:page-size="approvalsPager.state.size" :page-sizes="[10, 20, 50]" :total="approvalsPager.total" layout="total, sizes, prev, pager, next" size="small" />
+                </div>
+                <el-table :data="approvalsPager.paged" stripe size="small" @selection-change="approvalSelection = $event">
+                  <el-table-column type="selection" width="42" />
                   <el-table-column prop="id" label="单据号" width="80" />
                   <el-table-column prop="applicantName" label="申请医师" width="100" />
                   <el-table-column prop="approvalType" label="假别类型" width="100" />
@@ -760,7 +864,7 @@
                   </el-table-column>
                   <el-table-column label="人事/院办审批操作" width="220">
                     <template #default="scope">
-                      <div v-if="scope.row.status === '待审批'">
+                      <div v-if="scope.row.status !== '已通过' && scope.row.status !== '已驳回'">
                         <el-button type="success" size="small" @click="handleDeanApprove(scope.row, '已通过')">批准同意</el-button>
                         <el-button type="danger" size="small" @click="handleDeanApprove(scope.row, '已驳回')">驳回申请</el-button>
                       </div>
@@ -778,189 +882,146 @@
           <div v-else-if="currentTab === 'doctors'" class="tab-pane">
             <div class="pane-header">
               <div>
-                <h3>👨‍⚕️ 基层诊所医护人员账号注册与管理中心</h3>
-                <span class="sub-desc">在此注册并授权的医生工号，可直接在基层医生工作台 (http://localhost:5173/login) 登录</span>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <el-button type="success" size="small" @click="showRegisterDoctorDialog = true">
-                  ➕ 注册新医生账号
-                </el-button>
-                <el-button type="primary" size="small" plain @click="loadDoctorAccounts">
-                  🔄 刷新列表
-                </el-button>
+                <h3>👨‍⚕️ 医护账号与权限管理中心</h3>
+                <span class="sub-desc">统一注册医生/护士/人事/商户账号，按角色自动生效对应系统权限</span>
               </div>
             </div>
 
             <!-- 统计指标 -->
             <div class="metrics-grid mb-16">
               <div class="metric-card bg-blue">
-                <div class="m-label">在册医护账号总数</div>
-                <div class="m-val">{{ doctorAccounts.length }} <span class="unit">位</span></div>
-                <div class="m-sub">已建档数字化执业医师与药师</div>
+                <div class="m-label">全院在册账号总数</div>
+                <div class="m-val">{{ unifiedStaffTotal }} <span class="unit">个</span></div>
+                <div class="m-sub">医生 + 员工 + 商户等系统账号统一统计</div>
               </div>
               <div class="metric-card bg-green">
-                <div class="m-label">在岗执业与已启用</div>
-                <div class="m-val">{{ activeDoctorCount }} <span class="unit">位</span></div>
-                <div class="m-sub">已颁发 CA 数字证书与处方权</div>
+                <div class="m-label">正常启用账号</div>
+                <div class="m-val">{{ activeStaffCount }} <span class="unit">个</span></div>
+                <div class="m-sub">当前可正常登录系统的账号</div>
               </div>
               <div class="metric-card bg-purple">
-                <div class="m-label">覆盖门诊科室</div>
+                <div class="m-label">覆盖部门/科室</div>
                 <div class="m-val">{{ departmentCount }} <span class="unit">个</span></div>
-                <div class="m-sub">全科门诊、慢病专科、特色贴敷等</div>
-              </div>
-              <div class="metric-card bg-orange">
-                <div class="m-label">处方与调剂授权率</div>
-                <div class="m-val">—</div>
-                <div class="m-sub">符合卫健委基层医疗执业规范</div>
+                <div class="m-sub">门诊、药房、人事、商城运营等</div>
               </div>
             </div>
 
-            <!-- 表格 -->
+            <!-- 全院医护与员工统一账号总台账（医生表 + 员工表去重合并，一张表管理） -->
             <el-card>
               <template #header>
                 <div class="flex-between">
-                  <b>📋 在册医生执业工号与工作台账号矩阵</b>
-                  <el-tag type="info" size="small">默认测试工号: kzt / 密码: 123456</el-tag>
+                  <b>👥 全院医护与员工账号总台账（真实查库 · 角色 / 状态 / 密码统一管理）</b>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <el-tag type="info" size="small">默认测试工号: kzt / 密码: 123456</el-tag>
+                    <el-button type="success" size="small" @click="openRegisterUnified">
+                      ➕ 注册账号
+                    </el-button>
+                  </div>
                 </div>
               </template>
-              <el-table :data="doctorAccounts" stripe size="small" v-loading="doctorLoading">
-                <el-table-column prop="id" label="序号" width="60" />
-                <el-table-column prop="username" label="登录账号/工号" width="130">
+              <div class="batch-salary-toolbar">
+                <el-input v-model="unifiedPager.state.search" placeholder="搜索账号 / 工号 / 姓名 / 科室 / 角色…" size="small" clearable style="width: 260px;" />
+                <el-button size="small" type="danger" plain :disabled="!unifiedSelection.length" @click="deleteUnifiedAccounts(unifiedSelection)">🗑 删除选中</el-button>
+                <el-pagination style="margin-left: auto;" v-model:current-page="unifiedPager.state.page" v-model:page-size="unifiedPager.state.size" :page-sizes="[10, 20, 50]" :total="unifiedPager.total" layout="total, sizes, prev, pager, next" size="small" />
+              </div>
+              <el-table :data="unifiedPager.paged" stripe size="small" @selection-change="unifiedSelection = $event">
+                <el-table-column type="selection" width="42" />
+                <el-table-column prop="username" label="登录账号" width="120">
                   <template #default="scope">
                     <el-tag effect="plain" type="primary" class="font-mono"><b>{{ scope.row.username }}</b></el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="doctorName" label="医生真实姓名" width="120">
+                <el-table-column prop="name" label="姓名" width="110">
+                  <template #default="scope"><b>{{ scope.row.name }}</b></template>
+                </el-table-column>
+                <el-table-column prop="staffId" label="数字工号" width="110">
                   <template #default="scope">
-                    <b>{{ scope.row.doctorName }}</b>
+                    <el-tag type="success" size="small">{{ scope.row.staffId }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="doctorId" label="数字工牌号" width="120">
+                <el-table-column prop="department" label="所属部门/科室" width="150" />
+                <el-table-column prop="title" label="岗位职称" width="140" />
+                <el-table-column label="系统角色（可编辑）" width="170">
                   <template #default="scope">
-                    <el-tag type="success" size="small">{{ scope.row.doctorId }}</el-tag>
+                    <el-select :model-value="scope.row.role" size="small" style="width: 135px;" @change="(v) => handleStaffRoleRowChange(scope.row, v)">
+                      <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value" />
+                    </el-select>
                   </template>
                 </el-table-column>
-                <el-table-column prop="department" label="所属科室" width="160" />
-                <el-table-column prop="title" label="执业职称" width="140">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.title && scope.row.title.includes('主任') ? 'danger' : 'info'" size="small">
-                      {{ scope.row.title }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="phone" label="联系电话" width="120">
-                  <template #default="scope">{{ scope.row.phone || '-' }}</template>
-                </el-table-column>
-                <el-table-column prop="status" label="账号状态" width="100">
+                <el-table-column prop="permissions" label="功能权限范围（按角色动态配置）" min-width="220" />
+                <el-table-column prop="status" label="账号状态" width="90">
                   <template #default="scope">
                     <el-tag :type="scope.row.status === 'ENABLE' ? 'success' : 'danger'" size="small">
-                      {{ scope.row.status === 'ENABLE' ? '正常启用' : '已停用' }}
+                      {{ scope.row.status === 'ENABLE' ? '正常' : '停用' }}
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="人事管理操作" width="210" fixed="right">
+                <el-table-column label="操作" width="200" fixed="right">
                   <template #default="scope">
-                    <el-button 
-                      size="small" 
-                      :type="scope.row.status === 'ENABLE' ? 'warning' : 'success'" 
+                    <el-button
+                      size="small"
+                      :type="scope.row.status === 'ENABLE' ? 'warning' : 'success'"
                       link
-                      @click="handleToggleDoctorStatus(scope.row)"
+                      @click="toggleUnifiedStatus(scope.row)"
                     >
                       {{ scope.row.status === 'ENABLE' ? '停用' : '启用' }}
                     </el-button>
-                    <el-button size="small" type="primary" link @click="handleResetDoctorPassword(scope.row)">
-                      重置密码
-                    </el-button>
-                    <el-button size="small" type="danger" link @click="handleDeleteDoctor(scope.row)">
-                      删除
-                    </el-button>
+                    <el-button size="small" type="primary" link @click="resetUnifiedPassword(scope.row)">重置密码</el-button>
+                    <el-button size="small" type="danger" link @click="deleteUnifiedAccounts([scope.row])">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
             </el-card>
 
-            <!-- 注册新医生账号弹窗 -->
-            <el-dialog 
-              v-model="showRegisterDoctorDialog" 
-              title="👨‍⚕️ 注册新医生工作台账号 (对应医生端登录)" 
-              width="520px"
-              destroy-on-close
-            >
-              <el-alert 
-                title="提示：在此注册的工号和密码，可在基层医生工作台 (http://localhost:5173/login) 立即验证登录。"
-                type="info" 
-                :closable="false"
-                style="margin-bottom: 16px;"
-              />
-              <el-form :model="newDoctorForm" label-width="110px" size="default">
-                <el-form-item label="登录账号/工号" required>
-                  <el-input v-model="newDoctorForm.username" placeholder="如 doc_1005 或 kzt (医生登录用)" />
-                </el-form-item>
-                <el-form-item label="医生真实姓名" required>
-                  <el-input v-model="newDoctorForm.doctorName" placeholder="如 王文清、赵医生" />
-                </el-form-item>
-                <el-form-item label="初始登录密码" required>
-                  <el-input v-model="newDoctorForm.password" placeholder="默认 123456" show-password />
-                </el-form-item>
-                <el-form-item label="数字工牌号">
-                  <el-input v-model="newDoctorForm.doctorId" placeholder="留空则系统自动分配 (如 DOC_1005)" />
-                </el-form-item>
-                <el-form-item label="所属执业科室">
-                  <el-select v-model="newDoctorForm.department" style="width: 100%">
-                    <el-option label="全科门诊 / 中医特色专科" value="全科门诊 / 中医特色专科" />
-                    <el-option label="全科门诊 / 智慧药房" value="全科门诊 / 智慧药房" />
-                    <el-option label="全科慢病门诊" value="全科慢病门诊" />
-                    <el-option label="中医理疗特色门诊" value="中医理疗特色门诊" />
-                    <el-option label="儿科综合门诊" value="儿科综合门诊" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="岗位职称">
-                  <el-select v-model="newDoctorForm.title" style="width: 100%">
-                    <el-option label="主任医师" value="主任医师" />
-                    <el-option label="副主任医师" value="副主任医师" />
-                    <el-option label="主治医师" value="主治医师" />
-                    <el-option label="执业医师" value="执业医师" />
-                    <el-option label="主治医师 / 调剂药师" value="主治医师 / 调剂药师" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="联系电话">
-                  <el-input v-model="newDoctorForm.phone" placeholder="医生手机号码" />
-                </el-form-item>
-              </el-form>
-              <template #footer>
-                <el-button @click="showRegisterDoctorDialog = false">取消</el-button>
-                <el-button type="success" :loading="registerLoading" @click="submitRegisterDoctor">
-                  确认注册并授权
-                </el-button>
+            <!-- 角色权限范围动态配置：分「云诊所」「管理中台」两套系统（写入 sys_role_permission，前端菜单按此动态渲染） -->
+            <el-card style="margin-top: 16px;">
+              <template #header>
+                <div class="flex-between">
+                  <b>🔐 角色权限范围配置（云诊所与管理中台两套系统独立配置，保存后重新登录生效）</b>
+                  <el-tag type="info" size="small">切换系统视角查看和编辑对应权限</el-tag>
+                </div>
               </template>
-            </el-dialog>
-          </div>
-
-          <!-- 5. 员工角色与权限矩阵 (人事、管理员) -->
-          <div v-else-if="currentTab === 'roles'" class="tab-pane">
-            <div class="pane-header">
-              <div>
-                <h3>👥 基层诊所员工角色体系与权限控制矩阵 (RBAC)</h3>
-                <span class="sub-desc">由人事主管统一配置全院人员岗位权限</span>
-              </div>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <span style="font-size: 13px; font-weight: 500;">切换系统视角：</span>
+              <el-radio-group v-model="permScopeView">
+                <el-radio-button value="CLINIC">🏥 云诊所权限 (5173)</el-radio-button>
+                <el-radio-button value="ADMIN">🏛️ 管理系统权限 (5174)</el-radio-button>
+              </el-radio-group>
             </div>
-            <el-card>
-              <el-table :data="staffRoles" stripe size="small">
-                <el-table-column prop="staffId" label="员工工号" width="110">
-                  <template #default="scope">
-                    <el-tag type="info">{{ scope.row.staffId }}</el-tag>
+            <el-alert v-if="permScopeView === 'CLINIC'" type="info" :closable="false" style="margin-bottom: 10px;"
+              title="控制各角色登录春播万象云诊所后可见的模块。系统最高管理员天然拥有全部权限无需配置；人事/商户默认无云诊所权限（仅使用管理中台），如需开通可点击该行的「编辑」。" />
+            <el-alert v-else type="info" :closable="false" style="margin-bottom: 10px;"
+              title="控制各角色登录春播云管理系统中台后左侧菜单可见的功能：医生/护士 = 经营分析大屏 + 我的工资条 + 请假申请；商户额外可见商城三模块；人事/管理员 = 全部。" />
+            <el-table :data="permRowsForView" stripe size="small">
+              <el-table-column prop="roleLabel" label="角色" width="170" />
+              <el-table-column :label="permScopeView === 'CLINIC' ? '云诊所模块权限' : '管理系统模块权限'" min-width="380">
+                <template #default="scope">
+                  <div v-if="scope.row.role === 'ADMIN'" class="perm-full-text">✅ 拥有{{ permScopeView === 'CLINIC' ? '云诊所' : '管理系统' }}全部模块权限（系统最高管理员，无需勾选配置）</div>
+                  <div v-else-if="permScopeView === 'CLINIC' && !scope.row.modules.length && !scope.row._editing" class="perm-none-text">
+                    ⛔ 无云诊所权限（该角色仅使用管理系统）
+                    <el-button size="small" text type="primary" @click="scope.row._editing = true">如需开通请点此编辑</el-button>
+                  </div>
+                  <el-checkbox-group v-else v-model="scope.row.modules">
+                    <el-checkbox v-for="m in (permScopeView === 'CLINIC' ? roleModuleOptions : adminModuleOptions)" :key="m.key" :value="m.key" style="margin-right: 10px;">{{ m.label }}</el-checkbox>
+                  </el-checkbox-group>
+                </template>
+              </el-table-column>
+              <el-table-column label="权限范围描述" min-width="200">
+                <template #default="scope">
+                  <el-input v-if="permRowsEditable(scope.row)" v-model="scope.row.description" size="small" :placeholder="permScopeView === 'CLINIC' ? '该角色在云诊所的权限范围描述' : '该角色在管理系统的权限范围描述'" />
+                  <span v-else style="color: #94a3b8; font-size: 12px;">{{ scope.row.description || '—' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="130" fixed="right">
+                <template #default="scope">
+                  <template v-if="permRowsEditable(scope.row)">
+                    <el-button v-if="scope.row._editing && !scope.row.modules.length" size="small" text @click="scope.row._editing = false">取消</el-button>
+                    <el-button type="primary" size="small" :loading="scope.row._saving" @click="saveRolePerm(scope.row)">保存</el-button>
                   </template>
-                </el-table-column>
-                <el-table-column prop="name" label="姓名" width="100" />
-                <el-table-column prop="title" label="岗位职称" width="140" />
-                <el-table-column prop="department" label="所属部门/科室" width="140" />
-                <el-table-column prop="role" label="安全角色" width="120">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.role === 'ADMIN' ? 'danger' : (scope.row.role === 'HR' ? 'warning' : 'primary')">{{ scope.row.role }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="permissions" label="系统功能与操作权限范围" min-width="260" />
-              </el-table>
+                  <span v-else style="color: #94a3b8; font-size: 12px;">无需配置</span>
+                </template>
+              </el-table-column>
+            </el-table>
             </el-card>
           </div>
 
@@ -975,9 +1036,10 @@
                 <el-button type="success" size="small" @click="showAddProductDialog = true">
                   + 新增商品档案
                 </el-button>
-                <el-button type="primary" size="small" plain @click="loadMallAdminProducts">
-                  🔄 刷新商品列表
+                <el-button type="warning" size="small" plain @click="triggerProductImport">
+                  ⬆ 表格新增商品
                 </el-button>
+                <input ref="productImportInput" type="file" accept=".xlsx,.xls" style="display:none" @change="handleProductImport" />
               </div>
             </div>
 
@@ -1000,14 +1062,22 @@
               </div>
               <div class="metric-card bg-green">
                 <div class="m-label">全栈进销存关联</div>
-                <div class="m-val">—</div>
-                <div class="m-sub">补货入库自动生成出入库台账</div>
+                <div class="m-val">{{ inventoryRecords.length }} <span class="unit">条</span></div>
+                <div class="m-sub">出入库台账流水（补货/发货自动生成）</div>
               </div>
+            </div>
+
+            <!-- 搜索 / 删除 / 分页工具栏 -->
+            <div class="batch-salary-toolbar">
+              <el-input v-model="productsPager.state.search" placeholder="搜索商品名 / 类别 / 厂家 / 状态…" size="small" clearable style="width: 260px;" />
+              <el-button size="small" type="danger" plain :disabled="!productSelection.length" @click="batchDeleteRows('/api/admin/mall/product/batch-delete', productSelection.map(r => r.id), '商品档案', loadMallAdminProducts)">🗑 删除选中</el-button>
+              <el-pagination style="margin-left: auto;" v-model:current-page="productsPager.state.page" v-model:page-size="productsPager.state.size" :page-sizes="[10, 20, 50]" :total="productsPager.total" layout="total, sizes, prev, pager, next" size="small" />
             </div>
 
             <!-- 商品表格 -->
             <el-card>
-              <el-table :data="mallProducts" stripe size="small" v-loading="mallLoading">
+              <el-table :data="productsPager.paged" stripe size="small" v-loading="mallLoading" @selection-change="productSelection = $event">
+                <el-table-column type="selection" width="42" />
                 <el-table-column prop="id" label="ID" width="55" />
                 <el-table-column label="商品图" width="92">
                   <template #default="scope">
@@ -1187,7 +1257,7 @@
                 <h3>👤 春播健康商城注册用户档案与账户管理</h3>
                 <span class="sub-desc">实时查看居民注册账号、消费余额、积分及账号状态</span>
               </div>
-              <el-button type="primary" size="small" plain @click="loadMallUsers">🔄 刷新用户列表</el-button>
+              <el-button type="primary" size="small" @click="openAddMallUserDialog">➕ 新增商城用户</el-button>
             </div>
 
             <!-- 指标卡 -->
@@ -1209,14 +1279,22 @@
               </div>
               <div class="metric-card bg-purple">
                 <div class="m-label">已发放新人购药金</div>
-                <div class="m-val">¥—</div>
-                <div class="m-sub">每位新注册居民预赠 200 元体验金</div>
+                <div class="m-val">¥{{ mallUsers.reduce((s, u) => s + (Number(u.balance) || 0), 0).toFixed(2) }}</div>
+                <div class="m-sub">每位新注册居民预赠 200 元体验金（注册自动入账）</div>
               </div>
+            </div>
+
+            <!-- 搜索 / 删除 / 分页工具栏 -->
+            <div class="batch-salary-toolbar">
+              <el-input v-model="usersPager.state.search" placeholder="搜索账号 / 手机号 / 状态…" size="small" clearable style="width: 240px;" />
+              <el-button size="small" type="danger" plain :disabled="!userSelection.length" @click="batchDeleteRows('/api/admin/mall/user/batch-delete', userSelection.map(r => r.id), '商城注册用户', loadMallUsers)">🗑 删除选中</el-button>
+              <el-pagination style="margin-left: auto;" v-model:current-page="usersPager.state.page" v-model:page-size="usersPager.state.size" :page-sizes="[10, 20, 50]" :total="usersPager.total" layout="total, sizes, prev, pager, next" size="small" />
             </div>
 
             <!-- 用户表格 -->
             <el-card>
-              <el-table :data="mallUsers" stripe size="small" v-loading="mallUsersLoading">
+              <el-table :data="usersPager.paged" stripe size="small" v-loading="mallUsersLoading" @selection-change="userSelection = $event">
+                <el-table-column type="selection" width="42" />
                 <el-table-column prop="id" label="用户ID" width="70" />
                 <el-table-column prop="username" label="登录账号/手机" width="140">
                   <template #default="scope">
@@ -1275,128 +1353,48 @@
                   <span>总额: ¥{{ order.finalAmount || order.totalAmount }}</span>
                   <span>下单时间: {{ order.createTime }}</span>
                 </div>
-                <div class="order-json-box">
+                <div v-if="parseOrderItems(order.itemsJson).length" class="order-items-box">
+                  <div v-for="(it, i) in parseOrderItems(order.itemsJson)" :key="i" class="order-item-line">
+                    <span class="oi-name">{{ it.productName || '商品' }}</span>
+                    <span class="oi-spec">{{ it.specification || '' }}</span>
+                    <span class="oi-qty">×{{ it.quantity || 1 }}</span>
+                    <span class="oi-price">¥{{ (Number(it.unitPrice || 0) * (Number(it.quantity) || 1)).toFixed(2) }}</span>
+                  </div>
+                </div>
+                <div v-else class="order-json-box">
                   {{ order.itemsJson }}
                 </div>
               </div>
             </el-drawer>
-          </div>
 
-          <!-- 8. 人事账号注册与管理 (管理员专属) -->
-          <div v-else-if="currentTab === 'hr-management'" class="tab-pane">
-            <div class="pane-header">
-              <div>
-                <h3>🏛️ 医院综合中台人事与全员账号授权管理 (最高权限管理员专属)</h3>
-                <span class="sub-desc">超级管理员可在此注册授权新人事账号，人事账号拥有工资发放、请假审批与医生注册权限</span>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <el-button type="danger" size="small" @click="showRegisterHrDialog = true">
-                  ➕ 注册新人事账号
-                </el-button>
-                <el-button type="primary" size="small" plain @click="loadStaffList">
-                  🔄 刷新员工列表
-                </el-button>
-              </div>
-            </div>
-
-            <!-- 全员表格 -->
-            <el-card>
-              <template #header>
-                <div class="flex-between">
-                  <b>📋 全院管理人员与医护员工权限总台账</b>
-                  <el-tag type="danger">最高管理级别管控</el-tag>
-                </div>
-              </template>
-              <el-table :data="allStaffList" stripe size="small" v-loading="staffLoading">
-                <el-table-column prop="id" label="ID" width="55" />
-                <el-table-column prop="username" label="登录工号/账号" width="130">
-                  <template #default="scope">
-                    <el-tag effect="plain" type="primary" class="font-mono"><b>{{ scope.row.username }}</b></el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="realName" label="真实姓名" width="120">
-                  <template #default="scope">
-                    <b>{{ scope.row.realName }}</b>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="staffId" label="员工编号" width="110">
-                  <template #default="scope">
-                    <el-tag type="info" size="small">{{ scope.row.staffId }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="role" label="安全角色" width="110">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.role === 'ADMIN' ? 'danger' : (scope.row.role === 'HR' ? 'warning' : 'success')" effect="dark">
-                      {{ scope.row.role === 'ADMIN' ? '管理员' : (scope.row.role === 'HR' ? '人事主管' : '门诊医生') }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="department" label="所属部门/科室" width="160" />
-                <el-table-column prop="title" label="岗位职称" width="130" />
-                <el-table-column prop="phone" label="联系电话" width="120" />
-                <el-table-column prop="status" label="状态" width="90">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.status === 'ENABLE' ? 'success' : 'danger'" size="small">
-                      {{ scope.row.status === 'ENABLE' ? '正常' : '已停用' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="管理员操作" width="200" fixed="right">
-                  <template #default="scope">
-                    <el-button 
-                      size="small" 
-                      :type="scope.row.status === 'ENABLE' ? 'warning' : 'success'" 
-                      link
-                      @click="handleToggleStaffStatus(scope.row)"
-                    >
-                      {{ scope.row.status === 'ENABLE' ? '停用' : '启用' }}
-                    </el-button>
-                    <el-button size="small" type="primary" link @click="handleResetStaffPassword(scope.row)">
-                      重置密码
-                    </el-button>
-                    <el-button 
-                      v-if="scope.row.username !== 'admin'" 
-                      size="small" 
-                      type="danger" 
-                      link 
-                      @click="handleDeleteStaff(scope.row)"
-                    >
-                      删除
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
-
-            <!-- 注册人事弹窗 -->
-            <el-dialog v-model="showRegisterHrDialog" title="🏛️ 注册新人事主管账号 (最高管理员专属)" width="480px">
-              <el-alert title="人事角色拥有审核全院请假、核发医生工资条、注册授权医生账号等核心权限。" type="warning" :closable="false" class="mb-16" />
-              <el-form :model="newHrForm" label-width="100px">
-                <el-form-item label="人事登录工号" required>
-                  <el-input v-model="newHrForm.username" placeholder="如 hr_wang 或 2001" />
+            <!-- 新增商城用户弹窗（注册后可直接在春播商城登录） -->
+            <el-dialog v-model="showAddMallUserDialog" title="➕ 新增春播商城用户" width="480px">
+              <el-form :model="newMallUserForm" label-width="100px">
+                <el-form-item label="登录账号" required>
+                  <el-input v-model="newMallUserForm.username" placeholder="商城登录用户名，如 chenmin2026" />
                 </el-form-item>
-                <el-form-item label="人事真实姓名" required>
-                  <el-input v-model="newHrForm.realName" placeholder="如 王文静" />
+                <el-form-item label="登录密码" required>
+                  <el-input v-model="newMallUserForm.password" placeholder="至少 6 位，默认 123456" show-password />
                 </el-form-item>
-                <el-form-item label="初始密码" required>
-                  <el-input v-model="newHrForm.password" placeholder="默认 123456" show-password />
+                <el-form-item label="姓名/称呼" required>
+                  <el-input v-model="newMallUserForm.nickname" placeholder="真实姓名或称呼，如 张女士 / 李先生" />
                 </el-form-item>
-                <el-form-item label="联系电话">
-                  <el-input v-model="newHrForm.phone" placeholder="手机号码" />
+                <el-form-item label="手机号" required>
+                  <el-input v-model="newMallUserForm.phone" placeholder="1 开头的 11 位手机号" maxlength="11" />
                 </el-form-item>
-                <el-form-item label="所属部门">
-                  <el-input v-model="newHrForm.department" />
-                </el-form-item>
-                <el-form-item label="职级岗位">
-                  <el-input v-model="newHrForm.title" />
+                <el-form-item label="收货地址">
+                  <el-input v-model="newMallUserForm.address" type="textarea" :rows="2" placeholder="选填，默认就医配送地址" />
                 </el-form-item>
               </el-form>
+              <div style="font-size: 12px; color: #64748b;">注册成功自动发放 ¥200 新人健康体验金 + 200 健康积分，账号立即可在春播商城登录。</div>
               <template #footer>
-                <el-button @click="showRegisterHrDialog = false">取消</el-button>
-                <el-button type="danger" :loading="registerHrLoading" @click="submitRegisterHr">确认注册人事账号</el-button>
+                <el-button @click="showAddMallUserDialog = false">取消</el-button>
+                <el-button type="primary" :loading="addMallUserLoading" @click="submitAddMallUser">注册用户</el-button>
               </template>
             </el-dialog>
           </div>
+
+          <!-- 8. 人事账号注册与管理已并入「医护账号与权限管理」统一总台账 -->
         </main>
       </div>
 
@@ -1418,122 +1416,105 @@
         </template>
       </el-dialog>
 
-    <!-- 核算并发放全员工资条 (支持门诊医生、商城商户及人事 + AI 智能测算绩效与工资) -->
-    <el-dialog 
-      v-model="showIssueSalaryDialog" 
-      title="💰 全员月度薪酬核算与工资条发放中心" 
-      width="680px"
-      destroy-on-close
-    >
-      <div class="salary-dist-intro">
-        <el-alert 
-          type="info" 
-          show-icon 
-          :closable="false"
-          title="支持为人事主管、门诊医生及商城商户核发月度工资条。点击「AI 智能测算绩效与工资」系统将联动数据库真实看诊/处方/电商订单/出库实绩进行深度智能核算与评分！"
-        />
-      </div>
-
-      <el-form label-width="120px" class="mt-4">
-        <el-form-item label="发薪员工 *" required>
-          <el-select 
-            v-model="selectedCandidateStaffId" 
-            placeholder="请选择要核发薪酬的员工" 
-            style="width: 100%"
-            @change="handleSelectSalaryCandidate"
-          >
-            <el-option 
-              v-for="c in staffCandidates" 
-              :key="c.staffId" 
-              :label="`${c.staffId} - ${c.realName} (${getCandidateRoleLabel(c.role)})`" 
-              :value="c.staffId" 
-            />
+    <!-- 统一注册账号弹窗（选角色即定权限，全局任意 tab 可打开） -->
+    <el-dialog v-model="showRegisterUnifiedDialog" title="➕ 注册系统账号（按角色自动生效权限）" width="500px">
+      <el-alert type="info" :closable="false" style="margin-bottom: 14px;"
+        title="医生/护士可登录云诊所与管理中台（按角色权限范围），人事/商户仅登录管理中台。注册成功后自动获得该角色的权限范围。" />
+      <el-form :model="newRegisterForm" label-width="100px">
+        <el-form-item label="系统角色" required>
+          <el-select v-model="newRegisterForm.role" style="width: 100%">
+            <el-option v-for="r in registerRoleOptions" :key="r.value" :label="r.label" :value="r.value" />
           </el-select>
         </el-form-item>
-
-        <div style="display: flex; gap: 16px; align-items: center;">
-          <el-form-item label="发薪月份 *" required style="flex: 1; margin-bottom: 18px;">
-            <el-input v-model="salaryDistForm.month" placeholder="如 2026-09" />
-          </el-form-item>
-          
-          <div style="margin-bottom: 18px;">
-            <el-button 
-              type="primary" 
-              class="ai-calc-btn"
-              :loading="aiCalcLoading"
-              @click="handleAiCalculateSalary"
-            >
-              🤖 AI 智能测算绩效与工资
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 💡 AI 测算分析依据与数据追溯卡片 -->
-        <div v-if="aiMetricsBasis" class="ai-reasoning-card mb-4">
-          <div class="ai-reasoning-title">
-            <span>💡 AI 智能测算依据与工作实绩分析</span>
-            <el-tag size="small" type="success" effect="dark">{{ aiMetricsBasis.rating || '卓越 A+' }}</el-tag>
-          </div>
-          <div class="ai-reasoning-item">
-            <span class="ai-k">📊 真实工作量支撑：</span>
-            <span class="ai-v">{{ aiMetricsBasis.workloadDesc }}</span>
-          </div>
-          <div class="ai-reasoning-item">
-            <span class="ai-k">🧮 薪酬测算明细公式：</span>
-            <span class="ai-v" style="font-family: monospace; color: #0284c7; font-weight: bold;">{{ aiMetricsBasis.formula }}</span>
-          </div>
-          <div class="ai-reasoning-tags">
-            <span class="badge">履约满意度: {{ aiMetricsBasis.satisfaction || '98.8%' }}</span>
-            <span class="badge">制度合规率: {{ aiMetricsBasis.complianceRate || '100%' }}</span>
-            <span class="badge">员工角色: {{ getCandidateRoleLabel(selectedCandidateRole) }}</span>
-          </div>
-        </div>
-
-        <div class="salary-calc-box">
-          <div class="calc-row">
-            <el-form-item label="基本岗位底薪">
-              <el-input-number v-model="salaryDistForm.baseSalary" :min="0" :step="100" @change="recalcNetSalary" />
-            </el-form-item>
-            <el-form-item :label="commLabel1">
-              <el-input-number v-model="salaryDistForm.clinicCommission" :min="0" :step="100" @change="recalcNetSalary" />
-            </el-form-item>
-          </div>
-
-          <div class="calc-row">
-            <el-form-item :label="commLabel2">
-              <el-input-number v-model="salaryDistForm.plasterCommission" :min="0" :step="100" @change="recalcNetSalary" />
-            </el-form-item>
-            <el-form-item label="五险一金代扣">
-              <el-input-number v-model="salaryDistForm.deductionSocial" :min="0" :step="50" @change="recalcNetSalary" />
-            </el-form-item>
-          </div>
-
-          <div class="calc-row">
-            <el-form-item label="个人所得税">
-              <el-input-number v-model="salaryDistForm.tax" :min="0" :step="10" @change="recalcNetSalary" />
-            </el-form-item>
-            <el-form-item label="实发到手薪酬">
-              <span class="net-salary-highlight">¥{{ computedNetSalary.toFixed(2) }}</span>
-            </el-form-item>
-          </div>
-
-          <el-form-item label="AI 智能考评评语">
-            <el-input 
-              v-model="salaryDistForm.aiComment" 
-              type="textarea" 
-              :rows="3" 
-              placeholder="AI 智能考评评语将在此展示，支持人工编辑调整..." 
-            />
-          </el-form-item>
-        </div>
+        <el-form-item label="登录账号" required>
+          <el-input v-model="newRegisterForm.username" placeholder="登录用户名，如 doctor_wang / hr_li" />
+        </el-form-item>
+        <el-form-item label="初始密码" required>
+          <el-input v-model="newRegisterForm.password" placeholder="默认 123456" show-password />
+        </el-form-item>
+        <el-form-item label="真实姓名" required>
+          <el-input v-model="newRegisterForm.realName" placeholder="如 王文清 / 王文静" />
+        </el-form-item>
+        <el-form-item label="手机号" required>
+          <el-input v-model="newRegisterForm.phone" placeholder="1 开头的 11 位手机号" maxlength="11" />
+        </el-form-item>
+        <el-form-item label="部门/科室" required>
+          <el-select v-model="newRegisterForm.department" style="width: 100%" filterable allow-create default-first-option placeholder="选择或输入">
+            <el-option label="全科门诊" value="全科门诊" />
+            <el-option label="全科慢病门诊" value="全科慢病门诊" />
+            <el-option label="中医理疗特色门诊" value="中医理疗特色门诊" />
+            <el-option label="儿科综合门诊" value="儿科综合门诊" />
+            <el-option label="智慧药房" value="智慧药房" />
+            <el-option label="人事行政科" value="人事行政科" />
+            <el-option label="综合行政人事部" value="综合行政人事部" />
+            <el-option label="医院院办" value="医院院办" />
+            <el-option label="春播商城运营部" value="春播商城运营部" />
+            <el-option label="信息中心" value="信息中心" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="岗位职称" required>
+          <el-select v-model="newRegisterForm.title" style="width: 100%" filterable allow-create default-first-option placeholder="选择或输入">
+            <el-option label="主任医师" value="主任医师" />
+            <el-option label="副主任医师" value="副主任医师" />
+            <el-option label="主治医师" value="主治医师" />
+            <el-option label="执业医师" value="执业医师" />
+            <el-option label="护士" value="护士" />
+            <el-option label="人事主管" value="人事主管" />
+            <el-option label="人事专员" value="人事专员" />
+            <el-option label="供应链主管" value="供应链主管" />
+            <el-option label="运营主管" value="运营主管" />
+            <el-option label="行政助理" value="行政助理" />
+          </el-select>
+        </el-form-item>
       </el-form>
-
       <template #footer>
-        <el-button @click="showIssueSalaryDialog = false">取消</el-button>
-        <el-button type="success" :loading="distributeLoading" @click="submitDistributeSalary">
-          确认正式发放工资条
-        </el-button>
+        <el-button @click="showRegisterUnifiedDialog = false">取消</el-button>
+        <el-button type="success" :loading="registerUnifiedLoading" @click="submitRegisterUnified">确认注册</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 发放记录弹窗（支持自由缩放、关键字搜索、月份筛选） -->
+    <el-dialog v-model="showSlipHistoryDialog" title="📋 工资发放记录台账" width="1080px" destroy-on-close class="slip-history-dialog">
+      <div class="batch-salary-toolbar">
+        <el-input v-model="slipSearchKey" placeholder="搜索工号 / 姓名…" size="small" clearable style="width: 240px;" />
+        <el-select v-model="slipFilterMonth" clearable placeholder="全部月份" size="small" style="width: 130px;">
+          <el-option v-for="m in slipMonthOptions" :key="m" :label="m" :value="m" />
+        </el-select>
+        <span style="font-size: 12px; color: #64748b;">
+          共 {{ filteredSalarySlips.length }} 条记录
+          <template v-if="filteredSalarySlips.length">，合计实发 <b class="text-danger">¥{{ filteredSalarySlips.reduce((s, x) => s + (Number(x.netSalary) || 0), 0).toFixed(2) }}</b></template>
+        </span>
+        <el-button size="small" type="danger" plain :disabled="!slipSelection.length" @click="batchDeleteRows('/api/assistant/salary/batch-delete', slipSelection.map(r => r.id), '工资条记录', loadSalaryData)">🗑 删除选中</el-button>
+        <el-pagination style="margin-left: auto;" v-model:current-page="slipsPager.state.page" v-model:page-size="slipsPager.state.size" :page-sizes="[10, 20, 50]" :total="slipsPager.total" layout="total, sizes, prev, pager, next" size="small" />
+      </div>
+      <el-table :data="slipsPager.paged" stripe size="small" style="width: 100%;" max-height="460" border @selection-change="slipSelection = $event">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="doctorId" label="员工工号" width="115" />
+        <el-table-column prop="doctorName" label="员工姓名" width="105" />
+        <el-table-column prop="salaryMonth" label="归属月份" width="95" />
+        <el-table-column prop="baseSalary" label="基本底薪" width="105">
+          <template #default="scope"><span>¥{{ scope.row.baseSalary }}</span></template>
+        </el-table-column>
+        <el-table-column prop="clinicCommission" label="门诊/电商提成" width="125">
+          <template #default="scope"><span class="text-success">+¥{{ scope.row.clinicCommission }}</span></template>
+        </el-table-column>
+        <el-table-column prop="plasterCommission" label="贴敷理疗/合规奖" width="135">
+          <template #default="scope"><span class="text-success font-bold">+¥{{ scope.row.plasterCommission }}</span></template>
+        </el-table-column>
+        <el-table-column prop="netSalary" label="实发工资" min-width="110">
+          <template #default="scope"><b class="text-danger" style="font-size: 14px;">¥{{ scope.row.netSalary }}</b></template>
+        </el-table-column>
+        <el-table-column prop="status" label="发放状态" width="95" align="center">
+          <template #default="scope">
+            <el-tag type="success" size="small" effect="dark">{{ scope.row.status || '已发放' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="发放时间" width="155">
+          <template #default="scope">
+            <span style="font-size: 12px; color: #64748b;">{{ (scope.row.createTime || '').replace('T', ' ').slice(0, 19) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-dialog>
 
     <!-- 弹窗：商城订单发货出库与顺丰物流生成 -->
@@ -1600,7 +1581,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick , watch } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick , watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
@@ -1654,6 +1635,10 @@ const handleAdminLogin = async () => {
       currentUserTitle.value = res.data.title || '主治医师'
       isLoggedIn.value = true
 
+      // 登录后按当前角色重新拉取管理系统权限配置（scope=ADMIN），替代页面初始加载时可能拉到的旧角色配置
+      allowedAdminTabs.value = null
+      await loadAdminRolePermissions()
+
       // 根据角色智能跳转默认首屏
       if (currentUserRole.value === 'DOCTOR') {
         currentTab.value = 'analytics'
@@ -1695,6 +1680,7 @@ const handleLogoutConfirm = () => {
     localStorage.removeItem('chunbo_admin_staff_id')
     localStorage.removeItem('chunbo_admin_dept')
     localStorage.removeItem('chunbo_admin_title')
+    allowedAdminTabs.value = null
     isLoggedIn.value = false
     showProfileDialog.value = false
     ElMessage.success('已安全注销退出')
@@ -1706,8 +1692,65 @@ const handleLogoutConfirm = () => {
 // ==============================================
 // 当前主标签：刷新后保持在原标签页（localStorage 持久化）
 const currentTab = ref(localStorage.getItem('chunbo_admin_tab') || 'analytics')
+// 员工角色矩阵、人事与商户中台管理均已并入「医护账号与权限管理」(doctors)，纠正历史缓存
+if (currentTab.value === 'roles' || currentTab.value === 'hr-management') {
+  currentTab.value = 'doctors'
+}
+
+// ── 角色允许的中台模块（sys_role_permission scope=ADMIN 动态配置，替代写死的 v-if）──
+const allowedAdminTabs = ref(null)
+const defaultAdminTabs = (role) => {
+  const r = (role || '').toUpperCase()
+  if (r === 'MERCHANT') return ['analytics', 'salary', 'approval', 'mall-orders', 'mall-products', 'mall-users']
+  if (r === 'HR') return ['analytics', 'salary', 'approval', 'doctors']
+  if (r === 'DOCTOR' || r === 'NURSE') return ['analytics', 'salary', 'approval']
+  return ['analytics', 'mall-orders', 'mall-products', 'mall-users', 'salary', 'approval', 'doctors']
+}
+const loadAdminRolePermissions = async () => {
+  try {
+    const res = await axios.get('/api/role-permissions')
+    const cfg = (res.data || []).find(r =>
+      String(r.role || '').toUpperCase() === (currentUserRole.value || '').toUpperCase()
+      && String(r.scope || '').toUpperCase() === 'ADMIN')
+    if (cfg) {
+      const mods = JSON.parse(cfg.modulesJson || '[]')
+      allowedAdminTabs.value = Array.isArray(mods) ? mods : []
+    }
+  } catch (e) {}
+}
+const canSeeTab = (key) => allowedAdminTabs.value
+  ? allowedAdminTabs.value.includes(key)
+  : defaultAdminTabs(currentUserRole.value).includes(key)
+watch(allowedAdminTabs, () => {
+  if (allowedAdminTabs.value && allowedAdminTabs.value.length && !allowedAdminTabs.value.includes(currentTab.value)) {
+    const first = defaultAdminTabs(currentUserRole.value).find(k => allowedAdminTabs.value.includes(k))
+    if (first) currentTab.value = first
+  }
+}, { immediate: true })
+loadAdminRolePermissions()
+// 切换标签页时自动刷新该页数据（每次进入都拉最新，不再依赖登录时的一次性加载）
+const tabLoaders = {
+  analytics: () => { loadAnalytics(); loadSalaryData() },
+  'mall-orders': () => loadMallOrders(),
+  'mall-products': () => { loadMallAdminProducts(); loadAnalytics() },
+  'mall-users': () => loadMallUsers(),
+  salary: () => {
+    loadSalaryData()
+    if (currentUserRole.value !== 'DOCTOR' && currentUserRole.value !== 'MERCHANT') loadBatchSalaryBoard()
+  },
+  approval: () => loadApprovals(),
+  doctors: () => { loadStaffRoles(); loadDoctorAccounts(); loadRolePermRows() },
+  'hr-management': () => loadStaffList()
+}
 watch(currentTab, (v) => {
   try { localStorage.setItem('chunbo_admin_tab', v) } catch (e) {}
+  // 进入工资条管理 tab（ADMIN/HR）时自动加载全员薪酬核算表
+  if (v === 'salary' && currentUserRole.value !== 'DOCTOR' && currentUserRole.value !== 'MERCHANT') {
+    loadBatchSalaryBoard()
+  }
+  // 按当前角色权限过滤后刷新对应页面数据
+  const loader = tabLoaders[v]
+  if (loader && canSeeTab(v)) loader()
 })
 // 商户无经营大屏权限：恢复到不可见标签时自动纠正
 if (currentUserRole.value === 'MERCHANT' && currentTab.value === 'analytics') {
@@ -1741,20 +1784,11 @@ const displayApprovals = computed(() => {
 // 医生账号管理
 const doctorAccounts = ref([])
 const doctorLoading = ref(false)
-const showRegisterDoctorDialog = ref(false)
-const registerLoading = ref(false)
-const newDoctorForm = ref({
-  username: '',
-  doctorName: '',
-  password: '123456',
-  doctorId: '',
-  department: '全科慢病门诊',
-  title: '主治医师',
-  phone: ''
-})
-
+// 指标卡改为统一台账口径（staffRoles = 医生表+员工表去重合并的真实账号）
+const unifiedStaffTotal = computed(() => staffRoles.value.length)
+const activeStaffCount = computed(() => staffRoles.value.filter(s => s.status === 'ENABLE').length)
+const departmentCount = computed(() => new Set(staffRoles.value.map(s => s.department).filter(d => d && d !== '—')).size)
 const activeDoctorCount = computed(() => doctorAccounts.value.filter(d => d.status === 'ENABLE').length)
-const departmentCount = computed(() => new Set(doctorAccounts.value.map(d => d.department).filter(Boolean)).size || 4)
 
 // 商城商品管理
 const mallProducts = ref([])
@@ -1829,16 +1863,6 @@ const userOrders = ref([])
 // 人事管理 (Admin 专属)
 const allStaffList = ref([])
 const staffLoading = ref(false)
-const showRegisterHrDialog = ref(false)
-const registerHrLoading = ref(false)
-const newHrForm = ref({
-  username: '',
-  realName: '',
-  password: '123456',
-  phone: '',
-  department: '人事行政科',
-  title: '人事主管'
-})
 
 // OA 请假
 const approvalViewRole = ref('DEAN')
@@ -1941,6 +1965,10 @@ const loadAdminSessions = () => {
         const active = adminSessionList.value.find(s => s.id === currentAdminSessionId.value) || adminSessionList.value[0]
         chatMessages.value = active.messages || []
         syncAdminSessionsFromBackend()
+        // 进入页面自动滚到最新消息，不用手动往下翻
+        nextTick(() => {
+          if (chatBoxRef.value) chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+        })
         return
       }
     }
@@ -2024,6 +2052,7 @@ const createNewAdminSession = () => {
   currentAdminSessionId.value = newSess.id
   chatMessages.value = newSess.messages
   saveAdminSessions()
+  scrollChatToBottom()
   ElMessage.success('已新建专属全中台 AI 调度会话')
 }
 
@@ -2036,6 +2065,7 @@ const switchAdminSession = (sessionId) => {
     chatMessages.value = target.messages || []
     saveAdminSessions()
     showAdminHistoryDrawer.value = false
+    scrollChatToBottom()
     ElMessage.success(`已切换至会话【${target.title}】`)
   }
 }
@@ -2048,6 +2078,7 @@ const deleteAdminSession = (sessionId) => {
     if (adminSessionList.value.length > 0) {
       currentAdminSessionId.value = adminSessionList.value[0].id
       chatMessages.value = adminSessionList.value[0].messages || []
+      scrollChatToBottom()
     } else {
       createNewAdminSession()
     }
@@ -2092,6 +2123,15 @@ watch(currentUserStaffId, () => {
 const inputQuery = ref('')
 const chatLoading = ref(false)
 const chatBoxRef = ref(null)
+// 聊天区滚动到底（新消息/切换会话/进入页面统一调用）
+const scrollChatToBottom = () => {
+  nextTick(() => {
+    if (chatBoxRef.value) chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+  })
+}
+// 附件（工资表图片 / Excel）→ AI 提取表格后 function-calling 发工资
+const chatAttachment = ref(null)   // { fileId, fileName, fileType, previewUrl }
+const chatFileInput = ref(null)
 
 onMounted(() => {
   if (isLoggedIn.value) {
@@ -2119,12 +2159,14 @@ const loadAllData = async () => {
   loadStaffRoles()
   loadDoctorAccounts()
   loadStaffCandidates()
+  loadRolePermRows()
   if (currentUserRole.value === 'ADMIN' || currentUserRole.value === 'MERCHANT') {
     loadMallOrders()
     loadMallAdminProducts()
     loadMallUsers()
+    loadAnalytics()
   }
-  if (currentUserRole.value === 'ADMIN') {
+  if (currentUserRole.value === 'ADMIN' || currentUserRole.value === 'HR') {
     loadStaffList()
   }
 }
@@ -2159,6 +2201,369 @@ const loadSalaryData = async () => {
   } catch (e) {}
 }
 
+// ── 全员薪酬核算与发放中枢（tab 主区域，表格化批量管理）──
+// 当前日期（本地时区，避免 toISOString 的 UTC 偏移导致错位）
+const currentLocalDate = () => {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+const salaryBoardMonth = ref(currentLocalDate())
+const batchSalaryRows = ref([])
+const batchSalaryExcelInput = ref(null)
+const batchSalaryTableRef = ref(null)
+const batchSelection = ref([])
+const batchAiAllLoading = ref(false)
+// 实发 = 基本底薪 + 门诊/电商提成 + 贴敷理疗合规奖 − 社保代扣 − 个税
+const batchRowNet = (row) =>
+  (Number(row.baseSalary) || 0) + (Number(row.clinicCommission) || 0) + (Number(row.plasterCommission) || 0)
+  - (Number(row.deductionSocial) || 0) - (Number(row.tax) || 0)
+const batchTotalAmount = computed(() => batchSalaryRows.value.reduce((s, r) => s + batchRowNet(r), 0))
+const onBatchSelectionChange = (sel) => { batchSelection.value = sel }
+
+const loadBatchSalaryBoard = async () => {
+  batchSalaryRows.value = []
+  batchSelection.value = []
+  // 发薪精确到天：发薪日期是完整日期（YYYY-MM-DD），同员工同「发放日」重发才覆盖
+  const payDate = salaryBoardMonth.value
+  try {
+    const [candRes, slipRes] = await Promise.all([
+      axios.get('/api/assistant/salary/staff-candidates'),
+      axios.get('/api/assistant/salary')
+    ])
+    const cands = candRes.data || []
+    const slips = (slipRes.data || []).filter(s => s.salaryMonth === payDate)
+    for (const c of cands) {
+      const slip = slips.find(s => String(s.doctorId || '').toLowerCase() === String(c.staffId || '').toLowerCase())
+      batchSalaryRows.value.push({
+        staffId: c.staffId,
+        name: c.realName,
+        role: c.role,
+        roleLabel: getCandidateRoleLabel(c.role),
+        baseSalary: slip ? Number(slip.baseSalary) : 0,
+        clinicCommission: slip ? Number(slip.clinicCommission) : 0,
+        plasterCommission: slip ? Number(slip.plasterCommission) : 0,
+        deductionSocial: slip ? Number(slip.deductionSocial) : 0,
+        tax: slip ? Number(slip.tax) : 0,
+        hasAccount: true,
+        slipId: slip ? slip.id : null,
+        source: slip ? '该日已发放（重发将覆盖）' : '待发放',
+        sourceType: slip ? 'success' : 'info',
+        isNew: false,
+        _aiLoading: false,
+        _paying: false
+      })
+    }
+  } catch (e) {
+    ElMessage.error('加载全院员工列表失败')
+  }
+}
+
+// 删除工资发放记录 + 同步删除医院员工账号（工资名单与系统员工账号一一对应）
+const deleteSalaryBoardRows = async (rows) => {
+  if (!rows || !rows.length) {
+    ElMessage.warning('请先勾选要删除的行')
+    return
+  }
+  const accountRows = rows.filter(r => r.hasAccount !== false && r.staffId)
+  const draftRows = rows.filter(r => r.hasAccount === false || !r.staffId)
+
+  // 纯草稿行（无账号/无落库数据）：仅从本表移除
+  if (!accountRows.length) {
+    try {
+      await ElMessageBox.confirm(
+        `确定移除选中的 ${draftRows.length} 条行？（无系统账号、无落库工资数据，仅从本表移除）`,
+        '移除确认',
+        { type: 'warning', confirmButtonText: '确认移除', cancelButtonText: '取消' }
+      )
+    } catch (e) { return }
+    batchSalaryRows.value = batchSalaryRows.value.filter(r => !draftRows.includes(r))
+    ElMessage.success(`已移除 ${draftRows.length} 条行`)
+    return
+  }
+
+  // 先拉最新账号/工资数据，确保按最新状态匹配
+  try { await Promise.all([loadDoctorAccounts(), loadStaffList()]) } catch (e) {}
+  const doctorDel = []   // { row, accountId }
+  const staffDel = []
+  const missAccounts = []
+  for (const r of accountRows) {
+    const sid = String(r.staffId)
+    const doc = doctorAccounts.value.find(d => String(d.username) === sid || String(d.doctorId) === sid)
+    const stf = doc ? null : allStaffList.value.find(s => String(s.staffId) === sid)
+    if (doc) doctorDel.push({ row: r, accountId: doc.id })
+    else if (stf) staffDel.push({ row: r, accountId: stf.id })
+    else missAccounts.push(r.name || sid)
+  }
+  if (missAccounts.length) {
+    ElMessage.warning(`以下人员在系统账号表中未找到对应账号，将只删工资记录不删账号：${missAccounts.join('、')}`)
+  }
+  const accNames = accountRows.map(r => `${r.name || r.staffId}(${r.staffId})`).slice(0, 6).join('、') + (accountRows.length > 6 ? ` 等 ${accountRows.length} 人` : '')
+  try {
+    await ElMessageBox.confirm(
+      `确定删除：${accNames}？将执行——① 删除该(这些)员工的全部工资发放记录；② 同步删除医院系统员工账号。⚠️ 账号删除后该员工将无法登录系统，并从工资名单中永久移除，删除不可恢复！`,
+      '删除工资记录与员工账号',
+      { type: 'warning', confirmButtonText: '确认删除（含账号）', cancelButtonText: '取消' }
+    )
+  } catch (e) { return }
+
+  try {
+    // 1) 删该员工全部工资发放记录（含历史月份，账号删了不留孤儿数据）
+    const slipRes = await axios.get('/api/assistant/salary')
+    const allSlips = slipRes.data || []
+    const slipIds = []
+    for (const r of accountRows) {
+      const sid = String(r.staffId).toLowerCase()
+      for (const s of allSlips) {
+        if (String(s.doctorId || '').toLowerCase() === sid) slipIds.push(s.id)
+      }
+    }
+    if (slipIds.length) {
+      const del = await axios.post('/api/assistant/salary/batch-delete', { ids: slipIds })
+      if (!del.data?.success) {
+        ElMessage.error(del.data?.message || '删除工资记录失败')
+        return
+      }
+    }
+    // 2) 删员工账号（复用医生/员工管理页已有删除接口，路径级 ADMIN/HR 权限保护）
+    let delAcc = 0
+    const failAcc = []
+    for (const d of doctorDel) {
+      try { await axios.delete('/api/doctor/' + d.accountId); delAcc++ } catch (e) { failAcc.push(d.row.name || d.row.staffId) }
+    }
+    for (const s of staffDel) {
+      try { await axios.delete('/api/admin/staff/' + s.accountId); delAcc++ } catch (e) { failAcc.push(s.row.name || s.row.staffId) }
+    }
+    // 3) 草稿行仅从本表移除
+    if (draftRows.length) batchSalaryRows.value = batchSalaryRows.value.filter(r => !draftRows.includes(r))
+    ElMessage.success(`已删除 ${slipIds.length} 条工资发放记录、${delAcc} 个员工账号${failAcc.length ? '；账号删除失败：' + failAcc.join('、') : ''}`)
+    await loadBatchSalaryBoard()
+    if (typeof loadSalaryData === 'function') loadSalaryData()
+  } catch (e) {
+    ElMessage.error('删除失败：' + (e.response?.data?.message || e.message))
+  }
+}
+
+const triggerBatchExcelUpload = () => {
+  batchSalaryExcelInput.value && batchSalaryExcelInput.value.click()
+}
+const handleBatchExcelFill = async (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    ElMessage.warning('请选择 Excel 工资表（xlsx / xls）')
+    e.target.value = ''
+    return
+  }
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const res = await axios.post('/api/assistant/salary/parse-excel', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const d = res.data
+    if (!d || !d.success) {
+      ElMessage.error((d && d.message) || '工资表解析失败')
+      e.target.value = ''
+      return
+    }
+    let matched = 0, noAccount = 0
+    for (const r of (d.rows || [])) {
+      const amt = Number(String(r.amount).trim())
+      if (isNaN(amt) || amt <= 0) continue
+      const key = String(r.employeeId || '').trim().toLowerCase()
+      const nm = String(r.employeeName || '').trim()
+      const hit = batchSalaryRows.value.find(x =>
+        (key && String(x.staffId || '').toLowerCase() === key) ||
+        (nm && x.name && x.name === nm))
+      if (hit) {
+        hit.baseSalary = amt
+        hit.clinicCommission = 0
+        hit.plasterCommission = 0
+        hit.deductionSocial = 0
+        hit.tax = 0
+        hit.source = '工资表填充'
+        hit.sourceType = 'warning'
+        matched++
+      } else {
+        // 工资表里出现但系统无账号的人员：红标警示、不可发放（工资必须与系统账号一一对应）
+        batchSalaryRows.value.push({
+          staffId: r.employeeId || '', name: nm || '', role: '', roleLabel: '表内人员',
+          baseSalary: amt, clinicCommission: 0, plasterCommission: 0, deductionSocial: 0, tax: 0,
+          hasAccount: false,
+          source: '⚠️ 系统中无此账号，不可发放', sourceType: 'danger', isNew: false, _aiLoading: false, _paying: false
+        })
+        noAccount++
+      }
+    }
+    if (noAccount > 0) {
+      ElMessage.warning(`工资表填充完成：匹配到系统员工 ${matched} 人；另有 ${noAccount} 人在系统中无账号，已红标且不可发放（发放名单必须与系统员工账号一一对应）`)
+    } else {
+      ElMessage.success(`工资表填充完成：匹配到系统员工 ${matched} 人`)
+    }
+    nextTick(() => {
+      if (batchSalaryTableRef.value) batchSalaryTableRef.value.setScrollTop(99999)
+    })
+  } catch (err) {
+    ElMessage.error('解析失败：' + (err.response?.data?.message || err.message || '网络错误'))
+  }
+  e.target.value = ''
+}
+const addBatchRow = () => {
+  batchSalaryRows.value.push({
+    staffId: '', name: '', role: '', roleLabel: '手动添加',
+    baseSalary: 0, clinicCommission: 0, plasterCommission: 0, deductionSocial: 0, tax: 0,
+    source: '手动添加', sourceType: 'info', isNew: true, _aiLoading: false, _paying: false
+  })
+  // 自动滚动到列表底部，让新加的行立即可见
+  nextTick(() => {
+    if (batchSalaryTableRef.value) batchSalaryTableRef.value.setScrollTop(99999)
+  })
+}
+const aiCalcBatchRow = async (row, silent = false) => {
+  if (!row.staffId) {
+    ElMessage.warning('请先填写员工工号')
+    return false
+  }
+  row._aiLoading = true
+  try {
+    const res = await axios.post('/api/assistant/salary/ai-calculate', {
+      staffId: row.staffId, name: row.name, role: row.role, month: String(salaryBoardMonth.value || '').slice(0, 7)
+    })
+    const d = res.data
+    if (d && (d.success !== false) && d.netSalary != null) {
+      row.baseSalary = Number(d.baseSalary) || 0
+      row.clinicCommission = Number(d.clinicCommission) || 0
+      row.plasterCommission = Number(d.plasterCommission) || 0
+      row.deductionSocial = Number(d.deductionSocial) || 0
+      row.tax = Number(d.tax) || 0
+      row.source = 'AI 智能测算'
+      row.sourceType = 'primary'
+      // 单行测算才弹提示；全员批量测算静默，结束后统一汇总，避免通知刷屏
+      if (!silent) {
+        ElNotification({
+          title: '🤖 AI 测算完成',
+          message: `${row.name || row.staffId} 实发 ¥${batchRowNet(row).toFixed(2)}${d.aiComment ? '｜' + d.aiComment : ''}${d.metricsBasis && d.metricsBasis.formula ? '｜公式：' + d.metricsBasis.formula : ''}`,
+          type: 'success', duration: 6000
+        })
+      }
+      return true
+    } else {
+      if (!silent) {
+        ElMessage.warning((d && d.message) || `AI 测算失败：${row.name || row.staffId} 缺少历史工资与业务量数据，请手动填写`)
+      }
+      return false
+    }
+  } catch (e) {
+    if (!silent) {
+      ElMessage.error('AI 测算失败：' + (e.response?.data?.message || e.message))
+    }
+    return false
+  } finally {
+    row._aiLoading = false
+  }
+}
+// 全员 AI 测算：逐行调用（串行避免打爆接口），结束只弹一个汇总提示
+const aiCalcAllRows = async () => {
+  const rows = batchSalaryRows.value.filter(r => !r.isNew && r.staffId)
+  if (!rows.length) {
+    ElMessage.warning('没有可测算的员工')
+    return
+  }
+  batchAiAllLoading.value = true
+  let ok = 0
+  const failed = []
+  try {
+    for (const r of rows) {
+      const success = await aiCalcBatchRow(r, true)
+      if (success) ok++
+      else failed.push(r.name || r.staffId)
+    }
+    if (failed.length) {
+      ElMessage.success(`全员 AI 测算完成：成功 ${ok}/${rows.length} 人；${failed.length} 人无历史工资与业务量数据（${failed.join('、')}），请手动填写`)
+    } else {
+      ElMessage.success(`全员 AI 测算完成：${rows.length} 人全部测算成功，实发合计 ¥${batchTotalAmount.value.toFixed(2)}`)
+    }
+  } finally {
+    batchAiAllLoading.value = false
+  }
+}
+const buildBatchPayRows = (list) => list
+  .filter(r => r.hasAccount !== false && batchRowNet(r) > 0 && String(r.staffId || '').trim() && String(r.name || '').trim())
+  .map(r => ({
+    staffId: String(r.staffId).trim(), name: String(r.name).trim(),
+    baseSalary: Number(r.baseSalary) || 0, clinicCommission: Number(r.clinicCommission) || 0,
+    plasterCommission: Number(r.plasterCommission) || 0, deductionSocial: Number(r.deductionSocial) || 0,
+    tax: Number(r.tax) || 0
+  }))
+const doBatchPay = async (rows) => {
+  distributeLoading.value = true
+  try {
+    const res = await axios.post('/api/assistant/salary/batch-pay', { month: salaryBoardMonth.value, rows })
+    const d = res.data
+    if (d && d.success) {
+      const lines = (d.details || [])
+        .map(x => `<div style="margin:2px 0;">${x.success ? '✅' : '❌'} <b>${x.name || x.staffId}</b>：${x.message || ''}</div>`)
+        .join('')
+      ElMessageBox.alert(lines || d.message, `发放完成（成功 ${d.successCount} 人 / 失败 ${d.failCount} 人，合计 ¥${Number(d.totalAmount || 0).toFixed(2)}）`, {
+        dangerouslyUseHTMLString: true, confirmButtonText: '知道了'
+      }).catch(() => {})
+      await loadSalaryData()
+      await loadBatchSalaryBoard()
+    } else {
+      ElMessage.error((d && d.message) || '批量发放失败')
+    }
+  } catch (e) {
+    ElMessage.error('批量发放失败：' + (e.response?.data?.message || e.message))
+  } finally {
+    distributeLoading.value = false
+  }
+}
+const submitBatchSalary = async (selectedList) => {
+  const rows = buildBatchPayRows(selectedList || [])
+  if (!rows.length) {
+    ElMessage.warning('没有可发放的记录（需实发>0 且工号姓名齐全）')
+    return
+  }
+  doBatchPay(rows)
+}
+const paySingleRow = async (row) => {
+  const one = buildBatchPayRows([row])
+  if (!one.length) {
+    ElMessage.warning('该行实发金额为 0 或工号/姓名未填全')
+    return
+  }
+  row._paying = true
+  try {
+    await doBatchPay(one)
+  } finally {
+    row._paying = false
+  }
+}
+
+// 发放记录弹窗：关键字搜索 + 月份筛选（salaryMonth 兼容历史"YYYY-MM"与新的精确到天"YYYY-MM-DD"两种存法，按前缀匹配）
+const showSlipHistoryDialog = ref(false)
+const slipSearchKey = ref('')
+const slipFilterMonth = ref('')
+const slipMonthOptions = computed(() => {
+  const set = new Set((salarySlips.value || []).map(s => String(s.salaryMonth || '').slice(0, 7)).filter(Boolean))
+  return Array.from(set).sort().reverse()
+})
+const filteredSalarySlips = computed(() => {
+  let list = displaySalarySlips.value
+  if (slipFilterMonth.value) list = list.filter(s => String(s.salaryMonth || '').startsWith(slipFilterMonth.value))
+  const key = slipSearchKey.value.trim().toLowerCase()
+  if (key) {
+    list = list.filter(s =>
+      String(s.doctorId || '').toLowerCase().includes(key) ||
+      String(s.doctorName || '').toLowerCase().includes(key))
+  }
+  return list
+})
+
+// 页面刷新后直接落在工资 tab 时 watch 不会触发，这里补一次初始加载（修复"进来空白，选月份才出数据"）
+if (currentTab.value === 'salary' && currentUserRole.value !== 'DOCTOR' && currentUserRole.value !== 'MERCHANT') {
+  loadBatchSalaryBoard()
+}
+
+
 const loadApprovals = async () => {
   try {
     const res = await axios.get('/api/assistant/approvals')
@@ -2173,6 +2578,148 @@ const loadStaffRoles = async () => {
   } catch (e) {}
 }
 
+// ── 角色与权限动态管理（医护账号与权限管理页）──
+const roleOptions = [
+  { value: 'ADMIN', label: 'ADMIN 管理员' },
+  { value: 'HR', label: 'HR 人事' },
+  { value: 'DOCTOR', label: 'DOCTOR 医生' },
+  { value: 'NURSE', label: 'NURSE 护士' },
+  { value: 'MERCHANT', label: 'MERCHANT 商户' }
+]
+const roleModuleOptions = [
+  { key: 'registration', label: '📋 门诊挂号' },
+  { key: 'clinic', label: '🩺 门诊接诊' },
+  { key: 'billing', label: '💰 划价收费' },
+  { key: 'treatment', label: '💉 特色执行站' },
+  { key: 'pharmacy', label: '💊 智慧药房' },
+  { key: 'patient', label: '📁 患者档案' },
+  { key: 'ai-settings', label: '⚙️ 设置' }
+]
+// 管理中台模块（5174 侧栏菜单，与云诊所模块是两套独立权限）
+const adminModuleOptions = [
+  { key: 'analytics', label: '📊 经营分析大屏' },
+  { key: 'mall-orders', label: '📦 商城订单履约' },
+  { key: 'mall-products', label: '🛍️ 商城商品与进销存' },
+  { key: 'mall-users', label: '👤 商城注册用户' },
+  { key: 'salary', label: '💼 工资条管理' },
+  { key: 'approval', label: '📑 OA请假审批' },
+  { key: 'doctors', label: '👨‍⚕️ 医护账号与权限' }
+]
+const permRowsByScope = (list, scope) =>
+  list.filter(r => String(r.scope || 'CLINIC').toUpperCase() === scope).map(r => ({
+    role: r.role,
+    roleLabel: r.roleLabel || r.role,
+    scope: String(r.scope || 'CLINIC').toUpperCase(),
+    modules: (() => { try { return JSON.parse(r.modulesJson || '[]') } catch (e) { return [] } })(),
+    description: r.description || '',
+    _saving: false
+  }))
+const rolePermRows = ref([])
+const clinicPermRows = computed(() => permRowsByScope(rolePermRows.value, 'CLINIC'))
+const adminPermRows = computed(() => permRowsByScope(rolePermRows.value, 'ADMIN'))
+// 权限面板系统视角切换：同一份角色列表，切到云诊所/管理系统分别显示各自的模块配置
+const permScopeView = ref('CLINIC')
+const permRowsForView = computed(() => {
+  // 云诊所视角下不展示无云诊所权限的角色（人事/商户等空配置行），只列真正使用云诊所的角色
+  if (permScopeView.value === 'CLINIC') return clinicPermRows.value.filter(r => r.modules.length > 0)
+  return adminPermRows.value
+})
+const permRowsEditable = (row) => {
+  if (row.role === 'ADMIN') return false
+  if (permScopeView.value === 'ADMIN') return true
+  return Boolean(row.modules.length || row._editing)
+}
+const loadRolePermRows = async () => {
+  try {
+    const res = await axios.get('/api/role-permissions')
+    rolePermRows.value = res.data || []
+  } catch (e) {}
+}
+const saveRolePerm = async (row) => {
+  row._saving = true
+  try {
+    const res = await axios.post('/api/admin/role-permissions/save', {
+      role: row.role, roleLabel: row.roleLabel, scope: row.scope, modules: row.modules, description: row.description
+    })
+    if (res.data?.success) {
+      ElMessage.success(res.data.message || '已保存')
+      loadRolePermRows()
+      loadStaffRoles()
+      loadAdminRolePermissions()
+    } else {
+      ElMessage.error(res.data?.message || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e.response?.data?.message || e.message))
+  } finally { row._saving = false }
+}
+const handleStaffRoleRowChange = async (row, newRole) => {
+  try {
+    const res = await axios.post('/api/admin/staff/update-role', { staffId: row.staffId, role: newRole })
+    if (res.data?.success) {
+      ElMessage.success(res.data.message || '角色已更新')
+    } else {
+      ElMessage.error(res.data?.message || '角色更新失败')
+    }
+  } catch (e) {
+    ElMessage.error('角色更新失败：' + (e.response?.data?.message || e.message))
+  }
+  loadStaffRoles()
+}
+
+// ── 统一注册账号（选角色即定权限，医生/护士/人事/商户/管理员一张表全收）──
+const showRegisterUnifiedDialog = ref(false)
+const registerUnifiedLoading = ref(false)
+const newRegisterForm = ref({ role: 'DOCTOR', username: '', password: '123456', realName: '', phone: '', department: '', title: '' })
+const registerRoleOptions = [
+  { value: 'DOCTOR', label: '医生（云诊所全部模块 + 中台：大屏/工资条/请假）' },
+  { value: 'NURSE', label: '护士（云诊所：挂号/划价/执行/药房/患者档案 + 中台：大屏/工资条/请假）' },
+  { value: 'HR', label: '人事（仅管理中台：大屏/工资发放/审批/医护账号管理）' },
+  { value: 'MERCHANT', label: '商户（仅管理中台：商城三模块 + 工资条/请假）' },
+  { value: 'ADMIN', label: '系统最高管理员（两套系统全部权限）' }
+]
+const openRegisterUnified = () => {
+  newRegisterForm.value = { role: 'DOCTOR', username: '', password: '123456', realName: '', phone: '', department: '', title: '' }
+  showRegisterUnifiedDialog.value = true
+}
+const submitRegisterUnified = async () => {
+  const f = newRegisterForm.value
+  if (!f.username.trim() || !f.realName.trim()) {
+    ElMessage.warning('登录账号与真实姓名为必填项')
+    return
+  }
+  if (!f.phone.trim() || !/^1\d{10}$/.test(f.phone.trim())) {
+    ElMessage.warning('请输入 1 开头的 11 位手机号')
+    return
+  }
+  if (!f.department.trim() || !f.title.trim()) {
+    ElMessage.warning('请选择部门/科室与岗位职称')
+    return
+  }
+  registerUnifiedLoading.value = true
+  try {
+    const res = await axios.post('/api/admin/staff/register', {
+      role: f.role, username: f.username.trim(), password: f.password.trim() || '123456',
+      realName: f.realName.trim(), phone: f.phone.trim(), department: f.department.trim(), title: f.title.trim()
+    })
+    if (res.data?.success) {
+      ElNotification({
+        title: '账号注册成功！',
+        message: res.data.message || `账号已创建，角色 ${f.role}，自动获得对应权限`,
+        type: 'success'
+      })
+      showRegisterUnifiedDialog.value = false
+      loadStaffRoles()
+      loadStaffList()
+      loadDoctorAccounts()
+    } else {
+      ElMessage.error(res.data?.message || '注册失败')
+    }
+  } catch (e) {
+    ElMessage.error('注册失败：' + (e.response?.data?.message || e.message))
+  } finally { registerUnifiedLoading.value = false }
+}
+
 // 医生管理
 const loadDoctorAccounts = async () => {
   doctorLoading.value = true
@@ -2182,64 +2729,47 @@ const loadDoctorAccounts = async () => {
   } catch (e) {} finally { doctorLoading.value = false }
 }
 
-const submitRegisterDoctor = async () => {
-  if (!newDoctorForm.value.username.trim() || !newDoctorForm.value.doctorName.trim()) {
-    ElMessage.warning('请输入登录工号与医生真实姓名')
-    return
-  }
-  registerLoading.value = true
-  try {
-    const res = await axios.post('/api/doctor/register', newDoctorForm.value)
-    if (res.data?.success) {
-      ElNotification({
-        title: '医生账号注册成功！',
-        message: `工号 [${newDoctorForm.value.username}] 已创建，可立即在医生工作台 (http://localhost:5173/login) 登录！`,
-        type: 'success'
-      })
-      showRegisterDoctorDialog.value = false
-      newDoctorForm.value = { username: '', doctorName: '', password: '123456', doctorId: '', department: '全科慢病门诊', title: '主治医师', phone: '' }
-      loadDoctorAccounts()
-    } else {
-      ElMessage.error(res.data?.message || '注册失败')
-    }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.message || e.message)
-  } finally { registerLoading.value = false }
-}
-
-const handleToggleDoctorStatus = async (row) => {
-  const newStatus = row.status === 'ENABLE' ? 'DISABLE' : 'ENABLE'
-  try {
-    await axios.post('/api/doctor/update-status', { id: row.id, status: newStatus })
-    row.status = newStatus
-    ElMessage.success(newStatus === 'ENABLE' ? '账号已启用' : '账号已停用')
-  } catch (e) { ElMessage.error('更新失败') }
-}
-
-const handleResetDoctorPassword = async (row) => {
-  ElMessageBox.confirm(`确定将医生 [${row.doctorName}] 的工作台密码重置为 123456 吗？`, '重置确认', { type: 'warning' })
-    .then(async () => {
-      const res = await axios.post('/api/doctor/reset-password', { id: row.id, newPassword: '123456' })
-      ElMessage.success(res.data?.message || '密码已重置为 123456')
-    }).catch(() => {})
-}
-
-const handleDeleteDoctor = async (row) => {
-  ElMessageBox.confirm(`确定要注销删除医生账号 [${row.doctorName}] 吗？`, '删除确认', { type: 'danger' })
-    .then(async () => {
-      await axios.delete(`/api/doctor/${row.id}`)
-      ElMessage.success('已删除')
-      loadDoctorAccounts()
-    }).catch(() => {})
-}
-
-// 商城商品进销存
 const loadMallAdminProducts = async () => {
   mallLoading.value = true
   try {
     const res = await axios.get('/api/admin/mall/products')
     if (res.data?.success) mallProducts.value = res.data.data || []
   } catch (e) {} finally { mallLoading.value = false }
+}
+
+// ── 进销存：Excel 商品表批量导入（新商品建档上架；已存在同价库存累加；异价拒绝）──
+const productImportInput = ref(null)
+const triggerProductImport = () => {
+  productImportInput.value && productImportInput.value.click()
+}
+const handleProductImport = async (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    ElMessage.warning('请选择 Excel 商品表（xlsx / xls）')
+    e.target.value = ''
+    return
+  }
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const res = await axios.post('/api/admin/mall/product/batch-import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const d = res.data
+    if (d && d.success) {
+      const lines = (d.details || [])
+        .map(x => `<div style="margin:2px 0;">${x.success ? '✅' : '⛔'} <b>${x.productName || ''}</b>：${x.message || ''}</div>`)
+        .join('')
+      ElMessageBox.alert(lines || d.message, `商品表导入完成（新增 ${d.addedCount} / 累加 ${d.mergedCount} / 失败 ${d.failCount}）`, {
+        dangerouslyUseHTMLString: true, confirmButtonText: '知道了'
+      }).catch(() => {})
+      loadMallAdminProducts()
+    } else {
+      ElMessage.error((d && d.message) || '商品表导入失败')
+    }
+  } catch (err) {
+    ElMessage.error('导入失败：' + (err.response?.data?.message || err.message || '网络错误'))
+  }
+  e.target.value = ''
 }
 
 const handleToggleProductStatus = async (row) => {
@@ -2334,10 +2864,59 @@ const handleToggleMallUserStatus = async (row) => {
 
 const viewUserOrders = async (row) => {
   try {
-    const res = await axios.get('/api/admin/mall/user/orders?buyerName=' + encodeURIComponent(row.nickname || row.username))
+    // 优先传登录账号（唯一），后端据此定位用户后按 昵称+手机号 like 匹配订单
+    const kw = row.username || row.nickname || ''
+    const res = await axios.get('/api/admin/mall/user/orders?buyerName=' + encodeURIComponent(kw))
     userOrders.value = res.data?.data || []
     showUserOrderDrawer.value = true
   } catch (e) { ElMessage.error('获取订单失败') }
+}
+
+// ── 新增商城用户（注册即可在春播商城登录，自动发 ¥200 体验金）──
+const showAddMallUserDialog = ref(false)
+const addMallUserLoading = ref(false)
+const newMallUserForm = ref({ username: '', password: '123456', nickname: '', phone: '', address: '' })
+const openAddMallUserDialog = () => {
+  newMallUserForm.value = { username: '', password: '123456', nickname: '', phone: '', address: '' }
+  showAddMallUserDialog.value = true
+}
+const submitAddMallUser = async () => {
+  const f = newMallUserForm.value
+  if (!f.username.trim() || !f.password.trim() || !f.nickname.trim() || !f.phone.trim()) {
+    ElMessage.warning('登录账号、密码、姓名/称呼、手机号均为必填项')
+    return
+  }
+  if (f.password.trim().length < 6) {
+    ElMessage.warning('登录密码长度至少 6 位')
+    return
+  }
+  if (!/^1\d{10}$/.test(f.phone.trim())) {
+    ElMessage.warning('请输入 1 开头的 11 位手机号')
+    return
+  }
+  addMallUserLoading.value = true
+  try {
+    const res = await axios.post('/api/mall/user/register', {
+      username: f.username.trim(),
+      password: f.password.trim(),
+      nickname: f.nickname.trim(),
+      phone: f.phone.trim(),
+      address: f.address.trim()
+    })
+    if (res.data?.success) {
+      ElNotification({
+        title: '商城用户注册成功！',
+        message: `账号 [${f.username.trim()}] 已创建，自动发放 ¥200 新人体验金，可直接登录春播商城。`,
+        type: 'success'
+      })
+      showAddMallUserDialog.value = false
+      loadMallUsers()
+    } else {
+      ElMessage.error(res.data?.message || '注册失败')
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || e.message || '注册失败')
+  } finally { addMallUserLoading.value = false }
 }
 
 // 人事管理 (Admin 专属)
@@ -2349,74 +2928,83 @@ const loadStaffList = async () => {
   } catch (e) {} finally { staffLoading.value = false }
 }
 
-const submitRegisterHr = async () => {
-  if (!newHrForm.value.username.trim() || !newHrForm.value.realName.trim()) {
-    ElMessage.warning('请填写人事工号与真实姓名')
-    return
-  }
-  registerHrLoading.value = true
-  try {
-    const res = await axios.post('/api/admin/hr/register', newHrForm.value)
-    if (res.data?.success) {
-      ElNotification({
-        title: '人事账号注册成功！',
-        message: `人事主管 [${newHrForm.value.realName} (${newHrForm.value.username})] 可立即登录中台进行审批与发薪！`,
-        type: 'success'
-      })
-      showRegisterHrDialog.value = false
-      newHrForm.value = { username: '', realName: '', password: '123456', phone: '', department: '人事行政科', title: '人事主管' }
-      loadStaffList()
-    } else {
-      ElMessage.error(res.data?.message || '注册失败')
-    }
-  } catch (e) { ElMessage.error(e.response?.data?.message || e.message) }
-  finally { registerHrLoading.value = false }
-}
-
-const handleToggleStaffStatus = async (row) => {
-  const nextStatus = row.status === 'ENABLE' ? 'DISABLE' : 'ENABLE'
-  try {
-    await axios.post('/api/admin/staff/status', { id: row.id, status: nextStatus })
-    row.status = nextStatus
-    ElMessage.success('员工状态已更新')
-  } catch (e) { ElMessage.error('操作失败') }
-}
-
-const handleResetStaffPassword = async (row) => {
-  ElMessageBox.confirm(`确定将 [${row.realName}] 的密码重置为 123456 吗？`, '重置确认')
-    .then(async () => {
-      const res = await axios.post('/api/admin/staff/reset-password', { id: row.id, newPassword: '123456' })
-      ElMessage.success(res.data?.message || '密码已重置为 123456')
-    }).catch(() => {})
-}
-
-const handleDeleteStaff = async (row) => {
-  ElMessageBox.confirm(`确定删除员工账号 [${row.realName}] 吗？`, '删除确认', { type: 'danger' })
-    .then(async () => {
-      await axios.delete('/api/admin/staff/' + row.id)
-      ElMessage.success('已删除')
-      loadStaffList()
-    }).catch(() => {})
-}
-
-// OA 与 AI 助手逻辑
 const askAssistant = (query) => {
   inputQuery.value = query
   sendAssistantQuery()
 }
 
+// ── 附件上传（工资表图片 / Excel）→ AI 提取表格 + function-calling 发工资 ──
+const triggerFileUpload = () => {
+  chatFileInput.value && chatFileInput.value.click()
+}
+const handleFileSelect = async (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const isImage = file.type.startsWith('image/')
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name)
+  if (!isImage && !isExcel) {
+    ElMessage.warning('请选择图片（jpg/png）或 Excel（xlsx/xls）工资表')
+    return
+  }
+  const previewUrl = isImage ? URL.createObjectURL(file) : ''
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const resp = await fetch('/api/upload/file', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') }, body: fd })
+    const data = await resp.json()
+    if (data && data.success) {
+      // 图片用持久 URL（/uploads/attachments/xxx，重启后历史图片不裂）；Excel 带后端解析好的 Markdown 表格预览
+      const persistentUrl = data.url || previewUrl
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      chatAttachment.value = {
+        fileId: data.fileId, fileName: file.name, fileType: data.fileType,
+        previewUrl: persistentUrl, excelPreview: data.excelPreview || '',
+        sizeLabel: formatFileSize(file.size)
+      }
+      ElMessage.success(isExcel ? 'Excel 已上传，发送后将提取表格并发工资' : '图片已上传，发送后将识别表格')
+    } else {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      ElMessage.error('上传失败：' + (data && data.message ? data.message : '未知错误'))
+    }
+  } catch (err) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    ElMessage.error('上传失败：' + (err.message || '网络错误'))
+  }
+  e.target.value = ''
+}
+const removeAttachment = () => {
+  chatAttachment.value = null
+}
+const formatFileSize = (bytes) => {
+  const b = Number(bytes) || 0
+  if (b >= 1024 * 1024) return (b / 1024 / 1024).toFixed(2) + 'MB'
+  if (b >= 1024) return (b / 1024).toFixed(2) + 'KB'
+  return b + 'B'
+}
+
 const sendAssistantQuery = async () => {
   const text = inputQuery.value.trim()
-  if (!text || chatLoading.value) return
+  // 附件先取出（原先在发请求前就被 removeAttachment 清掉，导致 attachmentId 永远传不到后端）
+  const att = chatAttachment.value
+    ? { fileId: chatAttachment.value.fileId, fileName: chatAttachment.value.fileName, fileType: chatAttachment.value.fileType, previewUrl: chatAttachment.value.previewUrl, excelPreview: chatAttachment.value.excelPreview || '', sizeLabel: chatAttachment.value.sizeLabel || '' }
+    : null
+  if ((!text && !att) || chatLoading.value) return
+  const sendText = text || '请识别并处理我上传的工资表文件'
 
-  // 压入用户消息
-  chatMessages.value.push({ role: 'user', content: text })
+  // 压入用户消息：附件用文件卡片渲染（气泡顶部），不再重复展示提取出的表格数据（发放结果里 AI 会汇总）
+  chatMessages.value.push({
+    role: 'user',
+    content: sendText,
+    image: att && att.fileType === 'image' ? att.previewUrl : undefined,
+    attachment: att ? { fileName: att.fileName, fileType: att.fileType, sizeLabel: att.sizeLabel, previewUrl: att.previewUrl } : undefined
+  })
+  chatAttachment.value = null
   // 首个用户问题自动生成会话标题
   const curSess = adminSessionList.value.find(s => s.id === currentAdminSessionId.value)
   if (curSess) {
     const hadUserMsg = (curSess.messages || []).some(m => m.role === 'user')
     if (!hadUserMsg || curSess.title === '新建调度会话' || curSess.title === '全中台运营调度主会话') {
-      curSess.title = text.length > 14 ? text.slice(0, 14) + '…' : text
+      curSess.title = sendText.length > 14 ? sendText.slice(0, 14) + '…' : sendText
     }
   }
   saveUserChatHistory()
@@ -2435,7 +3023,8 @@ const sendAssistantQuery = async () => {
   const abort = new AbortController()
   assistantAbort = abort
   assistantActiveSessionId = currentAdminSessionId.value || ('OA_S_' + Date.now())
-  const sseUrl = `/api/assistant/chat/stream?message=${encodeURIComponent(text)}&userId=${encodeURIComponent(currentUserStaffId.value)}&userRole=${encodeURIComponent(currentUserRole.value)}&userName=${encodeURIComponent(currentUserName.value)}&sessionId=${encodeURIComponent(assistantActiveSessionId)}`
+  const attachParam = att && att.fileId ? `&attachmentId=${encodeURIComponent(att.fileId)}&fileName=${encodeURIComponent(att.fileName || '')}` : ''
+  const sseUrl = `/api/assistant/chat/stream?message=${encodeURIComponent(sendText)}&userId=${encodeURIComponent(currentUserStaffId.value)}&userRole=${encodeURIComponent(currentUserRole.value)}&userName=${encodeURIComponent(currentUserName.value)}&sessionId=${encodeURIComponent(assistantActiveSessionId)}${attachParam}`
   try {
     const resp = await fetch(sseUrl, {
       headers: { 'Authorization': 'Bearer ' + localStorage.getItem('chunbo_admin_token') },
@@ -2504,6 +3093,8 @@ const sendAssistantQuery = async () => {
     if (assistantAbort === abort) assistantAbort = null
     chatLoading.value = false
     saveUserChatHistory()
+    // 工资类指令执行完后自动刷新工资条台账，让发放结果立即在「工资条管理」页面可见
+    if (/(工资|薪资|薪酬|发薪|工资条)/.test(sendText)) loadSalaryData()
     nextTick(() => {
       if (chatBoxRef.value) chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
     })
@@ -2770,24 +3361,25 @@ const submitLeave = async () => {
       applicantId: currentUserStaffId.value,
       approvalType: leaveForm.value.type,
       reason: leaveForm.value.reason,
-      durationDays: leaveForm.value.days,
-      status: '待审批',
-      approverName: '人事主管 / 院办',
-      comment: '已提交人事待办审批'
+      durationDays: leaveForm.value.days
     }
-    await axios.post('/api/assistant/approval/create', payload)
+    const res = await axios.post('/api/assistant/approvals/create', payload)
+    if (!res.data?.success) {
+      ElMessage.error(res.data?.message || '提交失败')
+      return
+    }
     ElNotification({
       title: '请假申请提交成功',
-      message: `已提交至人事/院办审批待办`,
+      message: res.data.message || '已提交至人事/院办审批待办',
       type: 'success'
     })
     loadApprovals()
-  } catch (e) { ElMessage.error('提交失败') }
+  } catch (e) { ElMessage.error(e.response?.data?.message || '提交失败') }
 }
 
 const handleDeanApprove = async (row, action) => {
   try {
-    await axios.post('/api/assistant/approval/process', {
+    await axios.post('/api/assistant/approvals/process', {
       id: row.id,
       status: action,
       approver: currentUserName.value + ' (' + currentRoleLabel.value + ')',
@@ -2824,8 +3416,7 @@ const loadMallOrders = async () => {
   try {
     const res = await axios.get('/api/admin/mall/user/orders')
     mallOrdersList.value = res.data?.data || []
-  } catch (e) {
-    console.error("加载商城订单失败", e)
+  } catch (e) {    console.error("加载商城订单失败", e)
   }
 }
 
@@ -3103,6 +3694,169 @@ const submitRegisterMerchant = async () => {
     merchantSubmitting.value = false
   }
 }
+
+// ── 通用列表搜索/分页工厂（客户端分页，叠加在既有筛选之上）──
+const makeListPager = (sourceRef, fields) => {
+  const state = reactive({ search: '', page: 1, size: 10 })
+  const searched = computed(() => {
+    const key = state.search.trim().toLowerCase()
+    const list = sourceRef.value || []
+    if (!key) return list
+    return list.filter(item => fields.some(f => String(item[f] ?? '').toLowerCase().includes(key)))
+  })
+  const paged = computed(() => searched.value.slice((state.page - 1) * state.size, state.page * state.size))
+  const total = computed(() => searched.value.length)
+  watch(() => state.search, () => { state.page = 1 })
+  return reactive({ state, searched, paged, total })
+}
+
+const ordersPager = makeListPager(filteredMallOrders, ['orderNo', 'buyerName', 'status', 'clinicName'])
+const productsPager = makeListPager(mallProducts, ['productName', 'category', 'specification', 'manufacturer', 'status'])
+const usersPager = makeListPager(mallUsers, ['username', 'phone', 'status'])
+const doctorsPager = makeListPager(doctorAccounts, ['username', 'doctorName', 'department', 'title', 'phone'])
+const staffRolesPager = makeListPager(staffRoles, ['staffId', 'name', 'title', 'department', 'role'])
+const approvalsPager = makeListPager(approvals, ['applicantName', 'leaveType', 'status', 'reason'])
+const myApprovalsPager = makeListPager(displayApprovals, ['applicantName', 'approvalType', 'status', 'reason'])
+const slipsPager = makeListPager(filteredSalarySlips, ['doctorId', 'doctorName', 'salaryMonth'])
+const staffListPager = makeListPager(allStaffList, ['staffId', 'realName', 'role', 'department', 'status'])
+const salaryBoardPager = makeListPager(batchSalaryRows, ['staffId', 'name', 'roleLabel', 'role', 'source'])
+// 医护账号统一总台账（后端 /staff-roles 已做医生表+员工表去重合并）
+const unifiedPager = makeListPager(staffRoles, ['staffId', 'username', 'name', 'department', 'title', 'role', 'permissions'])
+const unifiedSelection = ref([])
+// 统一行操作：按 source 分派到医生表/员工表接口
+const toggleUnifiedStatus = async (row) => {
+  const nextStatus = row.status === 'ENABLE' ? 'DISABLE' : 'ENABLE'
+  try {
+    if (row.source === 'doctor') {
+      await axios.post('/api/doctor/update-status', { id: row.id, status: nextStatus })
+    } else {
+      await axios.post('/api/admin/staff/status', { id: row.id, status: nextStatus })
+    }
+    row.status = nextStatus
+    ElMessage.success(nextStatus === 'ENABLE' ? '账号已启用' : '账号已停用')
+  } catch (e) { ElMessage.error('操作失败') }
+}
+const resetUnifiedPassword = async (row) => {
+  ElMessageBox.confirm(`确定将 [${row.name}] 的密码重置为 123456 吗？`, '重置确认', { type: 'warning' })
+    .then(async () => {
+      const res = row.source === 'doctor'
+        ? await axios.post('/api/doctor/reset-password', { id: row.id, newPassword: '123456' })
+        : await axios.post('/api/admin/staff/reset-password', { id: row.id, newPassword: '123456' })
+      ElMessage.success(res.data?.message || '密码已重置为 123456')
+    }).catch(() => {})
+}
+const deleteUnifiedAccounts = async (rows) => {
+  if (!rows || !rows.length) {
+    ElMessage.warning('请先勾选要删除的账号')
+    return
+  }
+  const names = rows.map(r => `${r.name || r.username}(${r.staffId})`).join('、')
+  try {
+    await ElMessageBox.confirm(
+      `确定删除：${names}？删除后该账号将无法登录对应系统，操作不可恢复。`,
+      '删除账号确认',
+      { type: 'danger', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
+  } catch (e) { return }
+  let ok = 0
+  const fail = []
+  for (const r of rows) {
+    try {
+      if (r.source === 'doctor') await axios.delete('/api/doctor/' + r.id)
+      else await axios.delete('/api/admin/staff/' + r.id)
+      ok++
+    } catch (e) { fail.push(r.name || r.staffId) }
+  }
+  ElMessage.success(`已删除 ${ok} 个账号${fail.length ? '；失败：' + fail.join('、') : ''}`)
+  loadStaffRoles()
+  loadDoctorAccounts()
+  loadStaffList()
+}
+
+// 各页多选勾选
+const orderSelection = ref([])
+const productSelection = ref([])
+const userSelection = ref([])
+const doctorSelection = ref([])
+const staffRoleSelection = ref([])
+const approvalSelection = ref([])
+const slipSelection = ref([])
+const staffListSelection = ref([])
+
+// 通用批量删除（singleMode=true 时按 url/{id} 逐条删除）
+const batchDeleteRows = async (url, ids, label, reload, singleMode = false) => {
+  if (!ids || !ids.length) {
+    ElMessage.warning('请先勾选要删除的记录')
+    return
+  }
+  ElMessageBox.confirm(`确定删除选中的 ${ids.length} 条${label}？删除后不可恢复。`, '删除确认', {
+    type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消'
+  }).then(async () => {
+    try {
+      if (singleMode) {
+        for (const id of ids) await axios.delete(url + '/' + id)
+        ElMessage.success(`已删除 ${ids.length} 条${label}`)
+      } else {
+        const res = await axios.post(url, { ids })
+        if (!res.data?.success) {
+          ElMessage.error(res.data?.message || '删除失败')
+          return
+        }
+        ElMessage.success(res.data.message || `已删除 ${ids.length} 条${label}`)
+      }
+      if (reload) reload()
+    } catch (e) {
+      ElMessage.error('删除失败：' + (e.response?.data?.message || e.message))
+    }
+  }).catch(() => {})
+}
+
+// OA 审批：单条批准/驳回
+const processApprovalRow = async (row, status) => {
+  try {
+    const res = await axios.post('/api/assistant/approvals/process', {
+      id: row.id,
+      status,
+      approver: currentUserName.value,
+      comment: status === '已驳回' ? '请假事由不符合规范，请调整后重新申请' : '情况属实，同意请假'
+    })
+    if (res.data?.success) {
+      ElMessage.success(res.data.message)
+      loadApprovals()
+    } else {
+      ElMessage.error(res.data?.message || '审批处理失败')
+    }
+  } catch (e) {
+    ElMessage.error('审批处理失败：' + (e.response?.data?.message || e.message))
+  }
+}
+
+// 员工角色矩阵页删除：RBAC 聚合视图无主键，按 staffId 回查员工账号表主键后删除
+const deleteStaffRoles = async () => {
+  if (!staffRoleSelection.value.length) {
+    ElMessage.warning('请先勾选要删除的记录')
+    return
+  }
+  ElMessageBox.confirm(`确定删除选中的 ${staffRoleSelection.value.length} 名员工账号？删除后不可恢复。`, '删除确认', {
+    type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消'
+  }).then(async () => {
+    try {
+      let n = 0
+      for (const row of staffRoleSelection.value) {
+        const hit = allStaffList.value.find(s => String(s.staffId || '').toLowerCase() === String(row.staffId || '').toLowerCase())
+        if (hit) {
+          await axios.delete('/api/admin/staff/' + hit.id)
+          n++
+        }
+      }
+      ElMessage.success(`已删除 ${n} 个员工账号`)
+      loadStaffList()
+      loadStaffRoles()
+    } catch (e) {
+      ElMessage.error('删除失败：' + (e.response?.data?.message || e.message))
+    }
+  }).catch(() => {})
+}
 </script>
 
 <style>
@@ -3301,8 +4055,9 @@ body {
 .menu-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
 .menu-icon { font-size: 16px; }
 
-.admin-content { flex: 1; padding: 20px 24px; overflow-y: auto; background: #f1f5f9; }
-.tab-pane { display: flex; flex-direction: column; }
+.admin-content { flex: 1; min-width: 0; padding: 20px 24px; overflow-y: auto; background: #f1f5f9; }
+.tab-pane { display: flex; flex-direction: column; width: 100%; }
+.tab-pane > .el-card { width: 100%; }
 
 .pane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .pane-header h3 { margin: 0; font-size: 17px; color: #1e293b; }
@@ -3387,6 +4142,120 @@ body {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
   50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
 }
+/* 附件预览（工资表图片 / Excel） */
+/* 附件独立一行容器：不挤占输入栏 */
+.batch-salary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+/* 工资表里存在但系统无账号的人员行：整行红底警示，不可发放 */
+:deep(.no-account-row) {
+  background: #fef2f2 !important;
+}
+/* 发放记录弹窗：右下角可自由拖拽缩放（双保险：class 可能落在 overlay 或 dialog 元素上） */
+.slip-history-dialog {
+  resize: both;
+  overflow: auto;
+}
+.slip-history-dialog .el-dialog {
+  resize: both;
+  overflow: auto;
+  max-width: 96vw;
+}
+/* 附件文件卡片（上传预览与气泡内同款，对齐主流 AI 对话样式） */
+.file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.file-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.file-card-icon-img {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.file-card-info {
+  min-width: 0;
+}
+.file-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card-size {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.file-card-remove {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.file-card-remove:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+.msg-file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  margin-bottom: 8px;
+}
+.chat-attachment-row {
+  display: flex;
+  padding: 0 2px;
+}
+.chat-attachment-row .chat-attachment-preview {
+  flex: 1;
+  max-width: 420px;
+}
+/* 用户气泡里的图片预览 */
+.msg-image { margin: 4px 0 6px; }
+.msg-image img { max-width: 180px; max-height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; display: block; }
+.chat-attachment-preview {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin: 6px 0;
+  background: #f0fdfa; border: 1px dashed #0f766e; border-radius: 8px;
+}
+.chat-attachment-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; flex: 0 0 auto; }
+.chat-attachment-excel { font-size: 20px; flex: 0 0 auto; }
+.chat-attachment-name { flex: 1; font-size: 12px; color: #0f766e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-attachment-remove { cursor: pointer; color: #ef4444; font-size: 14px; padding: 2px 6px; }
 
 .msg-tts-line { margin-top: 4px; text-align: right; }
 .tts-link { font-size: 12px; color: #0f766e; cursor: pointer; user-select: none; }
@@ -3405,6 +4274,15 @@ body {
 }
 .order-sub-info { display: flex; justify-content: space-between; color: #64748b; font-size: 11.5px; margin: 6px 0; }
 .order-json-box { background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 11px; color: #334155; word-break: break-all; }
+.order-items-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; }
+.perm-full-text { font-size: 12.5px; color: #166534; font-weight: 500; }
+.perm-none-text { font-size: 12.5px; color: #9a3412; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.order-item-line { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px; color: #334155; }
+.order-item-line + .order-item-line { border-top: 1px dashed #e2e8f0; }
+.order-item-line .oi-name { font-weight: 500; color: #1e293b; }
+.order-item-line .oi-spec { color: #94a3b8; font-size: 11px; }
+.order-item-line .oi-qty { margin-left: auto; color: #64748b; }
+.order-item-line .oi-price { min-width: 64px; text-align: right; font-weight: 500; color: #dc2626; }
 
 .profile-card { font-size: 13px; line-height: 2.2; }
 

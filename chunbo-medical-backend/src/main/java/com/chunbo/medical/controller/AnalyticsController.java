@@ -28,6 +28,15 @@ public class AnalyticsController {
     @Autowired
     private OaPlasterRecordMapper plasterMapper;
 
+    @Autowired
+    private StaffAccountMapper staffAccountMapper;
+
+    @Autowired
+    private DoctorAccountMapper doctorAccountMapper;
+
+    @Autowired
+    private RolePermissionMapper rolePermissionMapper;
+
     @GetMapping("/summary")
     public Map<String, Object> getAnalyticsSummary(@RequestParam(value = "period", defaultValue = "today") String period) {
         Map<String, Object> data = new HashMap<>();
@@ -341,47 +350,61 @@ public class AnalyticsController {
 
     @GetMapping("/staff-roles")
     public List<Map<String, Object>> getStaffRoles() {
+        // 权限范围描述从 sys_role_permission 动态读取，分两套系统拼接（中台 + 云诊所）
+        Map<String, String> adminPermByRole = new HashMap<>();
+        Map<String, String> clinicPermByRole = new HashMap<>();
+        for (RolePermission rp : rolePermissionMapper.selectList(null)) {
+            String desc = rp.getDescription() == null || rp.getDescription().isEmpty() ? "未配置" : rp.getDescription();
+            if ("ADMIN".equals(rp.getScope())) adminPermByRole.put(rp.getRole().toUpperCase(), desc);
+            else clinicPermByRole.put(rp.getRole().toUpperCase(), desc);
+        }
+        java.util.function.Function<String, String> permText = r -> {
+            if (r == null || r.isEmpty()) return "未配置（请在角色权限范围中配置）";
+            String admin = adminPermByRole.getOrDefault(r, "未配置");
+            String clinic = clinicPermByRole.get(r);
+            String clinicText = (clinic == null) ? "未配置" : (clinic.isEmpty() ? "无云诊所权限" : clinic);
+            return "中台：" + admin + "；云诊所：" + clinicText;
+        };
         List<Map<String, Object>> list = new ArrayList<>();
-        list.add(Map.of(
-                "staffId", "DOC_1001",
-                "name", "康主任",
-                "title", "全科诊疗主任 / 中医特色专家 主治医师",
-                "department", "全科门诊",
-                "role", "DOCTOR",
-                "permissions", "门诊开方、病历书写、个人工资条查阅"
-        ));
-        list.add(Map.of(
-                "staffId", "DOC_1002",
-                "name", "张文浩 (主治医生)",
-                "title", "门诊中医师 / 调剂药师",
-                "department", "全科门诊 / 智慧药房",
-                "role", "DOCTOR",
-                "permissions", "门诊诊疗、穴位贴敷、药房发药、个人工资条查阅"
-        ));
-        list.add(Map.of(
-                "staffId", "MERCH_001",
-                "name", "王商户",
-                "title", "春播商城商家运营 / 供应链主管",
-                "department", "春播商城运营部",
-                "role", "MERCHANT",
-                "permissions", "春播商城C端订单履约发货、商品档案管理、个人商户提成查阅"
-        ));
-        list.add(Map.of(
-                "staffId", "HR_0001",
-                "name", "张人事",
-                "title", "人力资源主管",
-                "department", "综合行政人事部",
-                "role", "HR",
-                "permissions", "医生/商户账号审核注册、OA请假审批、全员工资条核发与测算"
-        ));
-        list.add(Map.of(
-                "staffId", "ADM_0001",
-                "name", "系统最高管理员",
-                "title", "全院最高系统管理员",
-                "department", "医院院长室 / 信息中心",
-                "role", "ADMIN",
-                "permissions", "全系统最高管理权限、商户与人事授权、全院运营数据大屏、AI调度指挥中枢"
-        ));
+        // 员工账号表（sys_staff_account）真实数据
+        for (StaffAccount s : staffAccountMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StaffAccount>()
+                        .orderByAsc(StaffAccount::getId))) {
+            String r = s.getRole() == null ? "" : s.getRole().toUpperCase();
+            Map<String, Object> row = new HashMap<>();
+            row.put("id", s.getId());
+            row.put("source", "staff");
+            row.put("staffId", s.getStaffId());
+            row.put("username", s.getUsername());
+            row.put("name", s.getRealName());
+            row.put("title", s.getTitle() == null || s.getTitle().isEmpty() ? "—" : s.getTitle());
+            row.put("department", s.getDepartment() == null || s.getDepartment().isEmpty() ? "—" : s.getDepartment());
+            row.put("role", r);
+            row.put("status", s.getStatus());
+            row.put("permissions", permText.apply(r));
+            list.add(row);
+        }
+        // 医生账号表（sys_doctor_account）补充：员工表中没有的医生也进矩阵
+        for (DoctorAccount d : doctorAccountMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DoctorAccount>()
+                        .orderByAsc(DoctorAccount::getId))) {
+            boolean exists = list.stream().anyMatch(row ->
+                    String.valueOf(row.get("staffId")).equalsIgnoreCase(d.getDoctorId())
+                            || String.valueOf(row.get("staffId")).equalsIgnoreCase(d.getUsername()));
+            if (exists) continue;
+            Map<String, Object> row = new HashMap<>();
+            row.put("id", d.getId());
+            row.put("source", "doctor");
+            row.put("staffId", d.getDoctorId());
+            row.put("username", d.getUsername());
+            row.put("name", d.getDoctorName());
+            row.put("title", d.getTitle() == null || d.getTitle().isEmpty() ? "—" : d.getTitle());
+            row.put("department", d.getDepartment() == null || d.getDepartment().isEmpty() ? "—" : d.getDepartment());
+            row.put("role", "DOCTOR");
+            row.put("status", d.getStatus());
+            row.put("permissions", permText.apply("DOCTOR"));
+            list.add(row);
+        }
         return list;
     }
 

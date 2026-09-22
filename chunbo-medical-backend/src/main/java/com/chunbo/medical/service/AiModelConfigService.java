@@ -56,8 +56,11 @@ public class AiModelConfigService {
     @Value("${spring.ai.openai.base-url:https://api.ohmygpt.com}")
     private String defaultBaseUrl;
 
-    @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}")
+    @Value("${spring.ai.openai.chat.options.model:deepseek-v4-flash}")
     private String defaultModel;
+
+    @Value("${chunbo.ai.vision-model:deepseek:deepseek/deepseek-v4-flash-vision-exp}")
+    private String visionModel;
 
     @Value("${chunbo.ai.mock-enabled:false}")
     private boolean defaultMock;
@@ -119,6 +122,11 @@ public class AiModelConfigService {
         return activeChatClient;
     }
 
+    /** 视觉模型名（图片识别用，中转站 DeepSeek V4 Flash 视觉实验版） */
+    public String getVisionModel() {
+        return visionModel;
+    }
+
     /**
      * 返回不带默认工具集的裸 ChatClient（保留记忆 advisor），供 function-calling 智能体按域显式挂载工具。
      * 避免与 getActiveChatClient 的 defaultTools(clinicTools, webFetchTools) 重复挂载同一批工具报错。
@@ -152,7 +160,7 @@ public class AiModelConfigService {
             // 本地模型（Ollama 等）无需真实密钥：空 key 兜底为占位符，避免构建失败
             if (apiKey.isEmpty()) apiKey = "none";
             String baseUrl = normalizeBaseUrl(currentConfig.getBaseUrl());
-            String model = currentConfig.getModelName() != null ? currentConfig.getModelName().trim() : "gpt-4o-mini";
+            String model = currentConfig.getModelName() != null ? currentConfig.getModelName().trim() : "deepseek-v4-flash";
             Double temp = currentConfig.getTemperature() != null ? currentConfig.getTemperature() : 0.3;
 
             OpenAiApi openAiApi = OpenAiApi.builder()
@@ -219,7 +227,7 @@ public class AiModelConfigService {
 
             String baseUrl = normalizeBaseUrl(testConfig.getBaseUrl());
             String apiKey = testConfig.getApiKey() != null ? testConfig.getApiKey().trim() : "";
-            String modelName = testConfig.getModelName() != null ? testConfig.getModelName().trim() : "gpt-4o-mini";
+            String modelName = testConfig.getModelName() != null ? testConfig.getModelName().trim() : "deepseek-v4-flash";
 
             OpenAiApi api = OpenAiApi.builder()
                     .baseUrl(baseUrl)

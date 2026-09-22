@@ -24,6 +24,8 @@ public enum AgentTypeEnum {
     OA_ROUTE("OA_ROUTE", "中台路由智能体"),
     OA_SALARY("OA_SALARY", "薪资绩效智能体"),
     OA_ORDER("OA_ORDER", "商城履约智能体"),
+    OA_PRODUCT("OA_PRODUCT", "商品与进销存智能体"),
+    OA_MALL_USER("OA_MALL_USER", "商城用户管理智能体"),
     OA_INVENTORY("OA_INVENTORY", "药房预警智能体"),
     OA_ANALYTICS("OA_ANALYTICS", "运营大盘智能体"),
     OA_APPROVAL("OA_APPROVAL", "OA审批智能体"),

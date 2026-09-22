@@ -40,6 +40,25 @@ public class MallAuthController {
             res.put("message", "请输入注册账号和密码");
             return ResponseEntity.badRequest().body(res);
         }
+        // 口径与商城注册页一致：真实姓名/称呼、联系手机号必填，密码至少 6 位，手机号 1 开头 11 位
+        if (realName.isEmpty() && nickname.isEmpty()) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "请输入真实姓名或称呼");
+            return ResponseEntity.badRequest().body(res);
+        }
+        if (phone.isEmpty() || !phone.matches("1\\d{10}")) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "请输入 1 开头的 11 位手机号");
+            return ResponseEntity.badRequest().body(res);
+        }
+        if (password.length() < 6) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "密码长度至少 6 位");
+            return ResponseEntity.badRequest().body(res);
+        }
 
         // 检查用户名或手机号是否已被占用
         LambdaQueryWrapper<MallUser> checkQw = new LambdaQueryWrapper<MallUser>()

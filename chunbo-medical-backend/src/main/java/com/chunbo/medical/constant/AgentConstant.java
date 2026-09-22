@@ -28,6 +28,12 @@ public final class AgentConstant {
     /** 会话标识 */
     public static final String SESSION_ID = "sessionId";
 
+    /** 附件标识（图片/Excel 等文件上传后的 fileId，供多模态智能体读取识别） */
+    public static final String ATTACHMENT_ID = "attachmentId";
+
+    /** 附件原始文件名（用于从文件名自动识别发放月份，如"工资表-2026年10月.xlsx"→2026-10） */
+    public static final String ATTACHMENT_FILE_NAME = "attachmentFileName";
+
     /** 路由智能体判出的业务意图提示（如 MALL_SHIPPING / OA_SALARY / MED_DIAGNOSE） */
     public static final String ROUTE_HINT = "routeHint";
 

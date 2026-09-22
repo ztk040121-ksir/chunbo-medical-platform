@@ -28,7 +28,16 @@ import java.util.UUID;
 public class AdminManageController {
 
     @Autowired
+    private com.chunbo.medical.service.OaAssistantService oaAssistantService;
+
+    @Autowired
+    private com.chunbo.medical.service.FileUploadService fileUploadService;
+
+    @Autowired
     private StaffAccountMapper staffAccountMapper;
+
+    @Autowired
+    private com.chunbo.medical.mapper.DoctorAccountMapper doctorAccountMapper;
 
     @Autowired
     private MallProductMapper mallProductMapper;
@@ -98,6 +107,129 @@ public class AdminManageController {
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
         res.put("data", list);
+        return ResponseEntity.ok(res);
+    }
+
+    /** 统一账号注册（医护账号与权限管理页）：按所选角色直接建号，权限范围由 sys_role_permission 动态生效 */
+    @PostMapping("/staff/register")
+    public ResponseEntity<Map<String, Object>> registerStaff(@RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String role = body.getOrDefault("role", "").trim().toUpperCase();
+        String username = body.getOrDefault("username", "").trim();
+        String password = body.getOrDefault("password", "").trim();
+        String realName = body.getOrDefault("realName", "").trim();
+        String phone = body.getOrDefault("phone", "").trim();
+        String department = body.getOrDefault("department", "").trim();
+        String title = body.getOrDefault("title", "").trim();
+        List<String> allowedRoles = List.of("DOCTOR", "NURSE", "HR", "MERCHANT", "ADMIN");
+        if (!allowedRoles.contains(role)) {
+            res.put("success", false);
+            res.put("message", "系统角色必须是 " + String.join("/", allowedRoles) + " 之一");
+            return ResponseEntity.badRequest().body(res);
+        }
+        if (username.isEmpty() || realName.isEmpty()) {
+            res.put("success", false);
+            res.put("message", "登录账号与真实姓名为必填项");
+            return ResponseEntity.badRequest().body(res);
+        }
+        if (phone.isEmpty() || !phone.matches("1\\d{10}")) {
+            res.put("success", false);
+            res.put("message", "请输入 1 开头的 11 位手机号");
+            return ResponseEntity.badRequest().body(res);
+        }
+        if (password.isEmpty()) password = "123456";
+        Long dup = staffAccountMapper.selectCount(
+                new LambdaQueryWrapper<StaffAccount>().eq(StaffAccount::getUsername, username));
+        if (dup > 0) {
+            res.put("success", false);
+            res.put("message", "登录账号 [" + username + "] 已存在，请更换");
+            return ResponseEntity.badRequest().body(res);
+        }
+        // 工号按角色前缀自动分配：DOCTOR→DOC_ / NURSE→NUR_ / HR→HR_ / MERCHANT→MERCH_ / ADMIN→ADM_
+        String prefix = switch (role) {
+            case "DOCTOR" -> "DOC_";
+            case "NURSE" -> "NUR_";
+            case "HR" -> "HR_";
+            case "MERCHANT" -> "MERCH_";
+            default -> "ADM_";
+        };
+        String staffId = prefix + (1000 + System.currentTimeMillis() % 9000);
+        StaffAccount account = new StaffAccount();
+        account.setStaffId(staffId);
+        account.setUsername(username);
+        account.setPassword(com.chunbo.medical.config.PasswordUtil.encode(password));
+        account.setRealName(realName);
+        account.setPhone(phone);
+        account.setDepartment(department.isEmpty() ? "—" : department);
+        account.setTitle(title.isEmpty() ? "—" : title);
+        account.setRole(role);
+        account.setStatus("ENABLE");
+        try {
+            staffAccountMapper.insert(account);
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("message", "注册失败：" + e.getMessage());
+            return ResponseEntity.badRequest().body(res);
+        }
+        res.put("success", true);
+        res.put("message", "账号 [" + username + "]（" + staffId + "，角色 " + role + "）注册成功，自动获得该角色的系统权限，重新登录即生效");
+        return ResponseEntity.ok(res);
+    }
+
+    /** 修改员工角色（如把某员工改为 NURSE 护士角色），权限范围由 sys_role_permission 动态配置 */
+    @PostMapping("/staff/update-role")
+    public ResponseEntity<Map<String, Object>> updateStaffRole(@RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        String staffId = body.getOrDefault("staffId", "").toString().trim();
+        String role = body.getOrDefault("role", "").toString().trim().toUpperCase();
+        Long id = body.get("id") == null ? null : Long.valueOf(body.get("id").toString());
+        if (role.isEmpty() || (staffId.isEmpty() && id == null)) {
+            res.put("success", false);
+            res.put("message", "缺少 staffId/id 或 role 参数");
+            return ResponseEntity.badRequest().body(res);
+        }
+        StaffAccount staff = id != null ? staffAccountMapper.selectById(id)
+                : staffAccountMapper.selectOne(new LambdaQueryWrapper<StaffAccount>().eq(StaffAccount::getStaffId, staffId));
+        if (staff == null && !staffId.isEmpty()) {
+            // 员工表中没有 → 医生账号表找，自动同步创建对应角色员工账号（如把医生改为 NURSE）
+            DoctorAccount doc = doctorAccountMapper.selectOne(
+                    new LambdaQueryWrapper<DoctorAccount>().eq(DoctorAccount::getDoctorId, staffId));
+            if (doc == null) {
+                doc = doctorAccountMapper.selectOne(
+                        new LambdaQueryWrapper<DoctorAccount>().eq(DoctorAccount::getUsername, staffId));
+            }
+            if (doc != null) {
+                StaffAccount ns = new StaffAccount();
+                ns.setStaffId(doc.getDoctorId());
+                ns.setUsername(doc.getUsername());
+                ns.setPassword(doc.getPassword());
+                ns.setRealName(doc.getDoctorName());
+                ns.setDepartment(doc.getDepartment());
+                ns.setTitle(doc.getTitle());
+                ns.setRole(role);
+                ns.setStatus("ENABLE");
+                try {
+                    staffAccountMapper.insert(ns);
+                } catch (Exception e) {
+                    res.put("success", false);
+                    res.put("message", "同步创建员工角色账号失败（可能与现有账号冲突）");
+                    return ResponseEntity.badRequest().body(res);
+                }
+                res.put("success", true);
+                res.put("message", "人员 [" + doc.getDoctorName() + " (" + doc.getDoctorId() + ")] 已创建为 " + role + " 角色账号，重新登录后生效");
+                return ResponseEntity.ok(res);
+            }
+        }
+        if (staff == null) {
+            res.put("success", false);
+            res.put("message", "员工账号不存在");
+            return ResponseEntity.badRequest().body(res);
+        }
+        String oldRole = staff.getRole();
+        staff.setRole(role);
+        staffAccountMapper.updateById(staff);
+        res.put("success", true);
+        res.put("message", "员工 [" + staff.getRealName() + " (" + staff.getStaffId() + ")] 角色已从 " + oldRole + " 变更为 " + role + "，重新登录后生效");
         return ResponseEntity.ok(res);
     }
 
@@ -301,6 +433,102 @@ public class AdminManageController {
         }
     }
 
+    /**
+     * 商品表格批量导入（进销存页面「表格新增商品」）
+     * POST /api/admin/mall/product/batch-import  multipart: file
+     * 新商品建档上架；已存在同价库存累加；价格不匹配拒绝。
+     */
+    @PostMapping("/mall/product/batch-import")
+    public ResponseEntity<Map<String, Object>> batchImportProducts(@RequestParam("file") MultipartFile file) {
+        Map<String, Object> res = new HashMap<>();
+        if (file == null || file.isEmpty()) {
+            res.put("success", false);
+            res.put("message", "上传文件为空");
+            return ResponseEntity.badRequest().body(res);
+        }
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        if (!name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+            res.put("success", false);
+            res.put("message", "请上传 Excel 商品表（xlsx / xls）");
+            return ResponseEntity.badRequest().body(res);
+        }
+        try {
+            List<Map<String, Object>> rows = fileUploadService.excelToProductRows(file);
+            if (rows == null) {
+                res.put("success", false);
+                res.put("message", "未识别到商品表表头（需包含「商品名称」与「零售价」列）");
+                return ResponseEntity.badRequest().body(res);
+            }
+            Map<String, Object> r = oaAssistantService.importProductsFromRows(rows);
+            res.putAll(r);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("message", "商品表解析失败：" + e.getMessage());
+            return ResponseEntity.badRequest().body(res);
+        }
+    }
+
+    /** 商城订单批量删除 */
+    @PostMapping("/mall/order/batch-delete")
+    public ResponseEntity<Map<String, Object>> batchDeleteMallOrders(@RequestBody Map<String, Object> body) {
+        int n = 0;
+        Object raw = body.get("ids");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                try {
+                    n += mallOrderMapper.deleteById(Long.valueOf(String.valueOf(o)));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("deleted", n);
+        res.put("message", "已删除 " + n + " 条商城订单");
+        return ResponseEntity.ok(res);
+    }
+
+    /** 商城商品批量删除 */
+    @PostMapping("/mall/product/batch-delete")
+    public ResponseEntity<Map<String, Object>> batchDeleteMallProducts(@RequestBody Map<String, Object> body) {
+        int n = 0;
+        Object raw = body.get("ids");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                try {
+                    n += mallProductMapper.deleteById(Long.valueOf(String.valueOf(o)));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("deleted", n);
+        res.put("message", "已删除 " + n + " 个商品档案");
+        return ResponseEntity.ok(res);
+    }
+
+    /** 商城注册用户批量删除 */
+    @PostMapping("/mall/user/batch-delete")
+    public ResponseEntity<Map<String, Object>> batchDeleteMallUsers(@RequestBody Map<String, Object> body) {
+        int n = 0;
+        Object raw = body.get("ids");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                try {
+                    n += mallUserMapper.deleteById(Long.valueOf(String.valueOf(o)));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("deleted", n);
+        res.put("message", "已删除 " + n + " 个商城注册用户");
+        return ResponseEntity.ok(res);
+    }
+
     @PostMapping("/mall/product/save")
     public ResponseEntity<Map<String, Object>> saveProduct(@RequestBody MallProduct product) {
         Map<String, Object> res = new HashMap<>();
@@ -375,7 +603,23 @@ public class AdminManageController {
                 .likeRight(MallOrder::getOrderNo, "B2C")
                 .orderByDesc(MallOrder::getId);
         if (buyerName != null && !buyerName.isEmpty()) {
-            wrapper.eq(MallOrder::getBuyerName, buyerName);
+            // buyer_name 落库格式为「昵称 (手机号)」，eq 精确匹配必然查空。
+            // 先按 账号/手机号/昵称 定位商城用户，再用其昵称+手机号做 like 双向匹配
+            String kw = buyerName.trim();
+            MallUser user = mallUserMapper.selectOne(new LambdaQueryWrapper<MallUser>()
+                    .eq(MallUser::getUsername, kw).or().eq(MallUser::getPhone, kw));
+            if (user == null) {
+                List<MallUser> byNick = mallUserMapper.selectList(
+                        new LambdaQueryWrapper<MallUser>().like(MallUser::getNickname, kw));
+                if (byNick.size() == 1) user = byNick.get(0);
+            }
+            String kwNick = user != null && user.getNickname() != null && !user.getNickname().isEmpty()
+                    ? user.getNickname() : kw;
+            String kwPhone = user != null && user.getPhone() != null && !user.getPhone().isEmpty()
+                    ? user.getPhone() : kw;
+            // 嵌套 and 包装，避免 or 破坏前面的 B2C 前缀条件
+            wrapper.and(w -> w.like(MallOrder::getBuyerName, kwNick)
+                    .or().like(MallOrder::getBuyerName, kwPhone));
         }
         List<MallOrder> orders = mallOrderMapper.selectList(wrapper);
         Map<String, Object> res = new HashMap<>();
@@ -386,6 +630,7 @@ public class AdminManageController {
 
     /**
      * 商城订单发货出库：真实扣减商品库存 + 写入进销存流水 + 更新顺丰运单状态
+     * （逻辑已下沉到 OaAssistantService.shipOrder，与 AI 工具共用同一份确定性实现）
      */
     @PostMapping("/mall/order/ship")
     public ResponseEntity<Map<String, Object>> shipMallOrder(@RequestBody Map<String, Object> body) {
@@ -399,89 +644,18 @@ public class AdminManageController {
             res.put("message", "订单号不能为空");
             return ResponseEntity.badRequest().body(res);
         }
-
-        MallOrder order = mallOrderMapper.selectOne(
-                new LambdaQueryWrapper<MallOrder>().eq(MallOrder::getOrderNo, orderNo)
-        );
-        if (order == null) {
-            res.put("success", false);
-            res.put("message", "未找到该商城订单: " + orderNo);
+        Map<String, Object> r = oaAssistantService.shipOrder(orderNo, trackingNo, operator);
+        if (Boolean.FALSE.equals(r.get("success"))) {
+            res.putAll(r);
             return ResponseEntity.badRequest().body(res);
         }
-
-        if (OrderStatusEnum.isShipped(order.getStatus())) {
-            res.put("success", false);
-            res.put("message", "该订单已完成发货出库，请勿重复发货！单号: " + order.getBargainNotes());
-            return ResponseEntity.badRequest().body(res);
-        }
-
-        // 解析 itemsJson 扣减商品真实库存
-        List<String> logs = new ArrayList<>();
-        String itemsJson = order.getItemsJson();
-        if (itemsJson != null && !itemsJson.isEmpty()) {
-            try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(itemsJson);
-                if (rootNode.isArray()) {
-                    for (com.fasterxml.jackson.databind.JsonNode item : rootNode) {
-                        Long prodId = item.has("id") ? item.get("id").asLong() : null;
-                        int qty = item.has("quantity") ? item.get("quantity").asInt() : 1;
-
-                        if (prodId != null) {
-                            MallProduct prod = mallProductMapper.selectById(prodId);
-                            if (prod != null) {
-                                int currentStock = prod.getStock() != null ? prod.getStock() : 0;
-                                int newStock = Math.max(0, currentStock - qty);
-                                prod.setStock(newStock);
-                                mallProductMapper.updateById(prod);
-
-                                // 记录进销存出库流水
-                                InventoryRecord ir = new InventoryRecord();
-                                ir.setMedicineId(prod.getId());
-                                ir.setMedicineName(prod.getProductName());
-                                ir.setRecordType("商城订单发货出库");
-                                ir.setChangeQty(-qty);
-                                ir.setAfterStock(newStock);
-                                ir.setRefOrderNo(order.getOrderNo());
-                                ir.setOperator(operator);
-                                ir.setRemark("春播健康便民速递揽收 (单号: " + trackingNo + ", 送至: " + order.getClinicName() + ")");
-                                ir.setCreateTime(LocalDateTime.now());
-                                inventoryRecordMapper.insert(ir);
-
-                                logs.add("商品【" + prod.getProductName() + "】出库扣减 " + qty + " 件，结余库存: " + newStock);
-                            }
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                InventoryRecord ir = new InventoryRecord();
-                ir.setMedicineName("春播商城综合购药订单");
-                ir.setRecordType("商城订单发货出库");
-                ir.setChangeQty(-1);
-                ir.setAfterStock(0);
-                ir.setRefOrderNo(order.getOrderNo());
-                ir.setOperator(operator);
-                ir.setRemark("春播健康便民速递: " + trackingNo);
-                ir.setCreateTime(LocalDateTime.now());
-                inventoryRecordMapper.insert(ir);
-            }
-        }
-
-        // 更新订单状态
-        order.setStatus(OrderStatusEnum.SHIPPED.getCode());
-        String existingNotes = order.getBargainNotes() != null ? order.getBargainNotes() : "";
-        order.setBargainNotes(existingNotes + " 【春播健康便民速递单号: " + trackingNo + "，发货人: " + operator + "】");
-        mallOrderMapper.updateById(order);
-
-        res.put("success", true);
-        res.put("message", "🎉 订单履约发货出库成功！春播健康便民速递运单号【" + trackingNo + "】，库存已实时扣减并生成进销存台账！");
-        res.put("trackingNo", trackingNo);
-        res.put("logs", logs);
+        res.putAll(r);
         return ResponseEntity.ok(res);
     }
 
     /**
      * 确认商城订单送达 (居民已签收妥投)
+     * （逻辑已下沉到 OaAssistantService.confirmOrderDelivered，与 AI 工具共用同一份确定性实现）
      */
     @PostMapping("/mall/order/deliver")
     public ResponseEntity<Map<String, Object>> deliverMallOrder(@RequestBody Map<String, Object> body) {
@@ -492,23 +666,12 @@ public class AdminManageController {
             res.put("message", "订单号不能为空");
             return ResponseEntity.badRequest().body(res);
         }
-
-        MallOrder order = mallOrderMapper.selectOne(
-                new LambdaQueryWrapper<MallOrder>().eq(MallOrder::getOrderNo, orderNo)
-        );
-        if (order == null) {
-            res.put("success", false);
-            res.put("message", "未找到该商城订单: " + orderNo);
+        Map<String, Object> r = oaAssistantService.confirmOrderDelivered(orderNo);
+        if (Boolean.FALSE.equals(r.get("success"))) {
+            res.putAll(r);
             return ResponseEntity.badRequest().body(res);
         }
-
-        order.setStatus(OrderStatusEnum.DELIVERED.getCode());
-        String existingNotes = order.getBargainNotes() != null ? order.getBargainNotes() : "";
-        order.setBargainNotes(existingNotes + " 【春播便民速递妥投完成，居民已顺利签收】");
-        mallOrderMapper.updateById(order);
-
-        res.put("success", true);
-        res.put("message", "🎉 订单【" + orderNo + "】已确认送达并由居民成功签收！");
+        res.putAll(r);
         return ResponseEntity.ok(res);
     }
 

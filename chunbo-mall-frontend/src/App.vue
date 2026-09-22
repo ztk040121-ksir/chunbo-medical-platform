@@ -123,6 +123,8 @@
                 <div class="msg-avatar">{{ msg.sender === 'user' ? '👤' : '👩‍⚕️' }}</div>
                 <div class="msg-content-box">
                   <div class="msg-sender-name">{{ msg.sender === 'user' ? '我' : '春播健康小药师' }}</div>
+                  <!-- 用户发送的图片附件预览 -->
+                  <div v-if="msg.image" class="msg-image"><img :src="msg.image" alt="上传的图片" /></div>
                   <!-- 思考中动画放进气泡内（与云诊所/OA 一致），内容到达后自动切换为正文 -->
                   <div v-if="!msg.text && chatLoading && mIndex === chatMessages.length - 1" class="msg-text thinking-box">
                     <div class="thinking-title">
@@ -162,6 +164,10 @@
               <!-- 提问输入框 -->
             <div class="chat-input-zone">
               <div class="mall-input-row">
+                <div class="mic-btn-mall" @click="triggerImageUpload" title="上传药品图片，AI 识别并查询商城库存">
+                  <el-icon :size="17"><Picture /></el-icon>
+                </div>
+                <input ref="chatImageInput" type="file" accept="image/*" style="display:none" @change="handleImageSelect" />
                 <div class="mic-btn-mall" :class="{ recording: isRecordingMall }" @click="toggleVoiceInputMall"
                      :title="isRecordingMall ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
                   <el-icon v-if="!isRecordingMall" :size="17"><Microphone /></el-icon>
@@ -181,6 +187,11 @@
                   </el-button>
                 </template>
               </el-input>
+              </div>
+              <div v-if="chatAttachment" class="chat-attachment-preview">
+                <img :src="chatAttachment.previewUrl" class="chat-attachment-thumb" alt="附件" />
+                <span class="chat-attachment-name">{{ chatAttachment.fileName }}</span>
+                <span class="chat-attachment-remove" @click="removeAttachment">✕</span>
               </div>
             </div>
           </div>
@@ -758,7 +769,14 @@ const loadOrders = async () => {
   if (!currentUser.value) return
   try {
     const res = await axios.get('/api/mall/orders')
-    myOrders.value = res.data || []
+    const all = res.data || []
+    // 后端此接口为全量返回（含演示 B2B 单与他人订单），按当前登录用户的 手机号/昵称/账号 本地过滤，
+    // 只保留本人订单（订单 buyer_name 格式为「收货人 (手机号)」），与管理端「查看订单」口径一致
+    const u = currentUser.value || {}
+    const keys = [u.phone, u.nickname, u.realName, u.username].filter(Boolean).map(String)
+    myOrders.value = keys.length
+      ? all.filter(o => keys.some(k => String(o.buyerName || '').includes(k)))
+      : all
   } catch (e) {}
 }
 
@@ -804,6 +822,9 @@ const handleSubmitConsumerOrder = async () => {
 const chatScrollRef = ref(null)
 const userQueryText = ref('')
 const chatLoading = ref(false)
+// 药品图片附件 → AI 视觉识别 → 查商城库存 → 下单卡片
+const chatAttachment = ref(null)   // { fileId, fileName, previewUrl }
+const chatImageInput = ref(null)
 
 const quickQuestions = [
   '📦 查我的便民速递订单与物流进度',
@@ -1044,19 +1065,65 @@ const askPharmacist = (question) => {
   handleSendQuestion()
 }
 
+// ── 药品图片上传 → AI 视觉识别 → 查商城库存 → 下单卡片 ──
+const triggerImageUpload = () => {
+  chatImageInput.value && chatImageInput.value.click()
+}
+const handleImageSelect = async (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择药品图片（jpg / png / webp 等）')
+    return
+  }
+  const previewUrl = URL.createObjectURL(file)
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const resp = await fetch('/api/upload/file', { method: 'POST', body: fd })
+    const data = await resp.json()
+    if (data && data.success) {
+      // 持久 URL：气泡与历史会话都用它，重启后图片不裂
+      const persistentUrl = data.url || previewUrl
+      chatAttachment.value = { fileId: data.fileId, fileName: file.name, previewUrl: persistentUrl }
+      URL.revokeObjectURL(previewUrl)
+      ElMessage.success('图片已上传，发送后将识别药品并查询商城库存')
+    } else {
+      URL.revokeObjectURL(previewUrl)
+      ElMessage.error('上传失败：' + (data && data.message ? data.message : '未知错误'))
+    }
+  } catch (err) {
+    URL.revokeObjectURL(previewUrl)
+    ElMessage.error('上传失败：' + (err.message || '网络错误'))
+  }
+  e.target.value = ''
+}
+const removeAttachment = () => {
+  chatAttachment.value = null
+}
+
 const handleSendQuestion = async () => {
   const q = userQueryText.value.trim()
-  if (!q) return
+  // 附件先取出（原先在发请求前就被 removeAttachment 清掉，导致 attachmentId 永远传不到后端）
+  const att = chatAttachment.value
+    ? { fileId: chatAttachment.value.fileId, fileName: chatAttachment.value.fileName, previewUrl: chatAttachment.value.previewUrl }
+    : null
+  // 纯图片也允许发送（不带文字时默认问「这是什么药？」触发视觉识别）
+  if (!q && !att) return
+  const sendText = q || '这是什么药？'
 
   chatMessages.value.push({
     sender: 'user',
-    text: q
+    text: sendText,
+    image: att ? att.previewUrl : undefined
   })
+  // previewUrl 保留给气泡显示（不 revoke），仅清空输入区引用
+  chatAttachment.value = null
   // 首个用户问题自动生成会话标题
   if (activeSession.value) {
     const hasUserMsg = activeSession.value.messages.some(m => m.sender === 'user')
     if (!hasUserMsg || activeSession.value.title === '新会话' || activeSession.value.title === '默认咨询') {
-      activeSession.value.title = q.length > 14 ? q.slice(0, 14) + '…' : q
+      activeSession.value.title = sendText.length > 14 ? sendText.slice(0, 14) + '…' : sendText
     }
     activeSession.value.updatedAt = Date.now()
   }
@@ -1073,7 +1140,8 @@ const handleSendQuestion = async () => {
   const msg = { sender: 'pharmacist', text: '', recommendations: [] }
   chatMessages.value.push(msg)
   try {
-    const resp = await fetch(`/api/mall/chat/stream?message=${encodeURIComponent(q)}&sessionId=${encodeURIComponent(sid)}&phone=${encodeURIComponent(currentUser.value?.phone || '')}&userName=${encodeURIComponent(currentUser.value?.realName || currentUser.value?.username || '居民顾客')}`, {
+    const attachParam = att && att.fileId ? `&attachmentId=${encodeURIComponent(att.fileId)}` : ''
+    const resp = await fetch(`/api/mall/chat/stream?message=${encodeURIComponent(sendText)}&sessionId=${encodeURIComponent(sid)}&phone=${encodeURIComponent(currentUser.value?.phone || '')}&userName=${encodeURIComponent(currentUser.value?.realName || currentUser.value?.username || '居民顾客')}${attachParam}`, {
       signal: abort.signal
     })
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status)
@@ -2078,6 +2146,18 @@ const onProductScroll = (e) => {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
   50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
 }
+/* 药品图片附件预览 */
+.chat-attachment-preview {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-top: 6px;
+  background: #f0fdfa; border: 1px dashed #0f766e; border-radius: 8px;
+}
+/* 用户气泡里的图片预览 */
+.msg-image { margin: 4px 0 6px; }
+.msg-image img { max-width: 180px; max-height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; display: block; }
+.chat-attachment-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; flex: 0 0 auto; }
+.chat-attachment-name { flex: 1; font-size: 12px; color: #0f766e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-attachment-remove { cursor: pointer; color: #ef4444; font-size: 14px; padding: 2px 6px; }
 .mall-tts-row { margin-top: 6px; text-align: right; }
 .tts-link-mall { font-size: 12px; color: #0f766e; cursor: pointer; user-select: none; }
 .tts-link-mall:hover { text-decoration: underline; }

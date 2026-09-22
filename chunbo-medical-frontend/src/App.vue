@@ -9,58 +9,21 @@
         </div>
       </div>
 
-      <!-- 核心业务导航 -->
-      <nav class="subsystem-tabs">
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'registration' }"
-          @click="currentTab = 'registration'"
+      <!-- 核心业务导航（按角色权限配置动态渲染，见 sys_role_permission scope=CLINIC） -->
+      <nav class="subsystem-tabs" v-if="visibleTabs.length">
+        <div
+          v-for="tab in visibleTabs"
+          :key="tab.key"
+          class="nav-tab"
+          :class="{ active: currentTab === tab.key }"
+          @click="switchTab(tab.key)"
         >
-          📋 门诊挂号
+          {{ tab.label }}
+          <span class="warn-dot" v-if="tab.key === 'pharmacy' && stockWarningCount > 0">{{ stockWarningCount }}</span>
         </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'clinic' }"
-          @click="currentTab = 'clinic'"
-        >
-          🩺 门诊接诊
-        </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'billing' }"
-          @click="currentTab = 'billing'"
-        >
-          💰 划价收费
-        </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'treatment' }"
-          @click="currentTab = 'treatment'"
-        >
-          💉 特色执行站
-        </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'pharmacy' }"
-          @click="currentTab = 'pharmacy'"
-        >
-          💊 智慧药房
-          <span class="warn-dot" v-if="stockWarningCount > 0">{{ stockWarningCount }}</span>
-        </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'patient' }"
-          @click="currentTab = 'patient'"
-        >
-          📁 患者档案
-        </div>
-        <div 
-          class="nav-tab" 
-          :class="{ active: currentTab === 'ai-settings' }"
-          @click="currentTab = 'ai-settings'"
-        >
-          ⚙️ 设置
-        </div>
+      </nav>
+      <nav class="subsystem-tabs" v-else>
+        <span style="font-size: 12px; color: #94a3b8;">当前角色（{{ currentRole }}）未配置云诊所模块权限，请使用管理中台或联系管理员</span>
       </nav>
 
       <!-- 登录医生状态与安全退出 -->
@@ -79,7 +42,14 @@
 
     <!-- 视图路由切换 -->
     <main class="main-content-viewport">
-      <RegistrationView v-if="currentTab === 'registration'" />
+      <template v-if="!visibleTabs.length">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 70vh; color: #94a3b8; gap: 10px;">
+          <div style="font-size: 40px;">🔒</div>
+          <div style="font-size: 15px;">当前角色（{{ currentRole }}）未开通云诊所模块权限</div>
+          <div style="font-size: 12px;">请使用「春播云管理系统」中台处理业务，或联系管理员调整角色权限范围</div>
+        </div>
+      </template>
+      <RegistrationView v-else-if="currentTab === 'registration'" />
       <ClinicWorkstation v-else-if="currentTab === 'clinic'" />
       <BillingView v-else-if="currentTab === 'billing'" />
       <TreatmentView v-else-if="currentTab === 'treatment'" />
@@ -138,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, provide, watch } from 'vue'
+import { ref, computed, onMounted, provide, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { SwitchButton } from '@element-plus/icons-vue'
@@ -155,6 +125,51 @@ import AiSettingsView from './views/AiSettingsView.vue'
 const router = useRouter()
 
 const TAB_KEYS = ['registration', 'clinic', 'billing', 'treatment', 'pharmacy', 'patient', 'ai-settings']
+const TAB_LABELS = {
+  registration: '📋 门诊挂号',
+  clinic: '🩺 门诊接诊',
+  billing: '💰 划价收费',
+  treatment: '💉 特色执行站',
+  pharmacy: '💊 智慧药房',
+  patient: '📁 患者档案',
+  'ai-settings': '⚙️ 设置'
+}
+
+// 当前登录角色（NURSE 护士 / DOCTOR 医生 / HR / ADMIN 等，登录时由后端返回）
+const currentRole = ref(localStorage.getItem('chunbo_role') || 'DOCTOR')
+// 角色允许的模块集合（来自 sys_role_permission 动态配置，scope=CLINIC 云诊所模块）
+// allowedModules: null=未加载（兜底全部可见）；[]=配置为空=该角色无云诊所权限
+const allowedModules = ref(null)
+const loadRolePermissions = async () => {
+  try {
+    const res = await axios.get('/api/role-permissions')
+    const cfg = (res.data || []).find(r =>
+      String(r.role || '').toUpperCase() === currentRole.value.toUpperCase()
+      && String(r.scope || 'CLINIC').toUpperCase() === 'CLINIC')
+    if (cfg) {
+      const mods = JSON.parse(cfg.modulesJson || '[]')
+      allowedModules.value = Array.isArray(mods) ? mods : []
+    }
+  } catch (e) {
+    // 接口不可用时兜底：全部可见，不影响医生正常使用
+  }
+}
+loadRolePermissions()
+
+const visibleTabs = computed(() => {
+  const allow = allowedModules.value
+  return TAB_KEYS
+    .filter(k => !allow || allow.includes(k))
+    .map(k => ({ key: k, label: TAB_LABELS[k] || k }))
+})
+
+// 当前 tab 不在角色允许范围时，自动切到第一个可见 tab（如护士登录落在门诊接诊上）
+watch(allowedModules, () => {
+  if (allowedModules.value && allowedModules.value.length && !allowedModules.value.includes(currentTab.value)) {
+    const first = visibleTabs.value[0]
+    if (first) switchTab(first.key)
+  }
+}, { immediate: true })
 const readTabFromHash = () => {
   const h = window.location.hash.replace(/^#\/?/, '')
   if (TAB_KEYS.includes(h)) return h
@@ -238,6 +253,7 @@ const handleLogoutConfirm = () => {
     localStorage.removeItem('chunbo_doctor_id')
     localStorage.removeItem('chunbo_department')
     localStorage.removeItem('chunbo_title')
+    localStorage.removeItem('chunbo_role')
     ElMessage.success('已安全退出登录')
     showProfileDialog.value = false
     router.push('/login')

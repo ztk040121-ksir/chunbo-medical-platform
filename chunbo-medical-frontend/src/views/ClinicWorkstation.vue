@@ -1501,7 +1501,9 @@
               <!-- 医生发送的消息：医生头像严格在右侧，气泡在左侧，无任何错乱 -->
               <div class="chat-msg user" v-if="msg.role === 'user'">
                 <div class="msg-body user-body">
-                  <div class="msg-bubble user-bubble">{{ msg.content }}</div>
+                  <!-- 上传的发病部位图片直接在气泡内显示 -->
+                  <div v-if="msg.image" class="msg-bubble-image"><img :src="msg.image" alt="上传的图片" /></div>
+                  <div class="msg-bubble user-bubble" v-if="msg.content">{{ msg.content }}</div>
                 </div>
                 <div class="msg-avatar user-avatar">👨‍⚕️</div>
               </div>
@@ -1561,12 +1563,14 @@
                     </div>
                     <div class="rx-card-item-list">
                       <div class="rx-card-row" v-for="(item, iIdx) in msg.rxItems" :key="iIdx">
-                        <el-tag size="small" :type="item.category === '特色贴敷' ? 'warning' : item.category === '中药' ? 'success' : 'primary'" effect="plain">
-                          {{ item.category || '处方药' }}
-                        </el-tag>
-                        <span class="rx-item-name">{{ item.name }}</span>
-                        <span class="rx-item-info">{{ item.dosage || (item.dose ? item.dose + 'g' : (item.quantity ? item.quantity + (item.unit || '盒') : '1剂')) }}</span>
-                        <span class="rx-item-price">¥{{ Number(item.unitPrice || 25).toFixed(2) }}</span>
+                        <div class="rx-row-main">
+                          <el-tag size="small" :type="item.category === '特色贴敷' ? 'warning' : item.category === '中药' ? 'success' : 'primary'" effect="plain">
+                            {{ item.category || '处方药' }}
+                          </el-tag>
+                          <span class="rx-item-name">{{ item.name }}</span>
+                          <span class="rx-item-price">¥{{ Number(item.unitPrice || 25).toFixed(2) }}</span>
+                        </div>
+                        <div class="rx-item-info">{{ item.dosage || (item.dose ? item.dose + 'g' : (item.quantity ? item.quantity + (item.unit || '盒') : '1剂')) }}</div>
                       </div>
                     </div>
                     <div class="rx-card-advice-line" v-if="msg.advice">
@@ -1623,7 +1627,16 @@
               class="modern-chat-textarea"
               @keydown.enter.prevent="sendAiMessage"
             />
+            <div v-if="chatAttachment" class="chat-attachment-preview">
+              <img :src="chatAttachment.previewUrl" class="chat-attachment-thumb" alt="附件预览" />
+              <span class="chat-attachment-name">{{ chatAttachment.fileName }}</span>
+              <span class="chat-attachment-remove" @click="removeAttachment">✕</span>
+            </div>
             <div class="modern-chat-bottom">
+              <div class="mic-btn" @click="triggerImageUpload" title="上传患者发病部位图片（AI 视觉识别病因）">
+                <el-icon :size="17"><Picture /></el-icon>
+              </div>
+              <input ref="chatImageInput" type="file" accept="image/*" style="display:none" @change="handleImageSelect" />
               <div class="mic-btn" :class="{ recording: isRecording }" @click="toggleVoiceInput"
                    :title="isRecording ? '点击结束语音录入' : '语音录入（AI 识别转文字）'">
                 <el-icon v-if="!isRecording" :size="17"><Microphone /></el-icon>
@@ -4208,6 +4221,9 @@ const chatMessages = ref([])
 const chatInput = ref('')
 const chatTyping = ref(false)
 const chatAreaRef = ref(null)
+// 图片附件（患者发病部位图片 → AI 视觉识别病因分析）
+const chatAttachment = ref(null)   // { fileId, fileName, previewUrl }
+const chatImageInput = ref(null)   // 隐藏的 file input 引用
 // 贴敷常用穴位与经典中药速选库已统一前置声明
   const chatModelName = ref('gpt-4o-mini')
 
@@ -4802,13 +4818,58 @@ const addSingleStockMedToRx = (sm) => {
   saveCurrentPatientState()
 }
 
+// ── 图片上传（患者发病部位图片 → AI 视觉识别病因分析）──
+const triggerImageUpload = () => {
+  chatImageInput.value && chatImageInput.value.click()
+}
+const handleImageSelect = async (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件（jpg / png / webp 等）')
+    return
+  }
+  const previewUrl = URL.createObjectURL(file)
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const token = localStorage.getItem('chunbo_jwt_token')
+    const resp = await fetch('/api/upload/file', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd })
+    const data = await resp.json()
+    if (data && data.success) {
+      // 持久 URL（/uploads/attachments/xxx）：气泡与历史会话都用它，重启后图片不裂
+      const persistentUrl = data.url || previewUrl
+      chatAttachment.value = { fileId: data.fileId, fileName: file.name, previewUrl: persistentUrl }
+      URL.revokeObjectURL(previewUrl)
+      ElMessage.success('图片已上传，发送后将由 AI 视觉识别')
+    } else {
+      URL.revokeObjectURL(previewUrl)
+      ElMessage.error('上传失败：' + (data && data.message ? data.message : '未知错误'))
+    }
+  } catch (err) {
+    URL.revokeObjectURL(previewUrl)
+    ElMessage.error('上传失败：' + (err.message || '网络错误'))
+  }
+  e.target.value = '' // 允许重复选择同一文件
+}
+const removeAttachment = () => {
+  chatAttachment.value = null
+}
+
 const sendChatMessage = async () => {
   const text = chatInput.value.trim()
-  if (!text || chatTyping.value) return
+  // 附件先取出（原先在发请求前就被 removeAttachment 清掉，导致 attachmentId 永远传不到后端）
+  const att = chatAttachment.value
+    ? { fileId: chatAttachment.value.fileId, fileName: chatAttachment.value.fileName, previewUrl: chatAttachment.value.previewUrl }
+    : null
+  if ((!text && !att) || chatTyping.value) return
+  const sendText = text || '请分析这张患者发病部位图片的病因'
   chatInput.value = ''
 
-  // 1. 添加医生发送的消息气泡
-  chatMessages.value.push({ role: 'user', content: text })
+  // 1. 添加医生发送的消息气泡（有图片时直接在气泡内显示图片）
+  chatMessages.value.push({ role: 'user', content: sendText, image: att ? att.previewUrl : undefined })
+  // previewUrl 保留给气泡显示（不 revoke），仅清空输入区引用
+  chatAttachment.value = null
   saveAllChatSessions()
   chatTyping.value = true
   scrollChatBottom()
@@ -4869,6 +4930,8 @@ const sendChatMessage = async () => {
 
   // 病历摘要注入：AI 辨证基于真实病历而非模板数据
   const emrParts = []
+  // 接诊中患者：把姓名注入病历上下文，后端即使 patientId 回查失败也能按姓名解析到接诊患者档案
+  if (currentPatient.value && pName && pName !== '就诊患者') emrParts.push('接诊患者：' + pName)
   if (emr.value.chiefComplaint) emrParts.push('主诉：' + emr.value.chiefComplaint)
   if (emr.value.symptomsList && emr.value.symptomsList.length) emrParts.push('症状：' + emr.value.symptomsList.join('、'))
   if (emr.value.presentIllness) emrParts.push('现病史：' + emr.value.presentIllness)
@@ -4888,7 +4951,8 @@ const sendChatMessage = async () => {
   chatAbort = abort
   try {
     const pidParam = pid ? `&patientId=${pid}` : ''
-    const resp = await fetch(`/api/medical/chat/stream?sessionId=${encodeURIComponent(sid)}${pidParam}&message=${encodeURIComponent(text)}&doctorId=${encodeURIComponent(docId)}${emrContext ? '&emr=' + encodeURIComponent(emrContext) : ''}`, {
+    const attachParam = att && att.fileId ? `&attachmentId=${encodeURIComponent(att.fileId)}` : ''
+    const resp = await fetch(`/api/medical/chat/stream?sessionId=${encodeURIComponent(sid)}${pidParam}&message=${encodeURIComponent(sendText)}&doctorId=${encodeURIComponent(docId)}${emrContext ? '&emr=' + encodeURIComponent(emrContext) : ''}${attachParam}`, {
       headers: { 'Authorization': 'Bearer ' + token },
       signal: abort.signal
     })
@@ -7301,25 +7365,34 @@ onMounted(async () => {
 }
 .rx-card-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
   font-size: 12px;
   color: #166534;
-  padding: 2px 0;
+  padding: 4px 0;
   min-width: 0;
+  border-bottom: 1px dashed #dcfce7;
+}
+.rx-row-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
 }
 .rx-item-name {
   font-weight: 600;
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   min-width: 0;
+  word-break: break-all;
 }
 .rx-item-info {
   color: #64748b;
   font-size: 11px;
-  flex-shrink: 0;
+  line-height: 1.5;
+  width: 100%;
+  word-break: break-all;
+  white-space: normal;
 }
 .rx-item-price {
   color: #16a34a;
@@ -9021,8 +9094,8 @@ onMounted(async () => {
 
 .modern-chat-bottom {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-top: 4px;
   padding-top: 4px;
   border-top: 1px dashed #f1f5f9;
@@ -9031,6 +9104,7 @@ onMounted(async () => {
 .chat-key-hint {
   font-size: 11px;
   color: #94a3b8;
+  margin-left: auto;
 }
 
 .modern-send-btn {
@@ -9881,6 +9955,53 @@ onMounted(async () => {
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35) !important; }
   50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0) !important; }
+}
+/* 图片附件预览（AI 视觉识别） */
+/* 医生气泡内的图片（上传的发病部位图片直接显示） */
+.msg-bubble-image {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+.msg-bubble-image img {
+  max-width: 200px;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #99f6e4;
+  display: block;
+}
+.chat-attachment-preview {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 10px !important;
+  margin-bottom: 8px !important;
+  background: #f0fdfa !important;
+  border: 1px dashed #0f766e !important;
+  border-radius: 8px !important;
+}
+.chat-attachment-thumb {
+  width: 42px !important;
+  height: 42px !important;
+  object-fit: cover !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  flex: 0 0 auto !important;
+}
+.chat-attachment-name {
+  flex: 1 !important;
+  font-size: 12px !important;
+  color: #0f766e !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.chat-attachment-remove {
+  cursor: pointer !important;
+  color: #ef4444 !important;
+  font-size: 14px !important;
+  padding: 2px 6px !important;
 }
 
 .reasoning-body {

@@ -5,6 +5,12 @@ spring:
   application:
     name: chunbo-medical-backend
 
+  servlet:
+    multipart:
+      # 多模态上传：剪贴板截图/Excel 普遍超过默认 1MB，放宽到 20MB
+      max-file-size: 20MB
+      max-request-size: 25MB
+
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/chunbo_medical?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
@@ -25,7 +31,7 @@ spring:
       read-timeout: 8s
       chat:
         options:
-          model: gpt-4o-mini
+          model: deepseek-v4-flash
           temperature: 0.3
       embedding:
         options:
@@ -72,6 +78,8 @@ chunbo:
   ai:
     mock-enabled: false
     llm-enabled: true
+    # 视觉模型（图片识别）：中转站 ohmygpt 的 DeepSeek V4 Flash 视觉实验版
+    vision-model: deepseek:deepseek/deepseek-v4-flash-vision-exp
     proxy:
       host: 127.0.0.1
       port: 7897

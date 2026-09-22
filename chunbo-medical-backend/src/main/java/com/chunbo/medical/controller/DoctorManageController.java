@@ -73,7 +73,8 @@ public class DoctorManageController {
 
         DoctorAccount account = new DoctorAccount();
         account.setUsername(username);
-        account.setPassword(password);
+        // BCrypt 加密存储（登录端 /api/auth/login 已支持 BCrypt 校验）
+        account.setPassword(com.chunbo.medical.config.PasswordUtil.encode(password));
         account.setDoctorName(doctorName);
         account.setDoctorId(doctorId);
         account.setDepartment(department.isEmpty() ? "\u5168\u79D1\u95E8\u8BCA" : department);
@@ -117,7 +118,7 @@ public class DoctorManageController {
         DoctorAccount account = doctorAccountMapper.selectById(id);
         Map<String, Object> res = new HashMap<>();
         if (account != null) {
-            account.setPassword(newPassword);
+            account.setPassword(com.chunbo.medical.config.PasswordUtil.encode(newPassword));
             doctorAccountMapper.updateById(account);
             res.put("success", true);
             res.put("message", "\u5BC6\u7801\u91CD\u7F6E\u6210\u529F\uFF0C\u65B0\u5BC6\u7801\u4E3A: " + newPassword);

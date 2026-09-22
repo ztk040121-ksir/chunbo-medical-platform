@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.agent.AgentRouter;
 import com.chunbo.medical.agent.OaGeneralAgent;
 import com.chunbo.medical.agent.OaRouteAgent;
+import com.chunbo.medical.constant.AgentConstant;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
 import com.chunbo.medical.enums.ChatEventTypeEnum;
@@ -20,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.math.BigDecimal;
@@ -57,6 +59,9 @@ public class AssistantController {
 
     @Autowired
     private StaffAccountMapper staffAccountMapper;
+
+    @Autowired
+    private DoctorAccountMapper doctorAccountMapper;
 
     @Autowired
     private OaSalarySlipMapper salarySlipMapper;
@@ -106,13 +111,18 @@ public class AssistantController {
             @RequestParam(value = "userId", required = false) String userId,
             @RequestParam(value = "userRole", required = false) String userRole,
             @RequestParam(value = "userName", required = false) String userName,
-            @RequestParam(value = "sessionId", required = false) String sessionId
+            @RequestParam(value = "sessionId", required = false) String sessionId,
+            @RequestParam(value = "attachmentId", required = false) String attachmentId,
+            @RequestParam(value = "fileName", required = false) String fileName
     ) {
         String effectiveName = (userName != null && !userName.isEmpty()) ? userName : "系统用户";
         String effectiveSession = (sessionId != null && !sessionId.isEmpty()) ? sessionId : ("OA_" + UUID.randomUUID());
         String effectiveUserId = (userId != null && !userId.isEmpty()) ? userId : effectiveName;
-        // 多智能体路由：OaRouteAgent 判意图 → 业务智能体 processStream
-        return agentRouter.route(oaRouteAgent, oaGeneralAgent, message, effectiveSession, effectiveUserId);
+        // 多智能体路由：OaRouteAgent 判意图 → 业务智能体 processStream（携带附件标识，供表格/图片识别）
+        Map<String, Object> context = new HashMap<>();
+        if (attachmentId != null && !attachmentId.isEmpty()) context.put(AgentConstant.ATTACHMENT_ID, attachmentId);
+        if (fileName != null && !fileName.isEmpty()) context.put(AgentConstant.ATTACHMENT_FILE_NAME, fileName);
+        return agentRouter.route(oaRouteAgent, oaGeneralAgent, message, effectiveSession, effectiveUserId, context);
     }
 
     /**
@@ -1061,6 +1071,113 @@ public class AssistantController {
         return oaService.getApprovals();
     }
 
+    /** 页面请假申请提交（医生/护士「我的OA请假申请」表单）：自动补 NOT NULL 起止时间，状态进待审批 */
+    @PostMapping("/approvals/create")
+    public Map<String, Object> createLeaveApproval(@RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        try {
+            String approvalType = String.valueOf(body.getOrDefault("approvalType", "")).trim();
+            String reason = String.valueOf(body.getOrDefault("reason", "")).trim();
+            java.math.BigDecimal durationDays;
+            try {
+                durationDays = new java.math.BigDecimal(String.valueOf(body.get("durationDays")));
+            } catch (Exception e) {
+                durationDays = java.math.BigDecimal.ONE;
+            }
+            if (durationDays.compareTo(java.math.BigDecimal.ONE) < 0) durationDays = java.math.BigDecimal.ONE;
+            String applicantName = String.valueOf(body.getOrDefault("applicantName", "")).trim();
+            String applicantId = String.valueOf(body.getOrDefault("applicantId", "")).trim();
+            if (applicantName.isEmpty() || approvalType.isEmpty() || reason.isEmpty()) {
+                res.put("success", false);
+                res.put("message", "申请人、假别类型与请假事由均为必填项");
+                return res;
+            }
+            int days = Math.max(1, durationDays.intValue());
+            java.time.LocalDate start = java.time.LocalDate.now();
+            java.time.LocalDate end = start.plusDays(days - 1L);
+
+            OaApproval approval = new OaApproval();
+            approval.setApplicantName(applicantName);
+            approval.setApplicantId(applicantId.isEmpty() ? "UNKNOWN" : applicantId);
+            approval.setApprovalType(approvalType);
+            approval.setReason(reason);
+            approval.setDuration("共 " + days + " 天（" + start.getMonthValue() + "月" + start.getDayOfMonth()
+                    + "日至" + end.getMonthValue() + "月" + end.getDayOfMonth() + "日）");
+            approval.setStartTime(start.getMonthValue() + "月" + start.getDayOfMonth() + "日");
+            approval.setEndTime(end.getMonthValue() + "月" + end.getDayOfMonth() + "日");
+            approval.setDurationDays(durationDays);
+            approval.setStatus("待人事初审");
+            approval.setComment("");
+            approval.setCreateTime(java.time.LocalDateTime.now());
+            oaApprovalMapper.insert(approval);
+            res.put("success", true);
+            res.put("message", "请假申请已提交（" + approvalType + " " + days + " 天），等待人事/院办审批");
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("message", "提交失败：" + e.getMessage());
+        }
+        return res;
+    }
+
+    /** 单条审批处理（批准/驳回）：页面审批按钮调用 */
+    @PostMapping("/approvals/process")
+    public Map<String, Object> processApproval(@RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        try {
+            Long id = Long.valueOf(body.get("id").toString());
+            String status = String.valueOf(body.getOrDefault("status", "已通过"));
+            String approver = String.valueOf(body.getOrDefault("approver", "系统管理员"));
+            String comment = String.valueOf(body.getOrDefault("comment", ""));
+            OaApproval ap = oaService.processApproval(id, status, approver, comment);
+            res.put("success", ap != null);
+            res.put("message", ap != null ? "请假单已" + status + "（审批人：" + approver + "）" : "审批单不存在");
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("message", "审批处理失败：" + e.getMessage());
+        }
+        return res;
+    }
+
+    /** 审批单批量删除 */
+    @PostMapping("/approvals/batch-delete")
+    public Map<String, Object> batchDeleteApprovals(@RequestBody Map<String, Object> body) {
+        List<Long> ids = parseIds(body.get("ids"));
+        int n = 0;
+        for (Long id : ids) n += oaService.deleteApproval(id);
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("deleted", n);
+        res.put("message", "已删除 " + n + " 条审批单");
+        return res;
+    }
+
+    /** 工资条批量删除（仅 ADMIN/HR） */
+    @PostMapping("/salary/batch-delete")
+    public Map<String, Object> batchDeleteSalarySlips(@RequestBody Map<String, Object> body) {
+        List<Long> ids = parseIds(body.get("ids"));
+        int n = 0;
+        for (Long id : ids) n += salarySlipMapper.deleteById(id);
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("deleted", n);
+        res.put("message", "已删除 " + n + " 条工资条记录");
+        return res;
+    }
+
+    /** 通用 ids 解析（[1,2,3] / ["1","2"] 均可） */
+    private List<Long> parseIds(Object raw) {
+        List<Long> ids = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                try {
+                    ids.add(Long.valueOf(String.valueOf(o)));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return ids;
+    }
+
     /**
      * 工资发放员工候选列表（用于工资条发放与核算页面的员工下拉选择）
      * GET /api/assistant/salary/staff-candidates
@@ -1068,11 +1185,32 @@ public class AssistantController {
     @GetMapping("/salary/staff-candidates")
     public List<Map<String, Object>> salaryStaffCandidates() {
         List<Map<String, Object>> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        // 1. 医生账号表全量（门诊医生可能未在员工账号表建号，如赵敏 DOC_1004、陈建新 DOC_1008）
+        List<DoctorAccount> doctors = doctorAccountMapper.selectList(
+                new LambdaQueryWrapper<DoctorAccount>().orderByAsc(DoctorAccount::getId));
+        for (DoctorAccount doc : doctors) {
+            if (doc.getStatus() != null && "DISABLE".equalsIgnoreCase(doc.getStatus())) {
+                continue;
+            }
+            if (doc.getDoctorId() == null || !seen.add(doc.getDoctorId().toLowerCase())) {
+                continue;
+            }
+            Map<String, Object> item = new HashMap<>();
+            item.put("staffId", doc.getDoctorId());
+            item.put("realName", doc.getDoctorName());
+            item.put("role", "DOCTOR");
+            result.add(item);
+        }
+        // 2. 员工账号表补充（人事/行政/商户等非医生岗位），去重
         List<StaffAccount> staffs = staffAccountMapper.selectList(
                 new LambdaQueryWrapper<StaffAccount>().orderByAsc(StaffAccount::getId));
         for (StaffAccount s : staffs) {
             // 跳过已停用账号
             if (s.getStatus() != null && "DISABLE".equalsIgnoreCase(s.getStatus())) {
+                continue;
+            }
+            if (s.getStaffId() == null || !seen.add(s.getStaffId().toLowerCase())) {
                 continue;
             }
             Map<String, Object> item = new HashMap<>();
@@ -1258,6 +1396,328 @@ public class AssistantController {
             res.put("success", false);
             res.put("message", "工资条发放失败: " + e.getMessage());
             return res;
+        }
+    }
+
+    /**
+     * 解析 Excel 工资表（仅解析不发放，供「工资条核算中枢」自动填充全员工资表）
+     * POST /api/assistant/salary/parse-excel  multipart: file
+     * 返回 rows: [{employeeId, employeeName, department, amount, sourceCol}]
+     */
+    @PostMapping("/salary/parse-excel")
+    public Map<String, Object> parseSalaryExcel(@RequestParam("file") MultipartFile file) {
+        Map<String, Object> result = new HashMap<>();
+        if (file == null || file.isEmpty()) {
+            result.put("success", false);
+            result.put("message", "上传文件为空");
+            return result;
+        }
+        String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        if (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls")) {
+            result.put("success", false);
+            result.put("message", "请上传 Excel 工资表（xlsx / xls）");
+            return result;
+        }
+        try {
+            List<Map<String, Object>> rows = parseSalaryExcelRows(file);
+            if (rows == null) {
+                result.put("success", false);
+                result.put("message", "未识别到表头行（表头需同时包含「姓名/工号」和「工资/金额」列）");
+                return result;
+            }
+            result.put("success", true);
+            result.put("rows", rows);
+            result.put("count", rows.size());
+            result.put("message", "解析成功，共 " + rows.size() + " 条工资记录");
+            return result;
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "Excel 解析失败：" + e.getMessage());
+            return result;
+        }
+    }
+
+    /**
+     * 全员工资条批量发放（工资条核算中枢「一键发放」）
+     * POST /api/assistant/salary/batch-pay
+     * body: { month, rows: [{staffId, name, baseSalary, clinicCommission, plasterCommission, deductionSocial, tax, netSalary, aiComment}] }
+     * 同员工同月幂等覆盖更新；返回逐人结果汇总。
+     */
+    @PostMapping("/salary/batch-pay")
+    public Map<String, Object> batchPaySalary(@RequestBody Map<String, Object> body) {
+        Map<String, Object> result = new HashMap<>();
+        String month = String.valueOf(body.getOrDefault("month", LocalDate.now().toString().substring(0, 7)));
+        Object rowsObj = body.get("rows");
+        if (!(rowsObj instanceof List) || ((List<?>) rowsObj).isEmpty()) {
+            result.put("success", false);
+            result.put("message", "发放名单为空");
+            return result;
+        }
+        List<?> rows = (List<?>) rowsObj;
+        List<Map<String, Object>> details = new ArrayList<>();
+        int ok = 0, fail = 0;
+        BigDecimal total = BigDecimal.ZERO;
+        for (Object o : rows) {
+            if (!(o instanceof Map)) continue;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> r = (Map<String, Object>) o;
+            String staffId = String.valueOf(r.getOrDefault("staffId", "")).trim();
+            String name = String.valueOf(r.getOrDefault("name", "")).trim();
+            if (staffId.isEmpty() || "null".equals(staffId)) {
+                Map<String, Object> d = new HashMap<>();
+                d.put("name", name);
+                d.put("success", false);
+                d.put("message", "缺少工号，无法发放");
+                fail++;
+                details.add(d);
+                continue;
+            }
+            // 账号一一对应硬校验：工资只能发给系统内有账号（医生账号或员工账号）的员工，
+            // 工资表里出现但系统无账号的人员一律拒绝发放，避免给幽灵员工发钱
+            boolean hasAccount = staffAccountMapper.selectCount(
+                    new LambdaQueryWrapper<StaffAccount>().eq(StaffAccount::getStaffId, staffId)) > 0;
+            if (!hasAccount) {
+                hasAccount = doctorAccountMapper.selectCount(
+                        new LambdaQueryWrapper<DoctorAccount>().eq(DoctorAccount::getDoctorId, staffId)) > 0;
+            }
+            if (!hasAccount) {
+                Map<String, Object> d = new HashMap<>();
+                d.put("staffId", staffId);
+                d.put("name", name);
+                d.put("success", false);
+                d.put("message", "系统中无此员工账号（" + staffId + "），无法发放工资，请先在系统内建号");
+                fail++;
+                details.add(d);
+                continue;
+            }
+            try {
+                BigDecimal base = toBigDecimal(r.get("baseSalary"));
+                BigDecimal clinic = toBigDecimal(r.get("clinicCommission"));
+                BigDecimal plaster = toBigDecimal(r.get("plasterCommission"));
+                BigDecimal social = toBigDecimal(r.get("deductionSocial"));
+                BigDecimal tax = toBigDecimal(r.get("tax"));
+                BigDecimal net = toBigDecimal(r.get("netSalary"));
+                if (net.compareTo(BigDecimal.ZERO) == 0) {
+                    net = base.add(clinic).add(plaster).subtract(social).subtract(tax);
+                }
+                // 幂等：同员工同月覆盖更新
+                OaSalarySlip existed = salarySlipMapper.selectOne(new LambdaQueryWrapper<OaSalarySlip>()
+                        .eq(OaSalarySlip::getDoctorId, staffId)
+                        .eq(OaSalarySlip::getSalaryMonth, month)
+                        .last("LIMIT 1"));
+                boolean overwrite = existed != null;
+                OaSalarySlip slip = overwrite ? existed : new OaSalarySlip();
+                slip.setDoctorId(staffId);
+                slip.setDoctorName(name.isEmpty() ? staffId : name);
+                slip.setSalaryMonth(month);
+                slip.setBaseSalary(base);
+                slip.setClinicCommission(clinic);
+                slip.setPlasterCommission(plaster);
+                slip.setDeductionSocial(social);
+                slip.setTax(tax);
+                slip.setNetSalary(net);
+                slip.setStatus("已发放");
+                if (overwrite) {
+                    // 覆盖更新时刷新发放时间，台账/记录里看到的应是最近一次发放时间
+                    slip.setCreateTime(java.time.LocalDateTime.now());
+                    salarySlipMapper.updateById(slip);
+                } else {
+                    salarySlipMapper.insert(slip);
+                }
+                total = total.add(net);
+                Map<String, Object> d = new HashMap<>();
+                d.put("staffId", staffId);
+                d.put("name", slip.getDoctorName());
+                d.put("success", true);
+                d.put("netSalary", net);
+                d.put("message", (overwrite ? "已覆盖更新 " : "已发放 ") + month + " 工资 ¥" + net);
+                ok++;
+                details.add(d);
+            } catch (Exception e) {
+                Map<String, Object> d = new HashMap<>();
+                d.put("staffId", staffId);
+                d.put("name", name);
+                d.put("success", false);
+                d.put("message", "发放失败：" + e.getMessage());
+                fail++;
+                details.add(d);
+            }
+        }
+        result.put("success", ok > 0);
+        result.put("successCount", ok);
+        result.put("failCount", fail);
+        result.put("totalAmount", total);
+        result.put("details", details);
+        result.put("message", "批量发放完成：成功 " + ok + " 人，失败 " + fail + " 人，合计 ¥" + total);
+        return result;
+    }
+
+    private BigDecimal toBigDecimal(Object v) {
+        if (v == null) return BigDecimal.ZERO;
+        try {
+            return new BigDecimal(String.valueOf(v).trim().isEmpty() ? "0" : String.valueOf(v).trim());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /** 解析 Excel 工资表为行记录（表头定位 + 列映射，供 parse-excel / pay-from-excel 共用） */
+    private List<Map<String, Object>> parseSalaryExcelRows(MultipartFile file) throws Exception {
+        String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        try (org.apache.poi.ss.usermodel.Workbook wb = originalName.endsWith(".xls")
+                ? new org.apache.poi.hssf.usermodel.HSSFWorkbook(file.getInputStream())
+                : new org.apache.poi.xssf.usermodel.XSSFWorkbook(file.getInputStream())) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheetAt(0);
+
+            org.apache.poi.ss.usermodel.Row header = null;
+            int headerIdx = -1;
+            for (int r = 0; r <= Math.min(sheet.getLastRowNum(), 20); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+                boolean hasName = false, hasAmount = false;
+                for (int c = 0; c < row.getLastCellNum(); c++) {
+                    String t = excelCellText(row.getCell(c));
+                    if (t.contains("姓名") || t.contains("工号")) hasName = true;
+                    if (t.contains("工资") || t.contains("金额")) hasAmount = true;
+                }
+                if (hasName && hasAmount) { header = row; headerIdx = r; break; }
+            }
+            if (header == null) return null;
+
+            int idCol = -1, nameCol = -1, deptCol = -1, amtCol = -1;
+            for (int c = 0; c < header.getLastCellNum(); c++) {
+                String t = excelCellText(header.getCell(c));
+                if (idCol < 0 && t.contains("工号")) idCol = c;
+                if (nameCol < 0 && t.contains("姓名")) nameCol = c;
+                if (deptCol < 0 && t.contains("部门")) deptCol = c;
+            }
+            for (int c = 0; c < header.getLastCellNum(); c++) {
+                String t = excelCellText(header.getCell(c));
+                if (t.contains("实发") && t.contains("工资")) { amtCol = c; break; }
+            }
+            if (amtCol < 0) {
+                for (int c = 0; c < header.getLastCellNum(); c++) {
+                    String t = excelCellText(header.getCell(c));
+                    if (t.contains("应发") && t.contains("工资")) { amtCol = c; break; }
+                }
+            }
+            if (amtCol < 0) {
+                for (int c = 0; c < header.getLastCellNum(); c++) {
+                    String t = excelCellText(header.getCell(c));
+                    if (t.contains("工资") || t.contains("金额")) { amtCol = c; break; }
+                }
+            }
+            if ((idCol < 0 && nameCol < 0) || amtCol < 0) return null;
+
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (int r = headerIdx + 1; r <= sheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String idVal = idCol >= 0 ? excelCellText(row.getCell(idCol)) : "";
+                String nameVal = nameCol >= 0 ? excelCellText(row.getCell(nameCol)) : "";
+                String deptVal = deptCol >= 0 ? excelCellText(row.getCell(deptCol)) : "";
+                String amtStr = excelCellText(row.getCell(amtCol));
+                if (idVal.isBlank() && nameVal.isBlank() && amtStr.isBlank()) continue;
+                Map<String, Object> d = new HashMap<>();
+                d.put("employeeId", idVal);
+                d.put("employeeName", nameVal);
+                d.put("department", deptVal);
+                d.put("amount", amtStr);
+                rows.add(d);
+            }
+            return rows;
+        }
+    }
+
+    /**
+     * 上传 Excel 工资表批量发放（工资条核算中枢页面直传）
+     * POST /api/assistant/salary/pay-from-excel  multipart: file + 可选 month
+     * 确定性解析：定位表头行（含 姓名/工号 与 工资/金额 列），金额优先「实发工资」列，其次「应发工资」，
+     * 逐行复用 paySalary（含员工匹配 + 同月幂等覆盖），返回逐人发放明细。
+     */
+    @PostMapping("/salary/pay-from-excel")
+    public Map<String, Object> paySalaryFromExcel(@RequestParam("file") MultipartFile file,
+                                                  @RequestParam(value = "month", required = false) String month) {
+        Map<String, Object> result = new HashMap<>();
+        if (file == null || file.isEmpty()) {
+            result.put("success", false);
+            result.put("message", "上传文件为空");
+            return result;
+        }
+        String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        if (!originalName.endsWith(".xlsx") && !originalName.endsWith(".xls")) {
+            result.put("success", false);
+            result.put("message", "请上传 Excel 工资表（xlsx / xls）");
+            return result;
+        }
+        try {
+            List<Map<String, Object>> rows = parseSalaryExcelRows(file);
+            if (rows == null) {
+                result.put("success", false);
+                result.put("message", "未识别到表头行（表头需同时包含「姓名/工号」和「工资/金额」列）");
+                return result;
+            }
+            List<Map<String, Object>> details = new ArrayList<>();
+            int ok = 0, fail = 0;
+            for (Map<String, Object> row : rows) {
+                String idVal = String.valueOf(row.getOrDefault("employeeId", ""));
+                String nameVal = String.valueOf(row.getOrDefault("employeeName", ""));
+                String amtStr = String.valueOf(row.getOrDefault("amount", ""));
+                String emp = !idVal.isBlank() ? idVal : nameVal;
+                Map<String, Object> d = new HashMap<>();
+                d.put("employee", !nameVal.isBlank() ? nameVal : emp);
+                d.put("amount", amtStr);
+                BigDecimal amt = null;
+                try { amt = new BigDecimal(amtStr.trim()); } catch (Exception ignore) { }
+                if (emp.isBlank() || amt == null) {
+                    d.put("success", false);
+                    d.put("message", "行数据不完整（姓名/工号或金额缺失）");
+                    fail++;
+                    details.add(d);
+                    continue;
+                }
+                Map<String, Object> pr = oaService.paySalary(emp, amt, month);
+                boolean s = Boolean.TRUE.equals(pr.get("success"));
+                d.put("success", s);
+                d.put("message", pr.get("message"));
+                if (s) ok++; else fail++;
+                details.add(d);
+            }
+            result.put("success", ok > 0);
+            result.put("total", ok + fail);
+            result.put("successCount", ok);
+            result.put("failCount", fail);
+            result.put("details", details);
+            result.put("message", "工资表发放完成：成功 " + ok + " 人，失败 " + fail + " 人");
+            return result;
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "Excel 解析失败：" + e.getMessage());
+            return result;
+        }
+    }
+
+    /** Excel 单元格转纯文本（数字不带多余小数点，公式取值） */
+    private String excelCellText(org.apache.poi.ss.usermodel.Cell cell) {
+        if (cell == null) return "";
+        try {
+            switch (cell.getCellType()) {
+                case STRING:
+                    return cell.getStringCellValue().trim();
+                case NUMERIC:
+                    double v = cell.getNumericCellValue();
+                    if (v == Math.floor(v) && !Double.isInfinite(v)) return String.valueOf((long) v);
+                    return String.valueOf(v);
+                case BOOLEAN:
+                    return String.valueOf(cell.getBooleanCellValue());
+                case FORMULA:
+                    try { return cell.getStringCellValue().trim(); }
+                    catch (Exception e) { return String.valueOf(cell.getNumericCellValue()); }
+                default:
+                    return "";
+            }
+        } catch (Exception e) {
+            return "";
         }
     }
 }

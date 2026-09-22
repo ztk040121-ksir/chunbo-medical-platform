@@ -3,6 +3,7 @@ package com.chunbo.medical.controller;
 import com.chunbo.medical.agent.AgentRouter;
 import com.chunbo.medical.agent.MallGeneralAgent;
 import com.chunbo.medical.agent.MallRouteAgent;
+import com.chunbo.medical.constant.AgentConstant;
 import com.chunbo.medical.entity.MallOrder;
 import com.chunbo.medical.entity.MallProduct;
 import com.chunbo.medical.service.B2bMultiAgentService;
@@ -12,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,12 +63,15 @@ public class MallAgentController {
             @RequestParam(value = "role", required = false, defaultValue = "consumer") String role,
             @RequestParam(value = "sessionId", required = false, defaultValue = "SESSION_MALL_001") String sessionId,
             @RequestParam(value = "phone", required = false, defaultValue = "") String phone,
-            @RequestParam(value = "userName", required = false, defaultValue = "") String userName) {
+            @RequestParam(value = "userName", required = false, defaultValue = "") String userName,
+            @RequestParam(value = "attachmentId", required = false) String attachmentId) {
 
         String effectiveUserId = (phone != null && !phone.isEmpty()) ? phone
                 : (userName != null && !userName.isEmpty() ? userName : sessionId);
-        // 多智能体路由：MallRouteAgent 判意图 → 业务智能体 processStream
-        return agentRouter.route(mallRouteAgent, mallGeneralAgent, message, sessionId, effectiveUserId);
+        // 多智能体路由：MallRouteAgent 判意图 → 业务智能体 processStream（携带附件标识，供图片识别）
+        Map<String, Object> context = new HashMap<>();
+        if (attachmentId != null && !attachmentId.isEmpty()) context.put(AgentConstant.ATTACHMENT_ID, attachmentId);
+        return agentRouter.route(mallRouteAgent, mallGeneralAgent, message, sessionId, effectiveUserId, context);
     }
 
     /**

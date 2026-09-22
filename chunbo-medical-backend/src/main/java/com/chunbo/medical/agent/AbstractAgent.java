@@ -9,10 +9,13 @@ import com.chunbo.medical.vo.ChatEventVO;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.content.Media;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -163,6 +166,15 @@ public abstract class AbstractAgent implements Agent {
      */
     protected Flux<ChatEventVO> functionCallingFlux(String question, String sessionId, String userId,
                                                     String role, String systemMessage, Object... tools) {
+        return functionCallingFlux(question, sessionId, userId, role, systemMessage, null, tools);
+    }
+
+    /**
+     * 发起真正的 function-calling 流（支持多模态图片附件）：
+     * media 非空时，用户消息 = 文本 + 图片（视觉识别），否则纯文本。
+     */
+    protected Flux<ChatEventVO> functionCallingFlux(String question, String sessionId, String userId,
+                                                    String role, String systemMessage, List<Media> media, Object... tools) {
         if (aiModelConfigService == null) {
             return Flux.error(new IllegalStateException("AI 模型服务未就绪"));
         }
@@ -174,9 +186,21 @@ public abstract class AbstractAgent implements Agent {
         Map<String, Object> toolCtx = buildToolContext(sessionId, requestId, userId, role);
 
         ChatClient.ChatClientRequestSpec spec = client.prompt()
-                .system(systemMessage != null ? systemMessage : "")
-                .user(question)
-                .toolContext(toolCtx);
+                .system(systemMessage != null ? systemMessage : "");
+        // 多模态：图片随用户消息一起送入大模型（OpenAI 兼容 image_url content），并切换视觉模型
+        if (media != null && !media.isEmpty()) {
+            spec = spec.user(u -> u.text(question).media(media.toArray(new Media[0])));
+            try {
+                String visionModel = aiModelConfigService.getVisionModel();
+                if (visionModel != null && !visionModel.isBlank()) {
+                    spec = spec.options(OpenAiChatOptions.builder().model(visionModel).build());
+                }
+            } catch (Exception ignored) {
+            }
+        } else {
+            spec = spec.user(question);
+        }
+        spec = spec.toolContext(toolCtx);
         if (tools != null && tools.length > 0) {
             spec = spec.tools(tools);
         }

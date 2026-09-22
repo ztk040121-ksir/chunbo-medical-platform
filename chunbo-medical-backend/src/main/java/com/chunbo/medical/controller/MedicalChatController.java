@@ -59,11 +59,13 @@ public class MedicalChatController {
                                       @RequestParam(value = "patientId", required = false) Long patientId,
                                       @RequestParam("message") String message,
                                       @RequestParam(value = "doctorId", required = false) String doctorId,
-                                      @RequestParam(value = "emr", required = false) String emrContext) {
+                                      @RequestParam(value = "emr", required = false) String emrContext,
+                                      @RequestParam(value = "attachmentId", required = false) String attachmentId) {
         // 多智能体路由：MedRouteAgent 判意图 → 业务智能体 processStream（携带 patientId + 病历摘要 + 身份上下文）
         java.util.Map<String, Object> context = new java.util.HashMap<>();
         if (patientId != null) context.put(AgentConstant.PATIENT_ID, patientId);
         if (emrContext != null && !emrContext.isEmpty()) context.put(AgentConstant.EMR_CONTEXT, emrContext);
+        if (attachmentId != null && !attachmentId.isEmpty()) context.put(AgentConstant.ATTACHMENT_ID, attachmentId);
         // 身份上下文：userId=医生工号，role=DOCTOR（问诊域仅医生/管理员可用），供工具内部 RBAC 校验
         context.put(AgentConstant.USER_ID, doctorId);
         context.put(AgentConstant.ROLE, "DOCTOR");

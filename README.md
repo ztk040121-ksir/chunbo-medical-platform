@@ -2,7 +2,7 @@
 
 > 基于 **Spring AI** 的基层医疗数字化平台，集 **云诊所智能问诊**、**运营管理中台**、**便民网上药房** 三大子系统于一体，深度集成 **MCP 协议工具调用**、**RAG 用药知识库检索** 与 **多智能体协同**。
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![Version](https://img.shields.io/badge/Version-2.0.0-red) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![Version](https://img.shields.io/badge/Version-3.0.0-red) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 ---
 
@@ -448,6 +448,13 @@ content
 
 ## 十、版本历史
 
+- **v3.0.0** — 权限体系统一 + AI 深度接管 + 账号与权限动态化：
+  - 🔐 **双系统动态权限体系**：`sys_role_permission` 引入 `scope` 维度（`CLINIC` 云诊所 / `ADMIN` 管理中台）两套独立配置，云诊所与中台菜单均按角色配置动态渲染；新增 **NURSE 护士角色**（云诊所仅挂号/划价/执行/药房/患者档案），**商户账号真实落库**，角色权限可在「医护账号与权限管理」页实时调整，登录/切换标签自动刷新权限
+  - 👨‍⚕️ **医护账号统一管理**：医生 + 员工 + 商户账号去重合并为一张总台账，统一注册接口按角色自动分配工号并生效对应权限（`DOC_/NUR_/HR_/MERCH_/ADM_`）；修复医生账号无法登录云诊所（明文密码迁移 BCrypt）
+  - 🤖 **AI 工具级 RBAC 权限隔离**：`toolContext` 注入真实角色 + 工具入口 fail-closed 校验，越权调用直接拦截，LLM 无法绕过
+  - 📊 **AI 接管运营全场景**：工资发放中心（确定性发放、AI 测算、Excel 解析、发薪精确到天）、商城用户管理（AI 引导注册 + 查订单 + 统计）、OA 请假审批（列名单/批准/驳回/删除）、商城发货送达、商品进销存（下架/调价/入库/批量）
+  - 🖼️ **多模态与视觉诊断闭环**：图片/文件上传 AI 识别 + 持久化 URL，视觉诊断「图像识别 → RAG+临床指南 → 诊断 → 过敏史+库存核对 → 开方卡片」全链路
+  - 🧹 全页面搜索/分页/批量删除、路由会话级意图延续、订单按登录用户过滤、切标签自动刷新
 - **v1.0.0** — 首个完整版本：三子系统闭环、MCP + RAG + 多智能体、鉴权与并发安全加固
 - **v2.0.0** — 本轮升级：
   - RAG 底层官方化（`SimpleVectorStore` 向量库），纯走官方向量检索
