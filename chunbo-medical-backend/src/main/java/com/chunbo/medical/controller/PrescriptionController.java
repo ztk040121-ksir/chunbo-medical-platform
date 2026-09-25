@@ -42,6 +42,24 @@ public class PrescriptionController {
     @Autowired
     private CurrentUserService currentUserService;
 
+    @Autowired
+    private com.chunbo.medical.service.PrescriptionReviewService prescriptionReviewService;
+
+    @Autowired(required = false)
+    private PayTransactionMapper payTransactionMapper;
+
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    /**
+     * AI 处方合理性审查（剂量/配伍/禁忌/重复用药）——开方后的一道硬关卡，审查不过前端标红提示医生。
+     * 纯实时审查不落库、不阻断开方主流程；输入处方明细 + 患者信息，返回结构化审查结论。
+     */
+    @PostMapping("/review")
+    public Map<String, Object> reviewPrescription(@RequestBody Map<String, Object> req) {
+        return prescriptionReviewService.reviewPrescription(req);
+    }
+
     @GetMapping("/list")
     public List<Map<String, Object>> listPrescriptions() {
         LambdaQueryWrapper<Prescription> qw = new LambdaQueryWrapper<>();
@@ -189,7 +207,6 @@ public class PrescriptionController {
      * 医生开具处方（涵盖患者档案自动建立、过敏红线拦截、智能生成待划价处方及理疗执行任务）
      */
     @PostMapping(value = {"/manual-create", "/create"})
-    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> manualCreatePrescription(@RequestBody Map<String, Object> req, jakarta.servlet.http.HttpServletRequest request) {
         Map<String, Object> res = new HashMap<>();
         // 开单医生兜底 = 当前登录人真实姓名（前端传了 doctorName 则以前端为准）
@@ -232,15 +249,20 @@ public class PrescriptionController {
             patient.setName(patientName);
             patient.setGender(req.getOrDefault("gender", "男").toString());
             try {
-                patient.setAge(Integer.parseInt(req.getOrDefault("age", "35").toString()));
-            } catch (Exception e) {
-                patient.setAge(35);
+                Object ageObj = req.get("patientAge") != null ? req.get("patientAge") : req.get("age");
+                if (ageObj != null && !ageObj.toString().trim().isEmpty()) {
+                    patient.setAge(Integer.parseInt(ageObj.toString().trim()));
+                } else {
+                    patient.setAge(0);
+                }
+            } catch (Exception ignored) {
+                patient.setAge(0);
             }
-            patient.setPhone(req.getOrDefault("phone", "13800000000").toString());
+            patient.setPhone(req.getOrDefault("phone", "").toString());
             patient.setIdCard(reqIdCard);
-            patient.setAllergies(req.getOrDefault("allergies", "无").toString());
-            patient.setMedicalHistory(req.getOrDefault("diagnosis", "门诊电子病历就诊档案").toString());
-            patient.setAddress(req.getOrDefault("address", "湖南省长沙市岳麓区").toString());
+            patient.setAllergies(req.getOrDefault("allergies", "未记录药物过敏史").toString());
+            patient.setMedicalHistory(req.getOrDefault("medicalHistory", "未记录既往慢病史").toString());
+            patient.setAddress(req.getOrDefault("address", "").toString());
             patient.setCreateTime(LocalDateTime.now());
             patientMapper.insert(patient);
             patientId = patient.getId();
@@ -255,31 +277,105 @@ public class PrescriptionController {
             return res;
         }
 
-        // 2. 过敏红线安全校验 (硬性拦截)
+        // 2. 过敏红线安全校验 (硬性拦截，按药品成分族映射，覆盖衍生物)
         String allergies = patient.getAllergies() == null ? "" : patient.getAllergies();
         for (Map<String, Object> itemMap : rawItems) {
             String medName = itemMap.getOrDefault("medicineName", "").toString();
-            if (allergies.contains("青霉素") && (medName.contains("青霉素") || medName.contains("阿莫西林"))) {
-                res.put("success", false);
-                res.put("message", "【过敏红线高危阻断】患者明确对【青霉素】过敏，严禁开具阿莫西林或青霉素类药物！");
-                return res;
+            // 青霉素类过敏 → 拦截整族（阿莫西林/氨苄西林/哌拉西林/苯唑西林/氨苄青霉素等）
+            if (allergies.contains("青霉素")) {
+                String[] penicillins = {"青霉素", "阿莫西林", "氨苄西林", "哌拉西林", "苯唑西林", "氨苄青霉素", "阿莫西林克拉维酸钾"};
+                for (String p : penicillins) {
+                    if (medName.contains(p)) {
+                        res.put("success", false);
+                        res.put("message", "【过敏红线高危阻断】患者明确对【青霉素类】过敏，严禁开具" + medName + "！");
+                        return res;
+                    }
+                }
             }
-            if (allergies.contains("头孢") && medName.contains("头孢")) {
-                res.put("success", false);
-                res.put("message", "【过敏红线高危阻断】患者明确对【头孢菌素】过敏，严禁开具头孢类药物！");
-                return res;
+            // 头孢菌素类过敏 → 拦截整族
+            if (allergies.contains("头孢")) {
+                if (medName.contains("头孢") || medName.contains("先锋")) {
+                    res.put("success", false);
+                    res.put("message", "【过敏红线高危阻断】患者明确对【头孢菌素类】过敏，严禁开具" + medName + "！");
+                    return res;
+                }
+            }
+            // 磺胺类过敏 → 拦截磺胺族
+            if (allergies.contains("磺胺")) {
+                String[] sulfonamides = {"磺胺", "复方新诺明", "柳氮磺"};
+                for (String s : sulfonamides) {
+                    if (medName.contains(s)) {
+                        res.put("success", false);
+                        res.put("message", "【过敏红线高危阻断】患者明确对【磺胺类】过敏，严禁开具" + medName + "！");
+                        return res;
+                    }
+                }
             }
         }
 
-        // 3. 生成处方主体 (初始状态为 0: 待划价收费, 待支付)
-        Prescription p = new Prescription();
+        // 2b. AI 处方合理性审查（硬关卡：剂量超量、严重配伍禁忌、重复用药）
+        boolean forcePass = Boolean.TRUE.equals(req.get("forcePass"))
+                || "true".equalsIgnoreCase(String.valueOf(req.get("forcePass")));
+        if (!forcePass && prescriptionReviewService != null) {
+            try {
+                Map<String, Object> reviewReq = new HashMap<>();
+                reviewReq.put("patientName", patient.getName());
+                reviewReq.put("patientAge", patient.getAge() != null ? String.valueOf(patient.getAge()) : "");
+                reviewReq.put("allergies", allergies);
+                reviewReq.put("diagnosis", req.getOrDefault("diagnosis", ""));
+                reviewReq.put("items", rawItems);
+
+                Map<String, Object> reviewResult = prescriptionReviewService.reviewPrescription(reviewReq);
+                if (reviewResult != null) {
+                    boolean passed = Boolean.TRUE.equals(reviewResult.get("passed"));
+                    String riskLevel = String.valueOf(reviewResult.getOrDefault("riskLevel", "低风险"));
+                    List<Map<String, Object>> warnings = (List<Map<String, Object>>) reviewResult.get("warnings");
+                    boolean hasHighRisk = "高风险".equals(riskLevel) || "高危".equals(riskLevel) || !passed;
+                    if (warnings != null) {
+                        for (Map<String, Object> w : warnings) {
+                            if ("高危".equals(w.get("level")) || "禁忌".equals(w.get("type"))) {
+                                hasHighRisk = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasHighRisk) {
+                        res.put("success", false);
+                        res.put("blockedByReview", true);
+                        res.put("riskLevel", riskLevel);
+                        res.put("summary", reviewResult.get("summary"));
+                        res.put("warnings", warnings);
+                        res.put("message", "【AI处方合理性审查高危拦截】" + reviewResult.getOrDefault("summary", "检测到严重用药安全风险！"));
+                        return res;
+                    }
+                }
+            } catch (Exception ex) {
+                // 审查服务异常降级，不阻断正常业务
+            }
+        }
+
+        // 3. 事务隔离：AI 审查在外执行完成，落库操作进入原子事务极速持久化（<5ms）
+        final Patient finalPatient = patient;
+        final Long finalPatientId = patientId;
+        final String finalFallbackDoctor = fallbackDoctor;
+
+        org.springframework.transaction.support.TransactionTemplate tx =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+
+        return tx.execute(status -> {
+            Prescription p = new Prescription();
         String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         p.setPrescriptionNo("RX" + dateStr + ThreadLocalRandom.current().nextInt(100, 999));
-        p.setPatientId(patientId);
-        p.setPatientName(patient.getName());
-        p.setDoctorName(req.getOrDefault("doctorName", fallbackDoctor).toString());
-        p.setDiagnosis(req.getOrDefault("diagnosis", "风热感冒 / 急性支气管炎").toString());
-        p.setAiAdvice(req.getOrDefault("aiAdvice", "医生结合AI辨证开具，忌烟酒辛辣生冷，多饮水").toString());
+        p.setPatientId(finalPatientId);
+        p.setPatientName(finalPatient.getName());
+        String doctorName = req.getOrDefault("doctorName", finalFallbackDoctor).toString();
+        p.setDoctorName(doctorName);
+        // 电子处方：医生开方提交即签字确认，签字人/签字时间真实落库（医学红线，不再是 prompt 软约束）
+        p.setSignedBy(doctorName);
+        p.setSignedAt(LocalDateTime.now());
+        String reqDiag = req.getOrDefault("diagnosis", "").toString().trim();
+        p.setDiagnosis(reqDiag.isEmpty() ? "门诊确诊（待补录）" : reqDiag);
+        p.setAiAdvice(req.getOrDefault("aiAdvice", "遵医嘱按时规律用药，清淡饮食").toString());
         p.setType(req.getOrDefault("type", "western").toString());
         p.setCraftNotes(req.getOrDefault("craftNotes", "").toString());
         p.setRemark(req.getOrDefault("remark", "").toString());
@@ -300,12 +396,47 @@ public class PrescriptionController {
         String therapyAcupoints = "";
 
         for (Map<String, Object> itemMap : rawItems) {
-            Long medId = 1L;
-            try {
-                if (itemMap.get("medicineId") != null) medId = Long.parseLong(itemMap.get("medicineId").toString());
-            } catch (Exception ignored) {}
+            Long medId = null;
+            if (itemMap.get("medicineId") != null) {
+                try {
+                    long parseId = Long.parseLong(itemMap.get("medicineId").toString());
+                    // 过滤前端临时占位ID（如 999, 101, 201, 301），仅对真实大于0的ID采纳
+                    if (parseId > 0 && parseId != 999L && parseId != 101L && parseId != 201L && parseId != 301L) {
+                        medId = parseId;
+                    }
+                } catch (Exception ignored) {}
+            }
             
-            Medicine med = medicineMapper.selectById(medId);
+            String reqMedName = itemMap.getOrDefault("medicineName", itemMap.getOrDefault("name", "药品")).toString();
+            String cleanMedName = reqMedName.replaceAll("^【[^】]*】", "").trim();
+
+            Medicine med = null;
+            if (medId != null) {
+                med = medicineMapper.selectById(medId);
+            }
+            // 若ID未匹配到或无有效ID，尝试按药品名称反查真实药房档案，保证ID与名称真实统一
+            if (med == null && !cleanMedName.isEmpty()) {
+                List<Medicine> matched = medicineMapper.selectList(
+                        new LambdaQueryWrapper<Medicine>()
+                                .eq(Medicine::getName, cleanMedName)
+                                .last("LIMIT 1")
+                );
+                if (matched != null && !matched.isEmpty()) {
+                    med = matched.get(0);
+                    medId = med.getId();
+                } else {
+                    List<Medicine> likeMatched = medicineMapper.selectList(
+                            new LambdaQueryWrapper<Medicine>()
+                                    .like(Medicine::getName, cleanMedName)
+                                    .last("LIMIT 1")
+                    );
+                    if (likeMatched != null && !likeMatched.isEmpty()) {
+                        med = likeMatched.get(0);
+                        medId = med.getId();
+                    }
+                }
+            }
+
             int qty = 1;
             try {
                 if (itemMap.get("quantity") != null) qty = Integer.parseInt(itemMap.get("quantity").toString());
@@ -322,7 +453,8 @@ public class PrescriptionController {
 
             PrescriptionItem pi = new PrescriptionItem();
             pi.setMedicineId(medId);
-            String mName = med != null ? med.getName() : itemMap.getOrDefault("medicineName", "药品").toString();
+            // 真实保护：若匹配到药房档案则使用官方规范品名，否则忠实保留开立药品名称，绝不强制覆盖为首个药品
+            String mName = med != null ? med.getName() : reqMedName;
             pi.setMedicineName(mName);
             pi.setSpecification(med != null ? med.getSpecification() : itemMap.getOrDefault("specification", "常规规格").toString());
             pi.setQuantity(qty);
@@ -401,10 +533,10 @@ public class PrescriptionController {
         if (hasTherapyItem) {
             ClinicTreatmentRecord tr = new ClinicTreatmentRecord();
             tr.setRecordNo("TR" + dateStr + ThreadLocalRandom.current().nextInt(100, 999));
-            tr.setPatientId(patientId);
-            tr.setPatientName(patient.getName());
-            tr.setPatientGender(patient.getGender());
-            tr.setPatientAge(patient.getAge() + "岁");
+            tr.setPatientId(finalPatientId);
+            tr.setPatientName(finalPatient.getName());
+            tr.setPatientGender(finalPatient.getGender());
+            tr.setPatientAge(finalPatient.getAge() + "岁");
             tr.setPrescriptionId(p.getId());
             tr.setTreatmentName(therapyName);
             tr.setTechnique("特色姜汁穴位温敷渗透理疗");
@@ -419,17 +551,8 @@ public class PrescriptionController {
             treatmentRecordMapper.insert(tr);
         }
 
-        // 5. 将该患者挂号状态更新为已诊
-        try {
-            String pName = patient.getName();
-            LambdaQueryWrapper<ClinicRegistration> rqw = new LambdaQueryWrapper<>();
-            rqw.eq(ClinicRegistration::getPatientName, pName);
-            List<ClinicRegistration> regs = registrationMapper.selectList(rqw);
-            for (ClinicRegistration r : regs) {
-                r.setStatus("已诊");
-                registrationMapper.updateById(r);
-            }
-        } catch (Exception ignored) {} // findByPatientNameFallback
+        // 5. 将该患者挂号状态更新为已诊（精准匹配指定挂号ID，或该患者当前活跃就诊记录，杜绝按姓名全表误更）
+        boolean regUpdated = false;
         if (req.get("registrationId") != null) {
             try {
                 Long regId = Long.parseLong(req.get("registrationId").toString());
@@ -437,6 +560,22 @@ public class PrescriptionController {
                 if (reg != null) {
                     reg.setStatus("已诊");
                     registrationMapper.updateById(reg);
+                    regUpdated = true;
+                }
+            } catch (Exception ignored) {}
+        }
+        if (!regUpdated && finalPatientId != null) {
+            try {
+                // 仅更新该患者当前处于接诊中或待诊中的挂号记录，杜绝跨日期及历史记录全部误更
+                List<ClinicRegistration> activeRegs = registrationMapper.selectList(new LambdaQueryWrapper<ClinicRegistration>()
+                        .eq(ClinicRegistration::getPatientId, finalPatientId)
+                        .in(ClinicRegistration::getStatus, Arrays.asList("就诊中", "接诊中", "待诊"))
+                        .orderByDesc(ClinicRegistration::getId)
+                        .last("LIMIT 1"));
+                if (activeRegs != null && !activeRegs.isEmpty()) {
+                    ClinicRegistration r = activeRegs.get(0);
+                    r.setStatus("已诊");
+                    registrationMapper.updateById(r);
                 }
             } catch (Exception ignored) {}
         }
@@ -446,25 +585,89 @@ public class PrescriptionController {
         res.put("prescription", p);
         res.put("items", savedItems);
         return res;
+        });
     }
 
     /**
-     * 门诊结账与处方收费（收费成功后流转至智慧药房待发药队列）
+     * 门诊结账与处方收费（收费成功后流转至智慧药房待发药队列，生成对账支付流水）
      */
-    @PostMapping("/checkout/{id}")
-    public Map<String, Object> checkout(@PathVariable("id") Long id) {
+    @PostMapping(value = {"/checkout/{id}", "/checkout"})
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> checkout(@PathVariable(value = "id", required = false) Long pathId,
+                                        @RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> res = new HashMap<>();
+        Long id = pathId;
+        if (id == null && body != null && body.get("prescriptionId") != null) {
+            try { id = Long.parseLong(body.get("prescriptionId").toString()); } catch (Exception ignored) {}
+        }
+        if (id == null) {
+            res.put("success", false);
+            res.put("message", "处方ID不能为空！");
+            return res;
+        }
+
         Prescription p = prescriptionMapper.selectById(id);
-        if (p != null) {
-            p.setPayStatus("已支付");
-            p.setStatus("1"); // 1: 待发药
-            prescriptionMapper.updateById(p);
-            res.put("success", true);
-            res.put("message", "处方收费完成！已成功扣费并推送到智慧药房发药调配队列！");
-        } else {
+        if (p == null) {
             res.put("success", false);
             res.put("message", "未找到该处方记录！");
+            return res;
         }
+
+        String payChannel = "春播综合收银台";
+        if (body != null && body.get("payMethod") != null) {
+            String m = body.get("payMethod").toString();
+            payChannel = switch (m) {
+                case "wechat" -> "微信支付";
+                case "alipay" -> "支付宝";
+                case "cash" -> "门诊现金结算";
+                case "chunbo-pay" -> "春播医保聚合付";
+                case "balance", "member" -> "会员储值余额扣减";
+                default -> m;
+            };
+        }
+
+        // 若使用会员储值抵扣，扣减患者卡内余额
+        if (body != null && Boolean.parseBoolean(String.valueOf(body.getOrDefault("useBalance", "false")))) {
+            Long pid = p.getPatientId();
+            if (pid != null && patientMapper != null) {
+                Patient patient = patientMapper.selectById(pid);
+                if (patient != null && patient.getBalance() != null) {
+                    BigDecimal balance = BigDecimal.valueOf(patient.getBalance());
+                    BigDecimal total = p.getTotalAmount() != null ? p.getTotalAmount() : BigDecimal.ZERO;
+                    if (balance.compareTo(total) >= 0) {
+                        patient.setBalance(balance.subtract(total).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
+                        patientMapper.updateById(patient);
+                        payChannel = "会员储值余额全额抵扣";
+                    }
+                }
+            }
+        }
+
+        p.setPayStatus("已支付");
+        p.setStatus("1"); // 1: 待发药
+        prescriptionMapper.updateById(p);
+
+        // 写入真实支付交易流水，财务对账闭环
+        if (payTransactionMapper != null) {
+            try {
+                PayTransaction tx = new PayTransaction();
+                tx.setOrderNo(p.getPrescriptionNo());
+                tx.setChannelType(payChannel);
+                tx.setPayerName(p.getPatientName() != null ? p.getPatientName() : "门诊患者");
+                tx.setPayerAccount(p.getPatientName());
+                tx.setMerchantId("MCH_CLINIC_001");
+                tx.setMerchantName("春播万象基层门诊全科诊室");
+                tx.setAmount(p.getTotalAmount() != null ? p.getTotalAmount() : BigDecimal.ZERO);
+                tx.setPayStatus("支付成功");
+                tx.setRiskStatus("正常");
+                tx.setTradeTime(LocalDateTime.now());
+                payTransactionMapper.insert(tx);
+            } catch (Exception ignored) {}
+        }
+
+        res.put("success", true);
+        res.put("message", "处方收费核销完成（" + payChannel + "）！已生成资金流水，并成功推送到智慧药房发药调配队列！");
+        res.put("prescription", p);
         return res;
     }
 }

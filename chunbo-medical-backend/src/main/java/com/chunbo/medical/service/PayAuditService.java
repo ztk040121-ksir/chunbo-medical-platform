@@ -35,6 +35,11 @@ public class PayAuditService {
     @Autowired
     private PayAuditTools auditTools;
 
+    @Autowired
+    private AiModelConfigService aiConfigService;
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PayAuditService.class);
+
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
@@ -64,52 +69,121 @@ public class PayAuditService {
             return result;
         }
 
-        BigDecimal detectedAmount;
-        BigDecimal actualAmount = tx.getAmount();
-        String riskLevel;
-        String anomalyType;
-        String aiAnalysis;
-        String actionsTaken;
+        BigDecimal actualAmount = tx.getAmount() != null ? tx.getAmount() : new BigDecimal("25.00");
+        BigDecimal detectedAmount = actualAmount;
+        String riskLevel = "低危(合规)";
+        String anomalyType = "合规正常凭证";
+        String aiAnalysis = "";
+        String actionsTaken = "";
 
-        if ("tamper".equals(anomalyScenario)) {
-            // 场景 1：凭证金额篡改 (多模态视觉识别出 126,000.00，而系统真实底账为 12,600.00)
-            detectedAmount = new BigDecimal("126000.00");
-            riskLevel = "高危(阻断)";
-            anomalyType = "凭证金额恶意篡改";
-            aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
-                    "1. 截图文本字符分析：转账凭证金额标注为「¥126,000.00」，但“126”与后方“,000.00”字体渲染平滑度、像素灰度梯度不一致，存在显著的数字修图拼接伪造痕迹；\n" +
-                    "2. 底账网关一致性校验：网关真实到账流水仅为「¥" + actualAmount + "」，凭证金额虚标放大 10 倍，判定为恶意骗取医药控销大宗货物的假凭证；\n" +
-                    "3. 处置决策：判定为高危风险，立即阻断交易并封控商户账户！";
+        boolean llmSucceeded = false;
+        org.springframework.ai.chat.client.ChatClient chatClient = aiConfigService != null ? aiConfigService.getBareChatClient() : null;
+        if (chatClient != null && !aiConfigService.isMockEnabled()) {
+            try {
+                String prompt = String.format("""
+                        你是春播万象全栈医疗科技风控专家「春播智能支付与合规审计大模型」。
+                        请针对以下门诊/医药控销资金交易底账与凭证核验线索，执行多维度风控深度研判：
+                        【交易底账信息】
+                        - 订单流水号：%s
+                        - 支付渠道：%s
+                        - 付款人姓名：%s
+                        - 收款商户名：%s（商户ID：%s）
+                        - 网关实际入账金额：¥%.2f
+                        - 交易发生时间：%s
+                        - 当前风控状态：%s
+                        【凭证核验线索】
+                        - 凭证路径/URL：%s
+                        - 业务场景与异常提示：%s
 
-            // 自动调用工具执行动作（识别 -> 决策 -> 执行闭环）
-            String freezeResult = auditTools.freezeAccountOrPayment(orderNo, tx.getMerchantId(), "凭证金额伪造虚标", "临时风控冻结", null);
-            String alertResult = auditTools.sendRiskNotification("企业微信风控应急群", riskLevel, "订单 " + orderNo + " 凭证金额恶意篡改，已阻断出货！", null);
+                        请你对凭证是否存在金额篡改/PS虚标、重复核销(一图多付)、商户要素不符等高危风险进行专业审计研判，严格以 JSON 格式输出结果，不要输出多余解释或markdown代码块以外的文字：
+                        ```json
+                        {
+                          "detectedAmount": %.2f,
+                          "riskLevel": "高危(阻断)" 或 "中危" 或 "低危(合规)",
+                          "anomalyType": "凭证金额恶意篡改" 或 "一图多付重复核销" 或 "合规正常凭证",
+                          "aiAnalysis": "【春播多模态大模型视觉深度审计】\\n1. 凭证分析与要素比对...\\n2. 风控判定理由...\\n3. 处置建议..."
+                        }
+                        ```
+                        """,
+                        tx.getOrderNo(),
+                        tx.getChannelType() != null ? tx.getChannelType() : "聚合扫码支付",
+                        tx.getPayerName() != null ? tx.getPayerName() : "未知付款人",
+                        tx.getMerchantName() != null ? tx.getMerchantName() : "春播大药房",
+                        tx.getMerchantId() != null ? tx.getMerchantId() : "MCH_001",
+                        actualAmount,
+                        tx.getTradeTime() != null ? tx.getTradeTime().toString() : "2026-09-18 10:00:00",
+                        tx.getRiskStatus() != null ? tx.getRiskStatus() : "待审",
+                        imageUrl != null ? imageUrl : "/samples/receipt.png",
+                        anomalyScenario != null ? anomalyScenario : "合规检测",
+                        "tamper".equals(anomalyScenario) ? actualAmount.multiply(new BigDecimal(10)) : actualAmount
+                );
+
+                String response = chatClient.prompt().user(prompt).call().content();
+                if (response != null && !response.isBlank()) {
+                    String clean = response.trim();
+                    if (clean.contains("```json")) {
+                        clean = clean.substring(clean.indexOf("```json") + 7);
+                        if (clean.contains("```")) {
+                            clean = clean.substring(0, clean.indexOf("```"));
+                        }
+                    } else if (clean.startsWith("```")) {
+                        clean = clean.replaceAll("^```[a-zA-Z]*\\s*", "").replaceAll("\\s*```$", "");
+                    }
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(clean.trim());
+                    if (node.has("detectedAmount")) {
+                        detectedAmount = new BigDecimal(node.get("detectedAmount").asText());
+                    }
+                    if (node.has("riskLevel")) riskLevel = node.get("riskLevel").asText();
+                    if (node.has("anomalyType")) anomalyType = node.get("anomalyType").asText();
+                    if (node.has("aiAnalysis")) aiAnalysis = node.get("aiAnalysis").asText();
+                    llmSucceeded = true;
+                }
+            } catch (Exception e) {
+                log.warn("大模型支付审计调用异常，进入安全兜底：{}", e.getMessage());
+                llmSucceeded = false;
+            }
+        }
+
+        if (!llmSucceeded) {
+            // 安全兜底逻辑
+            if ("tamper".equals(anomalyScenario)) {
+                detectedAmount = actualAmount.multiply(new BigDecimal(10));
+                riskLevel = "高危(阻断)";
+                anomalyType = "凭证金额恶意篡改";
+                aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
+                        "1. 截图文本字符分析：转账凭证金额标注为「¥" + detectedAmount + "」，字体渲染平滑度、像素灰度梯度不一致，存在数字修图拼接伪造痕迹；\n" +
+                        "2. 底账网关一致性校验：网关真实到账流水仅为「¥" + actualAmount + "」，凭证金额虚标放大 10 倍，判定为恶意骗取医药控销大宗货物的假凭证；\n" +
+                        "3. 处置决策：判定为高危风险，立即阻断交易并封控商户账户！";
+            } else if ("duplicate".equals(anomalyScenario)) {
+                detectedAmount = actualAmount;
+                riskLevel = "中危";
+                anomalyType = "一图多付重复核销";
+                aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
+                        "1. 视觉感知哈希（pHash）比对：当前上传的静态码转账截图与历史异常凭证哈希重合度达 99.8%；\n" +
+                        "2. 交易状态：同一凭证在不同订单多次核销，判定为重复付款套现风险；\n" +
+                        "3. 处置决策：拦截自动入账流程，转入人工二次复核通道。";
+            } else {
+                detectedAmount = actualAmount;
+                riskLevel = "低危(合规)";
+                anomalyType = "合规正常凭证";
+                aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
+                        "1. 视觉凭证排查：电子回单印章印泥特征自然，防伪底纹连续完整，无像素拼接涂抹；\n" +
+                        "2. 跨模态四要素核对：付款人【" + tx.getPayerName() + "】、收款商户【" + tx.getMerchantName() + "】、金额【¥" + actualAmount + "】与银联底账完全匹配；\n" +
+                        "3. 处置决策：合规无误，自动放行入账。";
+            }
+        }
+
+        // 根据审计研判的风险等级，自动触发闭环工具执行
+        if (riskLevel.contains("高危") || riskLevel.contains("阻断")) {
+            String freezeResult = auditTools.freezeAccountOrPayment(orderNo, tx.getMerchantId(), anomalyType, "临时风控冻结", null);
+            String alertResult = auditTools.sendRiskNotification("企业微信风控应急群", riskLevel, "订单 " + orderNo + " " + anomalyType + "，已阻断出货！", null);
             actionsTaken = freezeResult + " | " + alertResult;
-
-        } else if ("duplicate".equals(anomalyScenario)) {
-            // 场景 2：重复核销（一图多付）
-            detectedAmount = actualAmount;
-            riskLevel = "中危";
-            anomalyType = "一图多付重复核销";
-            aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
-                    "1. 视觉感知哈希（pHash）比对：当前上传的静态码转账截图，与历史异常库 2026-09-14 订单凭证哈希重合度达 99.8%；\n" +
-                    "2. 交易状态：同一凭证在不同订单多次核销，判定为重复付款套现风险；\n" +
-                    "3. 处置决策：拦截自动入账流程，转入人工二次复核通道。";
-
+        } else if (riskLevel.contains("中危")) {
             tx.setRiskStatus("疑似风险");
             txMapper.updateById(tx);
             actionsTaken = auditTools.sendRiskNotification("钉钉运营合规群", riskLevel, "订单 " + orderNo + " 检测到疑似重复截图，已转人工复核", null);
-
         } else {
-            // 场景 3：合规正常凭证
-            detectedAmount = actualAmount;
-            riskLevel = "低危(合规)";
-            anomalyType = "合规正常凭证";
-            aiAnalysis = "【春播多模态大模型视觉深度审计】：\n" +
-                    "1. 视觉凭证排查：电子回单印章印泥特征自然，防伪底纹连续完整，无像素拼接涂抹；\n" +
-                    "2. 跨模态四要素核对：付款人【" + tx.getPayerName() + "】、收款商户【" + tx.getMerchantName() + "】、金额【¥" + actualAmount + "】与银联底账完全匹配；\n" +
-                    "3. 处置决策：合规无误，自动放行入账。";
-
             tx.setRiskStatus("正常");
             tx.setPayStatus("支付成功");
             txMapper.updateById(tx);

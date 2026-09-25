@@ -26,8 +26,16 @@ public class AgentRouter {
     @Autowired
     private List<Agent> agents;
 
-    /** 会话最近一次路由意图（指代性短消息沿用），key=sessionId */
-    private final Map<String, String> lastIntentBySession = new ConcurrentHashMap<>();
+    private static final int MAX_SESSIONS = 1000;
+    /** 会话最近一次路由意图（指代性短消息沿用），key=sessionId，最大容量1000按LRU淘汰防内存泄漏 */
+    private final Map<String, String> lastIntentBySession = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<String, String>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > MAX_SESSIONS;
+                }
+            }
+    );
 
     /** 指代性/延续性短消息识别：指代序号、确认类，以及「补充信息类」（如按提示补账号/密码/手机号），且不含明确业务关键词 */
     private boolean isFollowUp(String question) {
@@ -43,6 +51,14 @@ public class AgentRouter {
         // 如「14539326819，用这个手机号」「登录账号：77，密码：123456」——单轮路由判不出意图，应沿用上一轮
         if (q.matches(".*\\d{4,}.*") || q.contains("手机号") || q.contains("电话") || q.contains("账号")
                 || q.contains("密码") || q.contains("姓名") || q.contains("昵称") || q.contains("地址")) {
+            return true;
+        }
+        // 时间/月份/短确认类：如「9月份」「9月」「本月」「2026-09」「今天」「昨天」「是的」「好的」等
+        if (q.matches(".*(\\d{1,2}\\s*月(份)?|202\\d[-/.]\\d{1,2}|本月|上月|下月|今天|明天|昨天|当前月).*")) {
+            return true;
+        }
+        // 极短消息（<=10个字符，且不包含退出/取消）：在已有上一轮会话意图时，直接视为上下文补充延续！
+        if (q.length() <= 10 && !q.contains("退出") && !q.contains("取消")) {
             return true;
         }
         return q.matches(".*(第[一二三四五六七八九十百\\d]+\\s*[个条单笔号]?|全部(发货|送达|发放|确认|出库)?|都发|依次|按顺序|上一个|刚(才|刚)?那个|这个|就绪|确定|好|可以|是的?).*");

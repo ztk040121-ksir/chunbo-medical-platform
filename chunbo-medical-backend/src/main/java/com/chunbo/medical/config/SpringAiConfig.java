@@ -43,14 +43,22 @@ public class SpringAiConfig {
      */
     @Bean
     public RestClient.Builder restClientBuilder() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(3000);
-        factory.setReadTimeout(15000);
+        java.net.http.HttpClient.Builder clientBuilder = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL);
+
         if (proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0) {
-            factory.setProxy(new java.net.Proxy(java.net.Proxy.Type.HTTP,
-                    new java.net.InetSocketAddress(proxyHost, proxyPort)));
+            clientBuilder.proxy(java.net.ProxySelector.of(new java.net.InetSocketAddress(proxyHost, proxyPort)));
         }
-        return RestClient.builder().requestFactory(factory);
+
+        org.springframework.http.client.JdkClientHttpRequestFactory factory = 
+                new org.springframework.http.client.JdkClientHttpRequestFactory(clientBuilder.build());
+        factory.setReadTimeout(java.time.Duration.ofSeconds(90));
+
+        return RestClient.builder()
+                .requestFactory(factory)
+                .defaultHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
     }
 
     /**

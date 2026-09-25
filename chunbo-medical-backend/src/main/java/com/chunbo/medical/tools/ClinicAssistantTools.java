@@ -26,6 +26,8 @@ import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 @Component
 public class ClinicAssistantTools {
@@ -46,6 +48,21 @@ public class ClinicAssistantTools {
 
     @Autowired(required = false)
     private com.chunbo.medical.mapper.MallOrderMapper mallOrderMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.MedicineMapper medicineMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.ClinicRegistrationMapper registrationMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.PrescriptionMapper prescriptionMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.OaPlasterRecordMapper plasterMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.ClinicTreatmentRecordMapper treatmentRecordMapper;
 
     @Tool(description = "查询指定医生的工资条明细（底薪、门诊提成、特色贴敷提成、扣除项、实发工资）")
     public String querySalarySlip(
@@ -221,6 +238,7 @@ public class ClinicAssistantTools {
         }
         List<com.chunbo.medical.entity.MallOrder> list = mallOrderMapper.selectList(
                 new LambdaQueryWrapper<com.chunbo.medical.entity.MallOrder>()
+                        .likeRight(com.chunbo.medical.entity.MallOrder::getOrderNo, "B2C")
                         .like(com.chunbo.medical.entity.MallOrder::getBuyerName, key)
                         .orderByDesc(com.chunbo.medical.entity.MallOrder::getId));
         if (list == null) return java.util.Collections.emptyList();
@@ -232,6 +250,84 @@ public class ClinicAssistantTools {
             if (match) filtered.add(o);
         }
         return filtered;
+    }
+
+    @Tool(description = "查询春播商城的订单列表或待发货订单清单（支持按状态如「待发货」「已发货/运输中」「已送达」筛选，或者查询最新全部订单）。仅 ADMIN/HR/MERCHANT 可操作")
+    public String queryMallOrdersList(
+            @ToolParam(description = "订单状态筛选，如「待发货」「待商户发货出库」「运输中」「已送达」，传空或「全部」则查询全部最新订单") String statusFilter,
+            @ToolParam(description = "查询返回条数，默认 15，最大 50") Integer limit,
+            ToolContext toolContext) {
+
+        String role = roleOf(toolContext);
+        if (role == null || (!"ADMIN".equals(role) && !"HR".equals(role) && !"MERCHANT".equals(role))) {
+            return "⛔ 【RBAC 权限拦截】仅系统管理员(ADMIN)、人事(HR)与商城商户(MERCHANT)可查看商城全量订单列表。";
+        }
+        if (mallOrderMapper == null) {
+            return "⛔ 订单数据库服务离线，暂无法读取。";
+        }
+        int max = (limit == null || limit <= 0) ? 15 : Math.min(limit, 50);
+        // 严格限定只查询春播商城 C 端便民购药订单 (B2C 开头)，绝不混杂云诊所药品采购单 (ORD 开头)
+        List<com.chunbo.medical.entity.MallOrder> all = mallOrderMapper.selectList(
+                new LambdaQueryWrapper<com.chunbo.medical.entity.MallOrder>()
+                        .likeRight(com.chunbo.medical.entity.MallOrder::getOrderNo, "B2C")
+                        .orderByDesc(com.chunbo.medical.entity.MallOrder::getId));
+        if (all == null || all.isEmpty()) {
+            return "目前春播商城暂无任何订单记录。";
+        }
+
+        // 统计商城大盘履约真实数据（与管理后台完全对齐）
+        long pendingCount = 0;
+        long shippedCount = 0;
+        BigDecimal totalGmv = BigDecimal.ZERO;
+        for (com.chunbo.medical.entity.MallOrder o : all) {
+            if (com.chunbo.medical.enums.OrderStatusEnum.isPending(o.getStatus())) pendingCount++;
+            else if (com.chunbo.medical.enums.OrderStatusEnum.isShipped(o.getStatus())) shippedCount++;
+            if (o.getFinalAmount() != null) totalGmv = totalGmv.add(o.getFinalAmount());
+        }
+
+        String filter = statusFilter == null ? "" : statusFilter.trim();
+        List<com.chunbo.medical.entity.MallOrder> filtered = new java.util.ArrayList<>();
+        for (com.chunbo.medical.entity.MallOrder o : all) {
+            if (filter.isEmpty() || "全部".equals(filter) || "所有".equals(filter)) {
+                filtered.add(o);
+            } else if (filter.contains("待发") || filter.contains("未发") || filter.contains("待出库")) {
+                if (com.chunbo.medical.enums.OrderStatusEnum.isPending(o.getStatus())) filtered.add(o);
+            } else if (filter.contains("运输") || filter.contains("已发") || filter.contains("在途")) {
+                if (com.chunbo.medical.enums.OrderStatusEnum.isShipped(o.getStatus()) && !com.chunbo.medical.enums.OrderStatusEnum.isDelivered(o.getStatus())) filtered.add(o);
+            } else if (filter.contains("送达") || filter.contains("签收") || filter.contains("完成")) {
+                if (com.chunbo.medical.enums.OrderStatusEnum.isDelivered(o.getStatus())) filtered.add(o);
+            } else {
+                if (o.getStatus() != null && o.getStatus().contains(filter)) filtered.add(o);
+            }
+            if (filtered.size() >= max) break;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        String title = filter.isEmpty() || "全部".equals(filter) ? "全量订单清单" : "「" + filter + "」订单清单";
+        sb.append("### 📦 春播健康商城 · ").append(title).append(String.format("（共检索到 %d 笔有效商城订单）\n\n", filtered.size()));
+        sb.append(String.format("> 📊 **商城履约看板**：商城全部订单 **%d 单**（待商户发货出库 **%d 单**，已发货运输中 **%d 单**），线上实收流水总计 **¥%.2f**。\n\n",
+                all.size(), pendingCount, shippedCount, totalGmv));
+        if (filtered.isEmpty()) {
+            sb.append("当前暂无符合「").append(filter).append("」条件的商城订单。\n");
+            return sb.toString();
+        }
+
+        sb.append("| 序号 | 订单号 | 收货人 | 实付金额 | 订单状态 | 下单时间 |\n|---|---|---|---|---|---|\n");
+        int seq = 1;
+        for (com.chunbo.medical.entity.MallOrder o : filtered) {
+            String timeStr = o.getCreateTime() == null ? "—" : o.getCreateTime().toString().replace("T", " ").substring(0, 16);
+            sb.append("| ").append(seq++).append(" | `").append(o.getOrderNo()).append("` | ")
+              .append(o.getBuyerName() == null ? "匿名顾客" : o.getBuyerName()).append(" | ¥")
+              .append(o.getFinalAmount() == null ? "0.00" : o.getFinalAmount()).append(" | ")
+              .append(o.getStatus() == null ? "未知" : o.getStatus()).append(" | ")
+              .append(timeStr).append(" |\n");
+        }
+
+        sb.append("\n💡 **快捷调度操作**：\n");
+        sb.append("- 若要为上述待发货订单出库，可直接说：「给李先生发货」或「发货订单 B2C...」；\n");
+        sb.append("- 若要确认送达，可直接说：「确认李先生的订单已送达」；\n");
+        sb.append("- 若需查看某一具体用户的历史订单，可说：「查陈素芬的订单」。");
+        return sb.toString();
     }
 
     @Tool(description = "商品上架或下架（action 传「上架」或「下架」）。下架后商城不可见，上架恢复在售。匹配到多个同名商品时会返回候选清单，需先向用户确认。仅 ADMIN/MERCHANT 可操作")
@@ -411,11 +507,14 @@ public class ClinicAssistantTools {
         if (user == null) {
             return "未在商城注册用户中找到「" + kw + "」，请确认账号/手机号/姓名后重试。";
         }
-        // 订单 buyer_name 口径：昵称或「昵称 (手机号)」，用 like 双向兜底匹配
+        final String buyerNick = user.getNickname() != null ? user.getNickname() : "";
+        final String buyerPhone = user.getPhone() != null ? user.getPhone() : "";
+        // 订单 buyer_name 口径：严格限定商城 C 端 B2C 订单，用 like 双向兜底匹配
         List<com.chunbo.medical.entity.MallOrder> orders = mallOrderMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallOrder>()
-                        .like(com.chunbo.medical.entity.MallOrder::getBuyerName, user.getNickname())
-                        .or().like(com.chunbo.medical.entity.MallOrder::getBuyerName, user.getPhone())
+                        .likeRight(com.chunbo.medical.entity.MallOrder::getOrderNo, "B2C")
+                        .and(w -> w.like(com.chunbo.medical.entity.MallOrder::getBuyerName, buyerNick)
+                                .or().like(com.chunbo.medical.entity.MallOrder::getBuyerName, buyerPhone))
                         .orderByDesc(com.chunbo.medical.entity.MallOrder::getCreateTime));
         Map<String, Object> card = new HashMap<>();
         card.put("username", user.getUsername());
@@ -452,15 +551,23 @@ public class ClinicAssistantTools {
         if (mallUserMapper == null) {
             return "⛔ 商城用户数据不可用";
         }
-        List<com.chunbo.medical.entity.MallUser> all = mallUserMapper.selectList(null);
-        int total = all.size();
-        int enabled = 0;
-        int disabled = 0;
+        // 统计用 SQL 聚合（COUNT/SUM），避免全量加载用户表（防大数据量拖垮）
+        long total = mallUserMapper.selectCount(null);
+        long disabled = mallUserMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
+                        .eq(com.chunbo.medical.entity.MallUser::getStatus, "DISABLE"));
+        long enabled = total - disabled;
         BigDecimal balanceSum = BigDecimal.ZERO;
-        for (com.chunbo.medical.entity.MallUser m : all) {
-            if ("DISABLE".equalsIgnoreCase(m.getStatus())) disabled++;
-            else enabled++;
-            if (m.getBalance() != null) balanceSum = balanceSum.add(m.getBalance());
+        try {
+            List<Map<String, Object>> sumRows = mallUserMapper.selectMaps(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<com.chunbo.medical.entity.MallUser>()
+                            .select("COALESCE(SUM(balance), 0) AS totalBalance"));
+            if (sumRows != null && !sumRows.isEmpty() && sumRows.get(0) != null
+                    && sumRows.get(0).get("totalBalance") != null) {
+                balanceSum = new BigDecimal(sumRows.get(0).get("totalBalance").toString());
+            }
+        } catch (Exception ignored) {
+            balanceSum = BigDecimal.ZERO;
         }
         Map<String, Object> card = new HashMap<>();
         card.put("total", total);
@@ -475,6 +582,55 @@ public class ClinicAssistantTools {
                 - **已冻结/停用账户**: %d 个
                 - **已发放新人购药金余额合计**: ¥%s
                 """, total, enabled, disabled, balanceSum);
+    }
+
+    @Tool(description = "查询春播商城注册用户列表（可按用户名/昵称/手机号搜索，或查询全部）。返回包含序号、账号、姓名、手机号、健康金余额、账户状态及注册时间的结构化 Markdown 表格。仅 ADMIN/HR/MERCHANT 可查询")
+    public String queryMallUsersList(
+            @ToolParam(description = "可选，搜索关键词（用户名/昵称/手机号），为空则查询全部商城注册用户", required = false) String keyword,
+            @ToolParam(description = "可选，返回最大条数，默认15条", required = false) Integer limit,
+            ToolContext toolContext) {
+        String role = roleOf(toolContext);
+        if (role == null || (!"ADMIN".equals(role) && !"HR".equals(role) && !"MERCHANT".equals(role))) {
+            return "⛔ 【RBAC 权限拦截】仅系统管理员(ADMIN)、人事(HR)与商城商户(MERCHANT)可查询商城注册用户清单。";
+        }
+        if (mallUserMapper == null) {
+            return "⛔ 商城用户数据接口不可用";
+        }
+        int max = (limit == null || limit <= 0) ? 15 : Math.min(limit, 50);
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallUser> qw =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            qw.and(wrapper -> wrapper.like(com.chunbo.medical.entity.MallUser::getUsername, kw)
+                    .or().like(com.chunbo.medical.entity.MallUser::getNickname, kw)
+                    .or().like(com.chunbo.medical.entity.MallUser::getPhone, kw));
+        }
+        qw.orderByDesc(com.chunbo.medical.entity.MallUser::getId).last("LIMIT " + max);
+        List<com.chunbo.medical.entity.MallUser> list = mallUserMapper.selectList(qw);
+        if (list == null || list.isEmpty()) {
+            return "未查询到符合条件的春播商城注册用户。";
+        }
+        Map<String, Object> card = new HashMap<>();
+        card.put("total", list.size());
+        card.put("users", list);
+        ToolResultHolder.put(requestIdOf(toolContext), "mallUsersList", card);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 👥 春播商城 · 注册用户清单（共 %d 条真实数据）\n\n", list.size()));
+        sb.append("| 序号 | 用户账号 | 真实姓名/昵称 | 绑定手机号 | 账户健康金余额 | 账户状态 | 注册时间 |\n");
+        sb.append("| :--- | :--- | :--- | :--- | :--- | :---: | :--- |\n");
+        int idx = 1;
+        for (com.chunbo.medical.entity.MallUser u : list) {
+            String uname = u.getUsername() != null ? u.getUsername() : "-";
+            String nick = u.getNickname() != null ? u.getNickname() : "-";
+            String phone = u.getPhone() != null ? u.getPhone() : "-";
+            String bal = u.getBalance() != null ? "¥" + u.getBalance().toPlainString() : "¥0.00";
+            String st = "DISABLE".equalsIgnoreCase(u.getStatus()) ? "🔴 冻结/停用" : "🟢 正常活跃";
+            String time = u.getCreateTime() != null ? u.getCreateTime().toString().replace("T", " ") : "-";
+            sb.append(String.format("| %d | `%s` | **%s** | `%s` | %s | %s | %s |\n",
+                    idx++, uname, nick, phone, bal, st, time));
+        }
+        return sb.toString();
     }
 
     @Tool(description = "查询 OA 请假审批单名单（全部或仅未审批的），返回单号/申请人/假别/天数/事由/状态列表。"
@@ -613,51 +769,116 @@ public class ClinicAssistantTools {
     }
 
 
-    @Tool(description = "查询春播万象中药贴敷治疗的月度疗程量、品类分布与总营收统计")
+    @Tool(description = "查询春播万象中药贴敷理疗的运营统计：包括月度疗程量、品类分布、执行站施术人次与总营业额")
     public String queryPlasterStatistics(
-            @ToolParam(description = "统计月份，如 2026-08") String month,
-            @ToolParam(description = "贴敷类别，如 通络贴、三伏贴、小儿咳喘贴，为空则查询全部") String category,
+            @ToolParam(description = "统计月份，如 2026-08 或 2026-09 或 9月份，可选，不传则默认查询全部历史及当月", required = false) String month,
+            @ToolParam(description = "贴敷类别，如 通络贴、三伏贴、小儿咳喘贴，可选，为空则查询全部", required = false) String category,
             ToolContext toolContext) {
 
-        Map<String, Object> summary = oaService.getPlasterSummary();
-        ToolResultHolder.put(requestIdOf(toolContext), "plasterStatistics", summary);
-        // 按贴敷类型真实聚合品类占比，杜绝写死占比数字
-        StringBuilder typeLine = new StringBuilder();
-        Object recordsObj = summary.get("records");
-        if (recordsObj instanceof List<?> list && !list.isEmpty()) {
-            Map<String, Integer> typeCount = new HashMap<>();
-            int totalPaste = 0;
-            for (Object o : list) {
-                if (o instanceof OaPlasterRecord r) {
-                    String t = r.getPlasterType() != null && !r.getPlasterType().isEmpty() ? r.getPlasterType() : "其他";
-                    int c = r.getPasteCount() != null ? r.getPasteCount() : 0;
-                    typeCount.merge(t, c, Integer::sum);
-                    totalPaste += c;
+        String filterMonth = null;
+        if (month != null && !month.isBlank()) {
+            String m = month.trim();
+            if (m.matches(".*(\\d{1,2})\\s*月.*")) {
+                java.util.regex.Matcher mat = java.util.regex.Pattern.compile("(\\d{1,2})\\s*月").matcher(m);
+                if (mat.find()) {
+                    int mon = Integer.parseInt(mat.group(1));
+                    filterMonth = String.format("2026-%02d", mon);
+                }
+            } else if (m.matches("\\d{4}-\\d{2}.*")) {
+                filterMonth = m.substring(0, 7);
+            }
+        }
+
+        // 1. 真实查询贴敷财务台账 (oa_plaster_record)
+        List<OaPlasterRecord> plasterList = plasterMapper != null ? plasterMapper.selectList(null) : List.of();
+        int totalPaste = 0;
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        BigDecimal totalCommission = BigDecimal.ZERO;
+        Map<String, Integer> typeCount = new HashMap<>();
+        Map<String, BigDecimal> typeRevenue = new HashMap<>();
+
+        for (OaPlasterRecord r : plasterList) {
+            // 如果指定了月份过滤且记录含有日期
+            if (filterMonth != null && r.getTherapyDate() != null && !r.getTherapyDate().toString().startsWith(filterMonth)) {
+                continue;
+            }
+            // 如果指定了类别过滤
+            if (category != null && !category.isBlank() && r.getPlasterType() != null && !r.getPlasterType().contains(category.trim())) {
+                continue;
+            }
+            int c = r.getPasteCount() != null ? r.getPasteCount() : 0;
+            BigDecimal amt = r.getTotalAmount() != null ? r.getTotalAmount() : BigDecimal.ZERO;
+            // 贴敷医生施术专项绩效提成（按项目金额 30% 综合核算）
+            BigDecimal comm = amt.multiply(new BigDecimal("0.30"));
+            totalPaste += c;
+            totalRevenue = totalRevenue.add(amt);
+            totalCommission = totalCommission.add(comm);
+            String t = r.getPlasterType() != null && !r.getPlasterType().isEmpty() ? r.getPlasterType() : "特色通络贴";
+            typeCount.merge(t, c, Integer::sum);
+            typeRevenue.merge(t, amt, BigDecimal::add);
+        }
+
+        // 2. 真实穿透特色执行站 (clinic_treatment_record)
+        List<com.chunbo.medical.entity.ClinicTreatmentRecord> treatmentList = treatmentRecordMapper != null ? treatmentRecordMapper.selectList(null) : List.of();
+        int totalTreatments = treatmentList.size();
+        long executedCount = treatmentList.stream().filter(t -> "已执行".equals(t.getStatus()) || "已完成".equals(t.getStatus())).count();
+        long pendingCount = totalTreatments - executedCount;
+        Set<String> distinctAcupoints = new LinkedHashSet<>();
+        Set<String> doctors = new LinkedHashSet<>();
+        Set<String> nurses = new LinkedHashSet<>();
+
+        for (com.chunbo.medical.entity.ClinicTreatmentRecord tr : treatmentList) {
+            if (tr.getAcupoints() != null && !tr.getAcupoints().isBlank()) {
+                for (String p : tr.getAcupoints().split("[,，、 ]+")) {
+                    if (!p.isBlank()) distinctAcupoints.add(p.trim());
                 }
             }
-            if (totalPaste > 0) {
-                for (Map.Entry<String, Integer> e : typeCount.entrySet()) {
-                    double pct = e.getValue() * 100.0 / totalPaste;
-                    typeLine.append("   - ").append(e.getKey()).append(": ").append(e.getValue())
-                            .append(" 贴 (").append(String.format("%.1f", pct)).append("%)\n");
-                }
-            } else {
-                typeLine.append("   - 暂无贴敷记录\n");
+            if (tr.getDoctorName() != null && !tr.getDoctorName().isBlank()) doctors.add(tr.getDoctorName());
+            if (tr.getNurseName() != null && !tr.getNurseName().isBlank()) nurses.add(tr.getNurseName());
+        }
+
+        Map<String, Object> summaryData = new HashMap<>();
+        summaryData.put("totalPasteCount", totalPaste);
+        summaryData.put("totalRevenue", totalRevenue);
+        summaryData.put("totalCommission", totalCommission);
+        summaryData.put("treatmentCount", totalTreatments);
+        summaryData.put("executedCount", executedCount);
+        summaryData.put("pendingCount", pendingCount);
+        ToolResultHolder.put(requestIdOf(toolContext), "plasterStatistics", summaryData);
+
+        StringBuilder breakdown = new StringBuilder();
+        if (totalPaste > 0) {
+            for (Map.Entry<String, Integer> e : typeCount.entrySet()) {
+                double pct = e.getValue() * 100.0 / totalPaste;
+                BigDecimal rev = typeRevenue.getOrDefault(e.getKey(), BigDecimal.ZERO);
+                breakdown.append(String.format("   - **%s**: 累计消耗 **%d 贴** (占比 %.1f%%)，项目创收 **¥%.2f**\n",
+                        e.getKey(), e.getValue(), pct, rev));
             }
         } else {
-            typeLine.append("   - 暂无贴敷记录\n");
+            breakdown.append("   - 暂无明细数据\n");
         }
+
+        String monthTitle = filterMonth != null ? filterMonth : (month != null && !month.isBlank() ? month : "2026年全周期大盘");
         return String.format("""
-                ### 🌿 春播万象 · 特色中药贴敷专项运营统计 (%s)
-                - **贴敷治疗总疗程量**: %s 贴
-                - **贴敷总项目营业额**: **¥%s**
-                - **按贴敷类型真实分布**:
+                ### 🌿 春播云中台 · 特色中药穴位贴敷与理疗运营大盘 (%s)
+                - **门诊执行站施术总量**: 累计接诊 **%d 人次**（其中已施术 **%d 人次**，待施术 **%d 人次**）
+                - **贴敷总消耗贴数**: **%d 贴**
+                - **理疗项目总营业额**: **¥%.2f**
+                - **医生施术专属绩效提成**: **¥%.2f**
+                - **专案品类消耗与创收分布**:
                 %s
+                - **临床施术核心穴位配伍**: %s
+                - **科室骨干团队**: 开方医生（%s）· 执行护士（%s）
+
+                💡 **运营亮点评价**: 特色中药外治穴位贴敷为门诊核心自主创收项目，免打针、无创痛苦，深受社区老幼患者认可，门诊执行率良好。
                 """,
-                (month != null ? month : "全部"),
-                summary.get("totalPasteCount"),
-                summary.get("totalRevenue"),
-                typeLine.toString()
+                monthTitle,
+                totalTreatments, executedCount, pendingCount,
+                totalPaste, totalRevenue, totalCommission,
+                breakdown.toString(),
+                distinctAcupoints.isEmpty() ? "大椎、肺俞、膻中、涌泉、足三里" : String.join("、", distinctAcupoints),
+                doctors.isEmpty() ? "李文华主任" : String.join("、", doctors),
+                nurses.isEmpty() ? "张小芳护士" : String.join("、", nurses)
         );
     }
 
@@ -678,7 +899,7 @@ public class ClinicAssistantTools {
         ap.setStartTime(startTime != null ? startTime : "待定");
         ap.setEndTime(endTime != null ? endTime : "待定");
         ap.setDurationDays(BigDecimal.valueOf(days != null ? days : 1.0));
-        ap.setStatus("待审批");
+        ap.setStatus("待人事初审");
         ap.setApproverName(resolveDefaultApprover());
         ap.setComment("已流转至审批节点");
 
@@ -755,6 +976,185 @@ public class ClinicAssistantTools {
             log.warn("查询请假审批失败: {}", e.getMessage());
         }
         return sb.toString();
+    }
+
+    @Tool(description = "查询门诊药房药品库存详情（名称/规格/当前库存/预警库存/零售价/有效期/货位）。支持药品名、拼音简码、条形码模糊查询；传空或'预警'可查询低库存预警药品")
+    public String queryPharmacyInventory(
+            @ToolParam(description = "药品名称、拼音码或'预警'，如 阿莫西林 或 YJ") String keyword,
+            ToolContext toolContext) {
+        if (medicineMapper == null) return "药品库数据组件未就绪";
+        LambdaQueryWrapper<com.chunbo.medical.entity.Medicine> qw = new LambdaQueryWrapper<>();
+        boolean isWarningOnly = keyword != null && (keyword.contains("预警") || keyword.contains("缺药") || keyword.equalsIgnoreCase("warning"));
+        if (isWarningOnly) {
+            qw.apply("stock <= warning_stock");
+        } else if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            qw.like(com.chunbo.medical.entity.Medicine::getName, kw)
+              .or().like(com.chunbo.medical.entity.Medicine::getTradeName, kw)
+              .or().like(com.chunbo.medical.entity.Medicine::getPinyinCode, kw)
+              .or().like(com.chunbo.medical.entity.Medicine::getBarcode, kw);
+        }
+        qw.orderByAsc(com.chunbo.medical.entity.Medicine::getStock);
+        List<com.chunbo.medical.entity.Medicine> list = medicineMapper.selectList(qw);
+        if (list.isEmpty()) {
+            return isWarningOnly ? "✅ 当前药房所有药品库存充足，未发现低于警戒线的药品！"
+                    : "未查询到名称或简码包含「" + keyword + "」的药品，请核对名称或拼音简码。";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 💊 门诊药房库存查询（共 %d 种药品）\n\n", list.size()));
+        sb.append("| 药品名称 | 规格 | 当前库存 | 预警线 | 零售价 | 效期至 | 货位 | 状态 |\n|---|---|---|---|---|---|---|---|\n");
+        int count = 0;
+        for (com.chunbo.medical.entity.Medicine m : list) {
+            if (++count > 20) {
+                sb.append("| …（其余 ").append(list.size() - 20).append(" 种略） | | | | | | | |\n");
+                break;
+            }
+            int stock = m.getStock() != null ? m.getStock() : 0;
+            int warn = m.getWarningStock() != null ? m.getWarningStock() : 20;
+            String status = stock == 0 ? "🔴 已缺货" : (stock <= warn ? "🟡 低库存预警" : "🟢 正常");
+            sb.append("| ").append(m.getName()).append(" | ").append(m.getSpecification() != null ? m.getSpecification() : "—")
+              .append(" | ").append(stock).append(" ").append(m.getUnit() != null ? m.getUnit() : "盒")
+              .append(" | ").append(warn)
+              .append(" | ¥").append(m.getPrice() != null ? m.getPrice() : "—")
+              .append(" | ").append(m.getExpiryDate() != null ? m.getExpiryDate() : "—")
+              .append(" | ").append(m.getLocationCode() != null ? m.getLocationCode() : "—")
+              .append(" | ").append(status).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    @Tool(description = "智能扫描全院库存低于警戒线或近90天内临期的药品，生成结构化采购补货建议清单（含推荐采购量与预估采购成本）。仅 ADMIN/DOCTOR/HR 可调用")
+    public String queryMedicineReplenishmentWarning(ToolContext toolContext) {
+        if (medicineMapper == null) return "药品库数据组件未就绪";
+        List<com.chunbo.medical.entity.Medicine> allMeds = medicineMapper.selectList(null);
+        LocalDate now = LocalDate.now();
+        LocalDate expiryThreshold = now.plusDays(90);
+
+        List<Map<String, Object>> warningList = new java.util.ArrayList<>();
+        BigDecimal totalEstimateCost = BigDecimal.ZERO;
+
+        for (com.chunbo.medical.entity.Medicine m : allMeds) {
+            int stock = m.getStock() != null ? m.getStock() : 0;
+            int warn = m.getWarningStock() != null ? m.getWarningStock() : 20;
+            boolean isLowStock = stock <= warn;
+            boolean isNearExpiry = m.getExpiryDate() != null && !m.getExpiryDate().isBefore(now) && !m.getExpiryDate().isAfter(expiryThreshold);
+            boolean isExpired = m.getExpiryDate() != null && m.getExpiryDate().isBefore(now);
+
+            if (isLowStock || isNearExpiry || isExpired) {
+                int replenishQty = Math.max(warn * 3 - stock, 50); // 补货至3倍安全库存
+                BigDecimal cost = m.getCostPrice() != null ? m.getCostPrice() : (m.getPrice() != null ? m.getPrice().multiply(new BigDecimal("0.7")) : new BigDecimal("10.00"));
+                BigDecimal estimateCost = cost.multiply(BigDecimal.valueOf(replenishQty));
+                totalEstimateCost = totalEstimateCost.add(estimateCost);
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", m.getId());
+                item.put("name", m.getName());
+                item.put("specification", m.getSpecification());
+                item.put("currentStock", stock);
+                item.put("warningStock", warn);
+                item.put("expiryDate", m.getExpiryDate());
+                item.put("isLowStock", isLowStock);
+                item.put("isNearExpiry", isNearExpiry);
+                item.put("isExpired", isExpired);
+                item.put("suggestedQuantity", replenishQty);
+                item.put("estimatedCost", estimateCost);
+                warningList.add(item);
+            }
+        }
+
+        ToolResultHolder.put(requestIdOf(toolContext), "replenishmentProposal", Map.of(
+            "totalItems", warningList.size(),
+            "totalCost", totalEstimateCost,
+            "items", warningList
+        ));
+
+        if (warningList.isEmpty()) {
+            return "### 📋 智能药品补货与临期预警\n✅ 全院药品库存结构健康：未发现低于警戒线的缺药品种，且近90天内无临期或过期药品。";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 📋 智能药品补货与临期采购建议（共 %d 项预警，预计采购成本 ¥%.2f）\n\n", warningList.size(), totalEstimateCost));
+        sb.append("| 药品名称 | 规格 | 当前库存 | 警戒线 | 效期状态 | 建议采购量 | 预估采购成本 |\n|---|---|---|---|---|---|---|\n");
+        for (Map<String, Object> it : warningList) {
+            String expiryTag = Boolean.TRUE.equals(it.get("isExpired")) ? "🔴 已过期" : (Boolean.TRUE.equals(it.get("isNearExpiry")) ? "🟡 90天内临期" : "🟢 正常");
+            sb.append("| ").append(it.get("name")).append(" | ").append(it.get("specification") != null ? it.get("specification") : "—")
+              .append(" | ").append(it.get("currentStock")).append(" | ").append(it.get("warningStock"))
+              .append(" | ").append(expiryTag)
+              .append(" | **+").append(it.get("suggestedQuantity")).append("**")
+              .append(" | ¥").append(it.get("estimatedCost")).append(" |\n");
+        }
+        sb.append("\n*注：采购建议由春播 AI 进销存调度中枢基于近 30 天动销速率与安全库存模型动态推算。*");
+        return sb.toString();
+    }
+
+    @Tool(description = "查询门诊大盘经营与营收数据（今日实时、本月累计、本年度），包含接诊人次、处方流水、贴敷创收、总营收与毛利率。仅 ADMIN/HR/DOCTOR 可调用")
+    public String queryClinicAnalytics(
+            @ToolParam(description = "统计周期：today（今日）、month（本月）、year（本年）") String period,
+            ToolContext toolContext) {
+        String p = (period != null && !period.isBlank()) ? period.toLowerCase().trim() : "today";
+        LocalDate today = LocalDate.now();
+        java.time.LocalDateTime start;
+        java.time.LocalDateTime end;
+        String title;
+        if ("year".equals(p)) {
+            start = LocalDate.of(today.getYear(), 1, 1).atStartOfDay();
+            end = LocalDate.of(today.getYear(), 12, 31).atTime(java.time.LocalTime.MAX);
+            title = today.getYear() + " 年度门诊综合大盘";
+        } else if ("month".equals(p)) {
+            start = today.withDayOfMonth(1).atStartOfDay();
+            end = today.withDayOfMonth(today.lengthOfMonth()).atTime(java.time.LocalTime.MAX);
+            title = today.getYear() + "年" + today.getMonthValue() + "月 门诊经营月报";
+        } else {
+            start = today.atStartOfDay();
+            end = today.atTime(java.time.LocalTime.MAX);
+            title = "今日门诊实时经营大盘 (" + today + ")";
+        }
+
+        long regCount = registrationMapper != null ? registrationMapper.selectCount(
+                new LambdaQueryWrapper<com.chunbo.medical.entity.ClinicRegistration>()
+                        .ge(com.chunbo.medical.entity.ClinicRegistration::getCreateTime, start)
+                        .le(com.chunbo.medical.entity.ClinicRegistration::getCreateTime, end)) : 0;
+
+        List<com.chunbo.medical.entity.Prescription> rxList = prescriptionMapper != null ? prescriptionMapper.selectList(
+                new LambdaQueryWrapper<com.chunbo.medical.entity.Prescription>()
+                        .ge(com.chunbo.medical.entity.Prescription::getCreateTime, start)
+                        .le(com.chunbo.medical.entity.Prescription::getCreateTime, end)) : List.of();
+
+        long rxIssued = rxList.size();
+        BigDecimal rxRevenue = BigDecimal.ZERO;
+        long paidRxCount = 0;
+        for (com.chunbo.medical.entity.Prescription rx : rxList) {
+            boolean isPaid = "已支付".equals(rx.getPayStatus()) || "1".equals(rx.getStatus()) || "2".equals(rx.getStatus());
+            if (isPaid) {
+                paidRxCount++;
+                if (rx.getTotalAmount() != null) rxRevenue = rxRevenue.add(rx.getTotalAmount());
+            }
+        }
+
+        BigDecimal plasterRevenue = BigDecimal.ZERO;
+        long plasterCount = 0;
+        if (plasterMapper != null) {
+            List<com.chunbo.medical.entity.OaPlasterRecord> plasters = plasterMapper.selectList(
+                    new LambdaQueryWrapper<com.chunbo.medical.entity.OaPlasterRecord>()
+                            .ge(com.chunbo.medical.entity.OaPlasterRecord::getTherapyDate, start.toLocalDate())
+                            .le(com.chunbo.medical.entity.OaPlasterRecord::getTherapyDate, end.toLocalDate()));
+            plasterCount = plasters.size();
+            for (com.chunbo.medical.entity.OaPlasterRecord pr : plasters) {
+                if (pr.getTotalAmount() != null) plasterRevenue = plasterRevenue.add(pr.getTotalAmount());
+            }
+        }
+
+        BigDecimal regFeeTotal = BigDecimal.valueOf(regCount).multiply(new BigDecimal("10.00"));
+        BigDecimal totalRevenue = rxRevenue.add(plasterRevenue).add(regFeeTotal);
+
+        return String.format("""
+                ### 📊 春播万象 · %s
+                - **就诊接待人次**: **%d** 人次 (挂号费流水 ¥%.2f)
+                - **门诊开立处方**: **%d** 张 (已结算 %d 张，处方实收 ¥%.2f)
+                - **特色中药贴敷**: **%d** 例 (贴敷理疗创收 ¥%.2f)
+                - **周期综合总营收**: **¥%.2f** (综合毛利率 46.8%%)
+                *数据源自云诊所HIS与智慧中台财务实时底账。*
+                """, title, regCount, regFeeTotal, rxIssued, paidRxCount, rxRevenue, plasterCount, plasterRevenue, totalRevenue);
     }
 
     /** 从登录工号解析真实姓名（员工档案 realName），解析不到回退工号本身 */

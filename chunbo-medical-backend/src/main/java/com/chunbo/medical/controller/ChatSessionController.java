@@ -54,4 +54,13 @@ public class ChatSessionController {
             @RequestParam("title") String title) {
         chatSessionService.updateTitle(bizType, sessionId, userId, title);
     }
+
+    /**
+     * 查询指定会话的完整历史消息（从 ChatMemory 取回）
+     * GET /api/session/messages?sessionId=xxx
+     */
+    @GetMapping("/messages")
+    public List<Map<String, String>> getSessionMessages(@RequestParam("sessionId") String sessionId) {
+        return chatSessionService.getSessionMessages(sessionId);
+    }
 }

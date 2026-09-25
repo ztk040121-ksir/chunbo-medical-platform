@@ -43,6 +43,9 @@ public class ClinicRegistration {
     private String accompany;
     private String accompanyPhone;
 
+    // 智能预问诊多轮对话与结构化病史数据 (JSON)
+    private String preConsultationData;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 
@@ -93,7 +96,8 @@ public class ClinicRegistration {
     public void setAddress(String address) { this.address = address; }
     public String getSymptoms() { return symptoms; }
     public void setSymptoms(String symptoms) { this.symptoms = symptoms; }
+    public String getPreConsultationData() { return preConsultationData; }
+    public void setPreConsultationData(String preConsultationData) { this.preConsultationData = preConsultationData; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
-
 }

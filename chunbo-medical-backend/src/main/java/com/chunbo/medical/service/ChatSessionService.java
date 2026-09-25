@@ -208,4 +208,28 @@ public class ChatSessionService {
                 .eq(ChatSession::getBizType, bizType)
                 .eq(ChatSession::getUserId, userId));
     }
+
+    /**
+     * 查询指定会话的消息详情（从 ChatMemory / Redis 取回）
+     */
+    public List<Map<String, String>> getSessionMessages(String sessionId) {
+        List<Map<String, String>> res = new java.util.ArrayList<>();
+        if (chatMemory != null && sessionId != null && !sessionId.isBlank()) {
+            try {
+                List<org.springframework.ai.chat.messages.Message> msgs = chatMemory.get(sessionId);
+                if (msgs != null) {
+                    for (org.springframework.ai.chat.messages.Message m : msgs) {
+                        String role = "user";
+                        if (m.getMessageType() == org.springframework.ai.chat.messages.MessageType.ASSISTANT) {
+                            role = "assistant";
+                        }
+                        String text = m.getText() != null ? m.getText() : "";
+                        res.add(Map.of("role", role, "content", text));
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return res;
+    }
 }

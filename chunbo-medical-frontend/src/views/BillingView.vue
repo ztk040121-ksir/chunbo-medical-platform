@@ -30,6 +30,9 @@
         <el-button type="primary" class="gradient-btn" @click="loadBillingList">
           <el-icon><Refresh /></el-icon> 刷新待收费
         </el-button>
+        <el-button type="success" plain size="default" :loading="prescriptionExportLoading" @click="exportPrescriptionExcel">
+          <el-icon><Download /></el-icon> 导出处方台账
+        </el-button>
       </div>
     </div>
 
@@ -64,7 +67,7 @@
               <span class="p-name">{{ bill.patientName }}</span>
               <span class="p-dept">{{ bill.doctorName }}</span>
             </div>
-            <div class="bill-diagnosis-tag">诊断：{{ bill.diagnosis || '小儿感冒 / 体质调理' }}</div>
+            <div class="bill-diagnosis-tag">诊断：{{ bill.diagnosis || '门诊确诊（待补录）' }}</div>
             <div class="bill-amount-row">
               <span class="time">{{ formatTime(bill.createTime) }}</span>
               <span class="amount">¥{{ Number(bill.totalAmount || 0).toFixed(2) }}</span>
@@ -84,7 +87,7 @@
             <div class="card-header-flex">
               <div class="patient-summary">
                 <span class="head-name">{{ selectedBill.patientName }}</span>
-                <span class="head-diag">【初步诊断：{{ selectedBill.diagnosis }}】</span>
+                <span class="head-diag">【初步诊断：{{ selectedBill.diagnosis || '门诊确诊（待补录）' }}】</span>
                 <span class="head-doc">开单医生：{{ selectedBill.doctorName }}</span>
               </div>
               <div class="head-actions">
@@ -95,9 +98,34 @@
             </div>
           </template>
 
-          <!-- 处方项目明细表格 (对应截图明细核算) -->
-          <div class="section-title">收费条目清单与单价核算</div>
-          <el-table :data="billItems" stripe border class="items-table">
+          <!-- 门诊挂号诊金真实台账核验 (医院真实挂号费闭环) -->
+          <div class="registration-fee-ledger">
+            <div class="reg-ledger-header">
+              <span class="reg-title"><el-icon><Ticket /></el-icon> 门诊就诊挂号与诊金核验台账</span>
+              <el-tag type="success" size="small" effect="plain">
+                <el-icon><CircleCheck /></el-icon> 挂号单已核发入账
+              </el-tag>
+            </div>
+            <div class="reg-ledger-body">
+              <div class="reg-item">
+                <span class="reg-label">挂号流水号：</span>
+                <span class="reg-val">#{{ selectedBill.registrationNo || ('GH' + (selectedBill.registrationId || selectedBill.id)) }}</span>
+              </div>
+              <div class="reg-item">
+                <span class="reg-label">就诊号别：</span>
+                <span class="reg-val">{{ selectedBill.regType || '普通全科门诊' }}</span>
+              </div>
+              <div class="reg-item highlight">
+                <span class="reg-label">门诊挂号诊金：</span>
+                <span class="reg-fee-num">¥{{ Number(selectedBill.regFee != null ? selectedBill.regFee : 10.00).toFixed(2) }}</span>
+                <span class="reg-status-sub">(挂号处实收记账)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 处方项目明细表格 (100% 忠实穿透读取数据库真实的处方明细) -->
+          <div class="section-title">收费条目清单与单价核算（处方明细实收实算）</div>
+          <el-table :data="billItems" stripe border class="items-table" empty-text="当前处方暂无药疗明细">
             <el-table-column type="index" label="序号" width="60" align="center" />
             <el-table-column prop="category" label="分类" width="110">
               <template #default="scope">
@@ -124,27 +152,40 @@
           <!-- 结算总览卡 -->
           <div class="checkout-summary-box">
             <div class="fee-breakdown">
-              <div class="breakdown-item">
-                <span>门诊挂号诊金:</span>
-                <b>¥10.00</b>
-              </div>
-              <div class="breakdown-item">
+              <div class="breakdown-item" v-if="Number(calcCategoryAmount('中西成药')) > 0">
                 <span>西药/中成药费:</span>
-                <b>¥{{ calcCategoryAmount('中成药') }}</b>
+                <b>¥{{ calcCategoryAmount('中西成药') }}</b>
               </div>
-              <div class="breakdown-item">
+              <div class="breakdown-item" v-if="Number(calcCategoryAmount('中药饮片')) > 0">
                 <span>中药颗粒饮片费:</span>
-                <b>¥{{ calcCategoryAmount('中药') }}</b>
+                <b>¥{{ calcCategoryAmount('中药饮片') }}</b>
               </div>
-              <div class="breakdown-item">
-                <span>贴敷理疗及耗材费:</span>
+              <div class="breakdown-item" v-if="Number(calcCategoryAmount('特色贴敷')) > 0">
+                <span>中药特色贴敷费:</span>
                 <b>¥{{ calcCategoryAmount('特色贴敷') }}</b>
+              </div>
+              <div class="breakdown-item" v-if="Number(calcCategoryAmount('门诊诊疗')) > 0">
+                <span>诊疗理疗服务费:</span>
+                <b>¥{{ calcCategoryAmount('门诊诊疗') }}</b>
+              </div>
+              <div class="breakdown-item" v-if="Number(calcCategoryAmount('医用物资')) > 0">
+                <span>医用物资耗材费:</span>
+                <b>¥{{ calcCategoryAmount('医用物资') }}</b>
+              </div>
+              <div class="breakdown-item reg-fee-summary">
+                <span>门诊挂号诊金:</span>
+                <b>¥{{ Number(selectedBill.regFee != null ? selectedBill.regFee : 10.00).toFixed(2) }} <small class="text-muted">(挂号处已收)</small></b>
               </div>
             </div>
 
-            <div class="total-payable">
-              <span class="total-label">应收总金额:</span>
-              <span class="total-val">¥{{ Number(selectedBill.totalAmount || 0).toFixed(2) }}</span>
+            <div class="total-payable-group">
+              <div class="total-payable">
+                <span class="total-label">处方实收总金额:</span>
+                <span class="total-val">¥{{ Number(selectedBill.totalAmount || 0).toFixed(2) }}</span>
+              </div>
+              <div class="overall-payable-sub">
+                门诊全流程总流水(含挂号): ¥{{ (Number(selectedBill.totalAmount || 0) + Number(selectedBill.regFee != null ? selectedBill.regFee : 10.00)).toFixed(2) }}
+              </div>
             </div>
           </div>
 
@@ -204,15 +245,40 @@ const selectedBill = ref(null)
 const billItems = ref([])
 const payMethod = ref('chunbo-pay')
 const paying = ref(false)
+const prescriptionExportLoading = ref(false)
+
+const exportPrescriptionExcel = async () => {
+  prescriptionExportLoading.value = true
+  try {
+    const res = await axios.get('/api/export/prescriptions', { responseType: 'blob' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(res.data)
+    link.download = '门诊处方台账.xlsx'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(link.href)
+    ElMessage.success('门诊处方台账导出成功！')
+  } catch (e) {
+    ElMessage.error('导出失败：' + (e.response?.data?.message || e.message || '网络错误'))
+  } finally {
+    prescriptionExportLoading.value = false
+  }
+}
 
 const loadBillingList = async () => {
   try {
     const res = await axios.get('/api/pharmacy/prescriptions')
-    // Extract list
+    // 真实提取处方及关联挂号信息
     const list = []
     for (const item of res.data) {
       const p = item.prescription
       p.rawItems = item.items || []
+      p.registrationId = item.registrationId || p.registrationId
+      p.registrationNo = item.registrationNo || p.regNo
+      p.regFee = item.regFee != null ? item.regFee : (p.regFee != null ? p.regFee : 10.00)
+      p.regType = item.regType || p.regType || '普通全科门诊'
+      p.regStatus = item.regStatus || p.regStatus || '已结诊'
       list.push(p)
     }
     bills.value = list
@@ -259,58 +325,41 @@ watch(filteredBills, (list) => {
 })
 
 const selectBill = (bill) => {
-  selectedBill.value = bill  // Generate items
+  selectedBill.value = bill
   const items = []
-  // 1. Consultation fee
-  items.push({
-    category: '门诊诊金',
-    name: '普通全科门诊诊金 (挂号费)',
-    spec: '单次就诊',
-    price: 10.00,
-    qty: 1,
-    subtotal: 10.00
-  })
-
-  // 2. Add prescription items
+  // 100% 忠实穿透读取数据库真实的处方明细 bill.rawItems，绝无静态兜底假药假贴敷
   if (bill.rawItems && bill.rawItems.length > 0) {
     bill.rawItems.forEach(it => {
+      let category = '中西成药'
+      const mName = it.medicineName || ''
+      if (mName.includes('诊疗')) category = '门诊诊疗'
+      else if (mName.includes('贴')) category = '特色贴敷'
+      else if (mName.includes('中药') || mName.includes('颗粒') || mName.includes('饮片')) category = '中药饮片'
+      else if (mName.includes('物资') || mName.includes('敷料') || mName.includes('纱布')) category = '医用物资'
+
+      const price = Number(it.unitPrice != null ? it.unitPrice : (it.price != null ? it.price : 0))
+      const qty = Number(it.quantity || 1)
+      const subtotal = Number(it.totalPrice != null ? it.totalPrice : (it.subtotal != null ? it.subtotal : (price * qty)))
+
       items.push({
-        category: it.medicineName && it.medicineName.includes('贴') ? '特色贴敷' : (it.medicineName && it.medicineName.includes('颗粒') ? '中药' : '中成药'),
-        name: it.medicineName,
-        spec: it.dosage || '标准规格',
-        price: it.unitPrice || 25.00,
-        qty: it.quantity || 1,
-        subtotal: (it.unitPrice || 25.00) * (it.quantity || 1)
+        category,
+        name: mName,
+        spec: it.dosage || it.specification || '标准规格',
+        price,
+        qty,
+        subtotal
       })
     })
-  } else {
-    // Default matching screenshots
-    items.push({
-      category: '中成药',
-      name: '丹栀逍遥丸',
-      spec: '10g*6袋/盒',
-      price: 30.00,
-      qty: 1,
-      subtotal: 30.00
-    })
-    items.push({
-      category: '特色贴敷',
-      name: '消肿止痛温经贴敷方 (大椎穴+双肺俞)',
-      spec: '湿贴 3贴/剂',
-      price: 35.00,
-      qty: 1,
-      subtotal: 35.00
-    })
   }
-
   billItems.value = items
 }
 
 const getCatType = (cat) => {
-  if (cat.includes('诊金')) return 'info'
-  if (cat.includes('中成药')) return 'primary'
-  if (cat.includes('中药')) return 'success'
-  if (cat.includes('贴敷')) return 'warning'
+  if (cat.includes('诊金') || cat.includes('诊疗')) return 'info'
+  if (cat.includes('中西成药')) return 'primary'
+  if (cat.includes('中药饮片')) return 'success'
+  if (cat.includes('特色贴敷')) return 'warning'
+  if (cat.includes('医用物资')) return 'danger'
   return 'info'
 }
 
@@ -345,19 +394,27 @@ const executePayment = async () => {
 }
 
 const printReceipt = (bill) => {
+  const regFeeVal = Number(bill.regFee != null ? bill.regFee : 10.00).toFixed(2)
+  const rxAmountVal = Number(bill.totalAmount || 0).toFixed(2)
+  const totalAllVal = (Number(rxAmountVal) + Number(regFeeVal)).toFixed(2)
+
   ElMessageBox.alert(`
     <div style="font-family: monospace; line-height: 1.8; padding: 10px;">
       <h3 style="text-align: center; margin: 0 0 10px 0;">春播万象门诊收费专用收据</h3>
       <p><b>收据单号：</b> SJ${bill.prescriptionNo}</p>
       <p><b>患者姓名：</b> ${bill.patientName} &nbsp;&nbsp; <b>开单医生：</b> ${bill.doctorName}</p>
+      <p><b>门诊确诊：</b> ${bill.diagnosis || '门诊确诊（待补录）'}</p>
+      <p><b>挂号单号：</b> #${bill.registrationNo || ('GH' + (bill.registrationId || bill.id))} &nbsp;&nbsp; <b>号别：</b> ${bill.regType || '普通全科门诊'}</p>
       <p><b>收费时间：</b> ${new Date().toLocaleString()}</p>
       <hr style="border: 1px dashed #ccc;"/>
       <table style="width: 100%; font-size: 13px; text-align: left;">
-        <tr><th>项目</th><th>数量</th><th>小计</th></tr>
-        ${billItems.value.map(it => `<tr><td>${it.name}</td><td>${it.qty}</td><td>¥${Number(it.subtotal).toFixed(2)}</td></tr>`).join('')}
+        <tr><th>项目</th><th>规格</th><th>数量</th><th>小计</th></tr>
+        <tr style="color: #475569;"><td>门诊挂号诊金</td><td>门诊就诊</td><td>1</td><td>¥${regFeeVal} (挂号已收)</td></tr>
+        ${billItems.value.map(it => `<tr><td>${it.name}</td><td>${it.spec}</td><td>${it.qty}</td><td>¥${Number(it.subtotal).toFixed(2)}</td></tr>`).join('')}
       </table>
       <hr style="border: 1px dashed #ccc;"/>
-      <p style="text-align: right; font-size: 16px;"><b>实收总额：¥${Number(bill.totalAmount || 0).toFixed(2)}</b></p>
+      <p style="text-align: right; font-size: 14px; margin: 4px 0;">处方实收：¥${rxAmountVal}</p>
+      <p style="text-align: right; font-size: 16px; margin: 4px 0; color: #1e3a8a;"><b>门诊全流程总计：¥${totalAllVal}</b></p>
       <p style="text-align: center; color: #64748b; font-size: 11px;">门诊收费凭单流水号: PAY${Date.now()} · 请妥善保管门诊收据</p>
     </div>
   `, '打印门诊收费票据', {
@@ -630,6 +687,85 @@ const formatTime = (timeStr) => {
 .breakdown-item b {
   color: #0f172a;
   margin-left: 6px;
+}
+
+/* 挂号诊金台账核验卡 */
+.registration-fee-ledger {
+  background: linear-gradient(135deg, #f0fdf4, #e0f2fe);
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reg-ledger-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reg-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #166534;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reg-ledger-body {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 13px;
+  color: #334155;
+  flex-wrap: wrap;
+}
+
+.reg-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reg-label {
+  color: #64748b;
+}
+
+.reg-val {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.reg-item.highlight .reg-fee-num {
+  font-size: 16px;
+  font-weight: 800;
+  color: #059669;
+}
+
+.reg-status-sub {
+  font-size: 11px;
+  color: #16a34a;
+  margin-left: 4px;
+}
+
+.total-payable-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.overall-payable-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .total-payable {

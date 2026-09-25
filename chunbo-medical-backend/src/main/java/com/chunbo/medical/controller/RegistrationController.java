@@ -93,7 +93,7 @@ public class RegistrationController {
         String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         reg.setRegNo("REG" + dateStr + ThreadLocalRandom.current().nextInt(100, 999));
 
-        String patientName = req.getOrDefault("patientName", req.getOrDefault("name", "张建国")).toString();
+        String patientName = req.getOrDefault("patientName", req.getOrDefault("name", "就诊患者")).toString();
         reg.setPatientName(patientName);
         // 挂号医生兜底 = 当前登录人真实姓名（前端挂号页选了医生则以前端为准）
         String fallbackDoctor = currentUserService.displayName(request);
@@ -107,8 +107,9 @@ public class RegistrationController {
         reg.setRegFee(fee);
         reg.setFee(fee);
 
-        String st = req.getOrDefault("status", "待诊").toString();
-        if ("候诊中".equals(st)) st = "待诊";
+        // 挂号后统一进入【待签到】：必须到店签到才转入待诊队列（医生工作台当面快速挂号显式传"待诊"的豁免）
+        String st = req.getOrDefault("status", "待签到").toString();
+        if ("候诊中".equals(st)) st = "待签到";
         if ("就诊中".equals(st) || "接诊中".equals(st)) {
             String doc = reg.getDoctorName();
             if (doc != null && !doc.trim().isEmpty()) {
@@ -137,6 +138,7 @@ public class RegistrationController {
         reg.setIdCard(req.getOrDefault("idCard", "").toString());
         reg.setAddress(req.getOrDefault("address", "").toString());
         reg.setSymptoms(req.getOrDefault("symptoms", "").toString());
+        reg.setPreConsultationData(req.getOrDefault("preConsultationData", "").toString());
 
         // 挂号时采集的患者详细资料 (选填)
         reg.setMarriage(req.getOrDefault("marriage", "").toString());
@@ -167,7 +169,9 @@ public class RegistrationController {
             queueNo = 0;
         }
         if (queueNo <= 0) {
-            queueNo = registrationMapper.selectCount(null).intValue() + 1;
+            Long todayCount = registrationMapper.selectCount(new LambdaQueryWrapper<ClinicRegistration>()
+                    .apply("DATE(create_time) = {0}", java.time.LocalDate.now().toString()));
+            queueNo = (todayCount != null ? todayCount.intValue() : 0) + 1;
         }
         reg.setQueueNo(queueNo);
         reg.setQueueNumber(String.format("%02d", queueNo));
@@ -200,17 +204,18 @@ public class RegistrationController {
                     newP.setPhone(reg.getPhone());
                     newP.setIdCard(reg.getIdCard());
                     newP.setAddress(reg.getAddress());
-                    newP.setAllergies("无");
-                    newP.setMedicalHistory("既往体健，无特殊慢性病史");
+                    newP.setAllergies("未记录药物过敏史");
+                    newP.setMedicalHistory("未记录既往慢病史");
                     newP.setCreateTime(LocalDateTime.now());
                     patientMapper.insert(newP);
                     reg.setPatientId(newP.getId());
                 }
             } else {
-                reg.setPatientId(1L);
+                reg.setPatientId(null);
             }
         } catch (Exception e) {
-            reg.setPatientId(1L);
+            // 严禁塞入 1L（系统种子用户）名下污染他人病历档案
+            reg.setPatientId(null);
         }
 
         registrationMapper.insert(reg);
@@ -243,6 +248,27 @@ public class RegistrationController {
             registrationMapper.updateById(reg);
         }
         return reg;
+    }
+
+    /**
+     * 挂号未签到超时自动过号：把【待签到】且挂号时间早于 minutes 分钟前的挂号批量置为【过号】。
+     * 由挂号导航看板前端定时调用（时限在「挂号规则与号源设置」中配置），幂等可重复触发。
+     */
+    @PostMapping("/auto-pass-expired")
+    public Map<String, Object> autoPassExpired(@RequestParam(value = "minutes", defaultValue = "15") int minutes) {
+        Map<String, Object> res = new HashMap<>();
+        LocalDateTime deadline = LocalDateTime.now().minusMinutes(Math.max(1, minutes));
+        List<ClinicRegistration> expired = registrationMapper.selectList(new LambdaQueryWrapper<ClinicRegistration>()
+                .eq(ClinicRegistration::getStatus, "待签到")
+                .lt(ClinicRegistration::getCreateTime, deadline));
+        for (ClinicRegistration reg : expired) {
+            reg.setStatus("过号");
+            registrationMapper.updateById(reg);
+        }
+        res.put("success", true);
+        res.put("count", expired.size());
+        res.put("message", "已自动过号 " + expired.size() + " 位超时未签到患者");
+        return res;
     }
 
     @PostMapping("/call/{id}")
@@ -340,5 +366,43 @@ public class RegistrationController {
             registrationMapper.updateById(reg);
         }
         return reg;
+    }
+
+    @PostMapping("/{id}/pre-consult")
+    public Map<String, Object> savePreConsultation(@PathVariable("id") Long id, @RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        ClinicRegistration reg = registrationMapper.selectById(id);
+        if (reg == null) {
+            res.put("success", false);
+            res.put("message", "挂号记录不存在");
+            return res;
+        }
+        String data = body.getOrDefault("preConsultationData", "").toString();
+        reg.setPreConsultationData(data);
+        if (body.containsKey("symptoms")) {
+            String sym = body.get("symptoms").toString();
+            if (!sym.isBlank()) reg.setSymptoms(sym);
+        }
+        registrationMapper.updateById(reg);
+        res.put("success", true);
+        res.put("message", "预问诊记录保存成功！");
+        res.put("registration", reg);
+        return res;
+    }
+
+    @GetMapping("/{id}/pre-consult")
+    public Map<String, Object> getPreConsultation(@PathVariable("id") Long id) {
+        Map<String, Object> res = new HashMap<>();
+        ClinicRegistration reg = registrationMapper.selectById(id);
+        if (reg == null) {
+            res.put("success", false);
+            res.put("message", "挂号记录不存在");
+            return res;
+        }
+        res.put("success", true);
+        res.put("preConsultationData", reg.getPreConsultationData());
+        res.put("symptoms", reg.getSymptoms());
+        res.put("patientName", reg.getPatientName());
+        return res;
     }
 }

@@ -20,7 +20,7 @@ INSERT INTO clinic_guideline (id, disease_name, category, first_line_drugs, cont
 (3, '急性上呼吸道感染', '呼吸内科', '对症退热缓解药物、中成药；如明确细菌感染可选用敏感抗生素', '青霉素/头孢过敏者严禁使用对应β-内酰胺类抗生素', '鉴别病毒与细菌感染 -> 优先对症支持治疗 -> 严把抗生素使用指征');
 
 INSERT INTO sys_ai_config (id, provider_name, base_url, api_key, model_name, temperature, max_tokens, is_active) VALUES
-(1, 'OhMyGPT (在线真实大模型)', 'https://api.ohmygpt.com', 'sk-YOUR_API_KEY_HERE', 'gpt-4o-mini', 0.3, 2048, 1),
+(1, 'OhMyGPT (在线真实大模型)', 'https://api.ohmygpt.com', 'sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77', 'gpt-4o-mini', 0.3, 2048, 1),
 (2, '本地 Ollama (开源私有化部署)', 'http://localhost:11434', 'ollama', 'qwen2.5:7b', 0.5, 2048, 0),
 (3, '阿里 DashScope (通义千问)', 'https://dashscope.aliyuncs.com/compatible-mode', 'sk-your-dashscope-key', 'qwen-plus', 0.3, 2048, 0),
 (4, '春播万象内网离线 Mock', 'http://localhost:8080/mock', 'mock-key', 'chunbo-med-rule-engine', 0.1, 1024, 0);
@@ -37,7 +37,7 @@ INSERT INTO oa_plaster_record (id, patient_name, plaster_type, paste_count, unit
 (5, '赵新民', '冬病夏治穴位贴', 8, 50.00, 400.00, '李文华', '春播第001社区卫生服务站', '2026-08-29');
 
 INSERT INTO oa_approval (id, applicant_name, approval_type, reason, start_time, end_time, duration_days, status, approver_name, comment) VALUES
-(1, '李文华', '调休申请', '上周周末参加基层全科慢病研讨会值班，申请周五调休', '2026-09-18 08:30', '2026-09-18 17:30', 1.0, '待审批', '张院长', '待院办复核'),
+(1, '李文华', '调休申请', '上周周末参加基层全科慢病研讨会值班，申请周五调休', '2026-09-18 08:30', '2026-09-18 17:30', 1.0, '待人事初审', '张院长', '待院办复核'),
 (2, '张小芳 (护士)', '事假申请', '家中有急事需返回原籍办理', '2026-09-10 08:30', '2026-09-11 17:30', 2.0, '已通过', '李文华', '已安排白班轮换顶岗');
 
 INSERT INTO sys_token_log (id, session_id, model_name, prompt_tokens, completion_tokens, total_tokens, latency_ms, cost_cny) VALUES

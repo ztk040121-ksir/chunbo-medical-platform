@@ -23,6 +23,8 @@ public class Prescription {
     private String craftNotes;
     private String remark;
     private String aiAdvice;
+    private String signedBy;
+    private LocalDateTime signedAt;
     private LocalDateTime createTime;
 
     public Long getId() { return id; }
@@ -61,10 +63,47 @@ public class Prescription {
     public String getAiAdvice() { return aiAdvice; }
     public void setAiAdvice(String aiAdvice) { this.aiAdvice = aiAdvice; }
 
+    public String getSignedBy() { return signedBy; }
+    public void setSignedBy(String signedBy) { this.signedBy = signedBy; }
+
+    public LocalDateTime getSignedAt() { return signedAt; }
+    public void setSignedAt(LocalDateTime signedAt) { this.signedAt = signedAt; }
+
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 
     private String payStatus;
     public String getPayStatus() { return payStatus; }
     public void setPayStatus(String payStatus) { this.payStatus = payStatus; }
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Long registrationId;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private BigDecimal regFee;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String regNo;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String regType;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String regStatus;
+
+    public Long getRegistrationId() { return registrationId; }
+    public void setRegistrationId(Long registrationId) { this.registrationId = registrationId; }
+
+    public BigDecimal getRegFee() { return regFee; }
+    public void setRegFee(BigDecimal regFee) { this.regFee = regFee; }
+
+    public String getRegNo() { return regNo; }
+    public void setRegNo(String regNo) { this.regNo = regNo; }
+
+    public String getRegType() { return regType; }
+    public void setRegType(String regType) { this.regType = regType; }
+
+    public String getRegStatus() { return regStatus; }
+    public void setRegStatus(String regStatus) { this.regStatus = regStatus; }
 }
+

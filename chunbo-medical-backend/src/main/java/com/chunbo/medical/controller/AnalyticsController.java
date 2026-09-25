@@ -37,6 +37,15 @@ public class AnalyticsController {
     @Autowired
     private RolePermissionMapper rolePermissionMapper;
 
+    @Autowired
+    private com.chunbo.medical.service.WeeklyReportService weeklyReportService;
+
+    /** AI 生成最近 7 天运营周报（营收/患者/药品动销 → LLM 自然语言成文） */
+    @GetMapping("/weekly-report")
+    public Map<String, Object> weeklyReport() {
+        return weeklyReportService.generateWeeklyReport();
+    }
+
     @GetMapping("/summary")
     public Map<String, Object> getAnalyticsSummary(@RequestParam(value = "period", defaultValue = "today") String period) {
         Map<String, Object> data = new HashMap<>();
@@ -74,7 +83,7 @@ public class AnalyticsController {
                         .le(Prescription::getCreateTime, endOfToday)
         );
         for (Prescription rx : todayRxs) {
-            if (rx.getTotalAmount() != null) {
+            if (isPaidPrescription(rx) && rx.getTotalAmount() != null) {
                 todayRxRevenue = todayRxRevenue.add(rx.getTotalAmount());
             }
         }
@@ -124,7 +133,7 @@ public class AnalyticsController {
                         .le(Prescription::getCreateTime, endOfMonth)
         );
         for (Prescription rx : monthRxs) {
-            if (rx.getTotalAmount() != null) {
+            if (isPaidPrescription(rx) && rx.getTotalAmount() != null) {
                 monthRxRevenue = monthRxRevenue.add(rx.getTotalAmount());
             }
         }
@@ -176,7 +185,7 @@ public class AnalyticsController {
                         .le(Prescription::getCreateTime, endOfYear)
         );
         for (Prescription rx : yearRxs) {
-            if (rx.getTotalAmount() != null) {
+            if (isPaidPrescription(rx) && rx.getTotalAmount() != null) {
                 yearRxRevenue = yearRxRevenue.add(rx.getTotalAmount());
             }
         }
@@ -258,7 +267,7 @@ public class AnalyticsController {
                 for (Prescription rx : prescriptionMapper.selectList(new LambdaQueryWrapper<Prescription>()
                         .ge(Prescription::getCreateTime, ws.atStartOfDay())
                         .le(Prescription::getCreateTime, we.atTime(LocalTime.MAX)))) {
-                    if (rx.getTotalAmount() != null) wr = wr.add(rx.getTotalAmount());
+                    if (isPaidPrescription(rx) && rx.getTotalAmount() != null) wr = wr.add(rx.getTotalAmount());
                 }
                 m.put("revenue", wr.doubleValue());
                 trend.add(m);
@@ -297,7 +306,7 @@ public class AnalyticsController {
                 for (Prescription rx : prescriptionMapper.selectList(new LambdaQueryWrapper<Prescription>()
                         .ge(Prescription::getCreateTime, ms.atStartOfDay())
                         .le(Prescription::getCreateTime, me.atTime(LocalTime.MAX)))) {
-                    if (rx.getTotalAmount() != null) mr = mr.add(rx.getTotalAmount());
+                    if (isPaidPrescription(rx) && rx.getTotalAmount() != null) mr = mr.add(rx.getTotalAmount());
                 }
                 dayMap.put("revenue", mr.doubleValue());
                 trend.add(dayMap);
@@ -332,7 +341,7 @@ public class AnalyticsController {
                 for (Prescription rx : prescriptionMapper.selectList(new LambdaQueryWrapper<Prescription>()
                         .ge(Prescription::getCreateTime, ds)
                         .le(Prescription::getCreateTime, de))) {
-                    if (rx.getTotalAmount() != null) dr = dr.add(rx.getTotalAmount());
+                    if (isPaidPrescription(rx) && rx.getTotalAmount() != null) dr = dr.add(rx.getTotalAmount());
                 }
                 Map<String, Object> dayMap = new HashMap<>();
                 dayMap.put("date", d.getMonthValue() + "-" + d.getDayOfMonth());
@@ -421,5 +430,10 @@ public class AnalyticsController {
         if (sumPrice.compareTo(BigDecimal.ZERO) <= 0) return "--";
         return sumPrice.subtract(sumCost).multiply(new BigDecimal(100))
                 .divide(sumPrice, 1, java.math.RoundingMode.HALF_UP) + "%";
+    }
+
+    private boolean isPaidPrescription(Prescription rx) {
+        if (rx == null) return false;
+        return "已支付".equals(rx.getPayStatus()) || "1".equals(rx.getStatus()) || "2".equals(rx.getStatus());
     }
 }

@@ -138,8 +138,17 @@ const TAB_LABELS = {
 // 当前登录角色（NURSE 护士 / DOCTOR 医生 / HR / ADMIN 等，登录时由后端返回）
 const currentRole = ref(localStorage.getItem('chunbo_role') || 'DOCTOR')
 // 角色允许的模块集合（来自 sys_role_permission 动态配置，scope=CLINIC 云诊所模块）
-// allowedModules: null=未加载（兜底全部可见）；[]=配置为空=该角色无云诊所权限
+// allowedModules: null=未加载；[]=配置为空=该角色无云诊所权限
 const allowedModules = ref(null)
+
+// 权限接口失败时的保守默认模块（fail-closed）：各角色明确应有的最小模块，其余角色无权限
+const defaultClinicModules = (role) => {
+  const r = String(role || '').toUpperCase()
+  if (r === 'DOCTOR' || r === 'ADMIN') return [...TAB_KEYS]
+  if (r === 'NURSE') return ['registration', 'billing', 'treatment', 'pharmacy', 'patient']
+  return []
+}
+
 const loadRolePermissions = async () => {
   try {
     const res = await axios.get('/api/role-permissions')
@@ -151,7 +160,8 @@ const loadRolePermissions = async () => {
       allowedModules.value = Array.isArray(mods) ? mods : []
     }
   } catch (e) {
-    // 接口不可用时兜底：全部可见，不影响医生正常使用
+    // fail-closed：接口失败时降级到保守默认模块，绝不"全可见"
+    allowedModules.value = defaultClinicModules(currentRole.value)
   }
 }
 loadRolePermissions()

@@ -5,8 +5,8 @@
       <div class="header-left">
         <div class="mall-logo">🛒</div>
         <div>
-          <h2>春播商城 · 基于 RAG + 状态图的多智能体医药电商运营中台 (B2B)</h2>
-          <span class="sub">LangGraph 状态图编排：Router Agent 意图分派 ➔ 角色差异化推荐 ➔ 自动阶梯议价 ➔ 订单一键落库</span>
+          <h2>春播商城 · 基于 Spring AI 的多智能体医药电商协同运营中台 (B2B)</h2>
+          <span class="sub">Spring AI 智能体编排网络：Router Agent 意图分派 ➔ 角色差异化推荐 ➔ 自动阶梯议价 ➔ 订单防超卖一键落库</span>
         </div>
       </div>
 
@@ -18,6 +18,9 @@
           <el-radio-button value="buyer">💼 采购主管 (看政策/返利)</el-radio-button>
           <el-radio-button value="cs">👩‍💼 门诊客服 (看资质/物流)</el-radio-button>
         </el-radio-group>
+        <el-button size="small" type="primary" plain @click="$router.push('/')" style="margin-left: 16px;">
+          🔙 返回门诊工作站
+        </el-button>
       </div>
     </div>
 
@@ -30,7 +33,7 @@
           <div class="state-graph-banner">
             <div class="graph-title">
               <el-icon><Share /></el-icon>
-              <span>LangGraph 状态图协同链路:</span>
+              <span>Spring AI 多智能体协同流转链路:</span>
             </div>
             <div class="node-steps">
               <div class="node-chip" :class="{ active: currentActiveAgent === 'ROUTER' || currentActiveAgent === '' }">
@@ -107,7 +110,7 @@
               <div class="avatar">🤖</div>
               <div class="bubble-main loading-main">
                 <el-icon class="is-loading"><Loading /></el-icon>
-                <span>LangGraph 状态图多智能体路由与 RAG 知识库检索中...</span>
+                <span>Spring AI 多智能体语义路由与 RAG 医药知识库检索中...</span>
               </div>
             </div>
           </div>
@@ -205,9 +208,9 @@ const orders = ref([])
 const messages = ref([
   {
     role: 'assistant',
-    agentName: 'LangGraph 多智能体编排总线',
+    agentName: 'Spring AI 多智能体协同运营总线',
     time: '19:15',
-    content: '尊敬的诊所伙伴！我是春播商城 B2B 多智能体电商运营中台。系统已接入 **LangGraph 状态图与 Spring AI 药品知识库 (RAG)**：\n- **🔀 Router Agent**：自主语义解析您的业务意图\n- **🌿 Recommend Agent**：面向【主任 / 采购 / 客服】差异化定制选品推荐话术\n- **🤝 Bargain Agent**：大宗采购阶梯买赠与智能议价\n- **👩‍💼 CS Agent**：GSP 首营资质与冷链物流答疑\n请切换上方角色画像或点击下方快捷问答体验协同工作流！'
+    content: '尊敬的诊所伙伴！我是春播商城 B2B 多智能体电商运营中台。系统已接入 **Spring AI 智能体编排网络与医药知识库 (RAG)**：\n- **🔀 Router Agent**：自主语义解析您的业务意图与咨询角色画像\n- **🌿 Recommend Agent**：面向【主任 / 采购 / 客服】差异化定制学术控销与高毛利选品方案\n- **🤝 Bargain Agent**：大宗门诊采购自动核算阶梯买赠与智能议价批复 (支持防超卖一键落库)\n- **👩‍💼 CS Agent**：国家 GSP 首营资质、冷链质保与合规溯源答疑\n请切换上方角色画像或点击下方快捷问答体验协同工作流！'
   }
 ])
 
@@ -270,11 +273,12 @@ const sendChat = async () => {
 
     if (res.data) {
       currentActiveAgent.value = res.data.targetAgent || 'RECOMMEND_AGENT'
+      const replyContent = res.data.content || res.data.reply || ''
       messages.value.push({
         role: 'assistant',
         agentName: res.data.targetAgent === 'BARGAIN_AGENT' ? '🤝 Bargain Agent (阶梯议价智能体)' : (res.data.targetAgent === 'CS_AGENT' ? '👩‍💼 Customer Service Agent (客服合规智能体)' : '🌿 Recommend Agent (角色选品智能体)'),
         time: new Date().toLocaleTimeString(),
-        content: res.data.content,
+        content: replyContent,
         bargainDraft: res.data.bargainDraft
       })
     }
@@ -295,6 +299,7 @@ const acceptBargainAndCreateOrder = async (draft) => {
   creatingOrder.value = true
   try {
     const payload = {
+      role: selectedRole.value,
       clinicName: '春播第001社区卫生服务站',
       buyerName: selectedRole.value === 'director' ? '李文华 (全科主任)' : '陈建民 (采购主管)',
       totalAmount: draft.totalAmount,

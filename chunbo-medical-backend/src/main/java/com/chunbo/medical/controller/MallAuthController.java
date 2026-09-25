@@ -181,8 +181,16 @@ public class MallAuthController {
                 if (user != null) {
                     res.put("success", true);
                     res.put("code", 200);
-                    user.setPassword("******");
-                    res.put("user", user);
+                    Map<String, Object> userData = new HashMap<>();
+                    userData.put("id", user.getId());
+                    userData.put("username", user.getUsername());
+                    userData.put("nickname", user.getNickname());
+                    userData.put("realName", user.getNickname());
+                    userData.put("phone", user.getPhone());
+                    userData.put("address", user.getAddress());
+                    userData.put("balance", user.getBalance());
+                    userData.put("points", user.getPoints());
+                    res.put("user", userData);
                     return ResponseEntity.ok(res);
                 }
             }

@@ -39,6 +39,11 @@ public class OaRouteAgent extends RouteAgent {
     @Override
     public String process(String question, String sessionId, String userId) {
         String q = question == null ? "" : question.trim();
+        // 贴敷理疗类强模式：贴敷、理疗、穴位、通络贴、三伏贴、止咳贴等直接命中 OA_PLASTER，杜绝 LLM 误判
+        if (q.contains("贴敷") || q.contains("理疗") || q.contains("穴位") || q.contains("外治")
+                || q.contains("通络贴") || q.contains("三伏贴") || q.contains("止咳贴") || q.contains("咳喘贴")) {
+            return "OA_PLASTER";
+        }
         // 排除明确指向医院药房/门诊药品的语句
         boolean pharmacy = q.contains("药房") || q.contains("门诊药品") || q.contains("药品库存");
         boolean productOp = (q.contains("下架") || q.contains("上架"))
@@ -47,12 +52,12 @@ public class OaRouteAgent extends RouteAgent {
         if (productOp && !pharmacy) {
             return "OA_PRODUCT";
         }
-        // 商城注册用户管理类强模式：注册/新增商城账户、按用户查订单、用户统计
+        // 商城注册用户管理类强模式：注册/新增商城账户、按用户查订单、用户统计、注册用户名单
         boolean mallUserOp = ((q.contains("注册") || q.contains("新增用户") || q.contains("新建用户"))
                 && (q.contains("商城") || q.contains("账户") || q.contains("账号") || q.contains("用户")))
-                || ((q.contains("用户") || q.contains("账户")) && (q.contains("订单") || q.contains("总数")
+                || ((q.contains("用户") || q.contains("账户") || q.contains("客户")) && (q.contains("订单") || q.contains("总数")
                         || q.contains("多少") || q.contains("统计") || q.contains("冻结") || q.contains("活跃")
-                        || q.contains("体验金") || q.contains("购药金")));
+                        || q.contains("体验金") || q.contains("购药金") || q.contains("哪些") || q.contains("列表") || q.contains("名单") || q.contains("有哪些")));
         if (mallUserOp) {
             return "OA_MALL_USER";
         }

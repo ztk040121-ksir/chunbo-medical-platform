@@ -3,15 +3,23 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 @Component
 public class JwtUtil {
-    private static final String SECRET = "chunbo-medical-jwt-secret-key-2024-very-long";
+    /** JWT 签名密钥：可通过环境变量 chunbo.jwt.secret 覆盖，默认值仅供演示 */
+    @Value("${chunbo.jwt.secret:chunbo-medical-jwt-secret-key-2024-very-long}")
+    private String secret;
     private static final long EXPIRATION_MS = 8 * 60 * 60 * 1000L;
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+    private SecretKey key;
+    @PostConstruct
+    private void init() {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
     public String generateToken(String username) {
         return generateToken(username, "USER");
     }

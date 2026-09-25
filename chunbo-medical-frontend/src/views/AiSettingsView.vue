@@ -476,7 +476,7 @@ const allProviders = computed(() => {
 const configForm = ref({
   provider: 'ohmygpt',
   baseUrl: 'https://api.ohmygpt.com',
-  apiKey: 'sk-YOUR_API_KEY_HERE',
+  apiKey: 'sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77',
   modelName: 'gpt-4o-mini',
   temperature: 0.3,
   mockEnabled: false

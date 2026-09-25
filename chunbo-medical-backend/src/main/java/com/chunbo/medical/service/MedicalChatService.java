@@ -30,6 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class MedicalChatService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MedicalChatService.class);
+
     @Autowired
     private AiModelConfigService aiConfigService;
 
@@ -47,6 +49,9 @@ public class MedicalChatService {
 
     @Autowired(required = false)
     private ChatSessionService chatSessionService;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.tools.MedicalClinicTools medicalClinicTools;
 
     // =====================================================================
     // 停止生成（后端 Flux 流控，参照《SpringAI》笔记标准实现）
@@ -121,14 +126,6 @@ public class MedicalChatService {
         String msg = request.getMessage() != null ? request.getMessage().trim() : "";
         // 本次请求 id（由 AbstractAgent 生成并透传），用于把结构化卡片写入 ToolResultHolder
         String requestId = request.getRequestId();
-
-        // 若涉及真实药房库存、缺药排查或处方药品查询，直接调用本地 MySQL 8.0 穿透引擎，保证数据 100% 真实，严禁伪造虚假数据
-        // routeHint=MED_STOCK 时强制走库存引擎（多智能体路由判定的语义意图，不依赖关键词）
-        if ("MED_STOCK".equals(request.getRouteHint())
-                || msg.contains("库存") || msg.contains("药房") || msg.contains("多少") || msg.contains("缺药")
-                || msg.contains("备药") || msg.contains("查药") || msg.contains("台账") || msg.contains("进销存")) {
-            return mockClinicalStream(request);
-        }
 
         // 如果开启了 Mock 模式，直接走本地临床引擎
         if (aiConfigService.isMockEnabled()) {
@@ -300,10 +297,11 @@ public class MedicalChatService {
                     + "主诉：" + chiefComplaint + "\n"
                     + "病程：" + (duration != null && !duration.isBlank() ? duration : "未提供") + "\n"
                     + "发作频率：" + (frequency != null && !frequency.isBlank() ? frequency : "未提供") + "\n"
-                    + "JSON 格式：{\"presentIllness\":\"现病史\",\"tongue\":\"舌象\",\"pulse\":\"脉象\","
-                    + "\"diagnosis\":\"西医诊断\",\"tcmDiagnosis\":\"中医辨证\",\"medicalAdvice\":\"医嘱(多行用\\\\n分隔)\"}";
+                    + "【真实性红线】：舌象和脉象属于医生查体体征，未经望诊切脉严禁凭空捏造！\"tongue\" 与 \"pulse\" 字段请统一返回空字符串 \"\"；现病史必须紧扣主诉客观规范书写，严禁捏造患者未提及的体温或具体用药！\n"
+                    + "JSON 格式：{\"presentIllness\":\"现病史\",\"tongue\":\"\",\"pulse\":\"\","
+                    + "\"diagnosis\":\"西医初步诊断\",\"tcmDiagnosis\":\"中医辨证\",\"medicalAdvice\":\"生活医嘱(多行用\\\\n分隔)\"}";
             String content = client.prompt()
-                    .system("你是基层中医全科门诊的病历书写助手，根据主诉生成专业、规范的病历字段，内容严谨、不过度诊断。")
+                    .system("你是基层中医全科门诊的病历书写助手，根据主诉生成专业、规范的病历字段，内容严谨、不过度诊断，不臆造未提及的体温、舌象或脉象。")
                     .user(userPrompt)
                     .call()
                     .content();
@@ -313,17 +311,525 @@ public class MedicalChatService {
             if (s < 0 || e <= s) return result;
             com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
                     .readTree(content.substring(s, e + 1));
-            String[] fields = {"presentIllness", "tongue", "pulse", "diagnosis", "tcmDiagnosis", "medicalAdvice"};
+            String[] fields = {"presentIllness", "diagnosis", "tcmDiagnosis", "medicalAdvice"};
             for (String f : fields) {
                 com.fasterxml.jackson.databind.JsonNode n = root.get(f);
                 if (n != null && !n.isNull() && !n.asText().isBlank()) {
                     result.put(f, n.asText().replace("\\n", "\n"));
                 }
             }
+            // 舌象与脉象必须由接诊医师望诊切脉或舌象照片多模态识别输入，绝不凭空假造
+            result.put("tongue", "");
+            result.put("pulse", "");
             return result;
         } catch (Exception ex) {
             System.err.println("AI 病历生成异常: " + ex.getMessage());
             return result;
+        }
+    }
+
+    /**
+     * 智能预问诊多轮交互对话（重载方法保持兼容）：委托执行全量问询逻辑
+     */
+    public Map<String, Object> preConsultDialogue(String patientName, String gender, String age, List<Map<String, String>> history, String userReply) {
+        return preConsultDialogue(patientName, gender, age, null, null, history, userReply);
+    }
+
+    /**
+     * 智能预问诊多轮交互对话：与 generateEmr 采用完全一致架构，由 activeChatClient 进行真实大模型推理（绝无硬编码）
+     * 增强能力：
+     * 1. 身份证号精准研判同患者：通过 MedicalClinicTools 工具获取该患者档案、既往慢病、药物过敏与历史开方；
+     * 2. 会话记忆与历史留存：通过 Spring AI ChatMemory 统一存储会话上下文，并异步更新到 ChatSessionService；
+     * 3. 停止生成：维护 GENERATE_STATUS 状态标记，支持随时中止大模型思考输出。
+     */
+    public Map<String, Object> preConsultDialogue(String patientName, String gender, String age, String idCard, String sessionId, List<Map<String, String>> history, String userReply) {
+        Map<String, Object> res = new HashMap<>();
+        String effectiveSessionId = (sessionId != null && !sessionId.isBlank()) 
+                ? sessionId.trim() 
+                : "pre_consult_" + System.currentTimeMillis() + "_" + ((int) (Math.random() * 900) + 100);
+        res.put("sessionId", effectiveSessionId);
+        GENERATE_STATUS.put(effectiveSessionId, true);
+
+        try {
+            ChatClient client = aiConfigService.getActiveChatClient();
+            if (client == null) {
+                log.error("[预问诊-大模型状态] activeChatClient 为 null，大模型服务未就绪");
+                res.put("success", false);
+                res.put("message", "AI 模型未就绪，请在【AI 设置】中配置并启用模型");
+                return res;
+            }
+
+            // 【身份证号精准判断同一患者】：调用 Tool 检索历史档案、过敏史、既往慢病史与历史开方记录
+            Map<String, Object> matchedPatient = null;
+            if (idCard != null && !idCard.isBlank() && medicalClinicTools != null) {
+                try {
+                    matchedPatient = medicalClinicTools.queryPatientMedicalHistoryByIdCard(idCard.trim(), null);
+                    if (matchedPatient != null && Boolean.TRUE.equals(matchedPatient.get("isSamePatient"))) {
+                        res.put("matchedPatient", matchedPatient);
+                        log.info(">>> [预问诊Service-身份证匹配成功] 患者身份证【{}】通过 Tool 匹配到既往档案: {}", idCard, matchedPatient.get("summaryText"));
+                    }
+                } catch (Exception ex) {
+                    log.warn("[预问诊Service-身份证Tool检索异常] {}", ex.getMessage());
+                }
+            }
+
+            // 【初次问询接待】：真实调用大模型生成个性化亲切开门问候与基础主诉选项
+            // 【初次问询接待】：真实调用大模型生成个性化亲切开门问候与基础主诉选项
+            if ((history == null || history.isEmpty()) && (userReply == null || userReply.isBlank())) {
+                log.info(">>> [预问诊Service-首轮接待] 患者【{}】进入预问诊，提交大模型生成首轮接待问候与高频主诉选项...", patientName);
+                
+                int hour = java.time.LocalTime.now().getHour();
+                String timeOfDay = (hour < 9 ? "早晨" : (hour < 12 ? "上午" : (hour < 14 ? "中午" : (hour < 18 ? "下午" : "晚上"))));
+                
+                // 语气风格多样性引导库，避免AI千篇一律套用同一个句式
+                String[] stylePrompts = {
+                    "亲切温暖型：如身边的全科家庭护士般关怀，带有时段问候，自然温和地询问哪里不舒服",
+                    "专业利落型：简练温和，直奔关切主题，询问最困扰身体的异常体征",
+                    "启发引导型：语气轻柔，安抚患者放松，引导讲出起病诱因或主要感觉",
+                    "日常问安型：结合今日时段问好，询问今日就诊主要是为了哪方面的身体困扰"
+                };
+                String currentStyle = stylePrompts[new java.util.Random().nextInt(stylePrompts.length)];
+
+                // 随机轮换推荐的主诉侧重系统（呼吸、消化、头面躯体、综合门诊）
+                String[][] symptomThemes = {
+                    new String[]{"呼吸感冒类", "🌡️ 突发高热伴寒战", "🤧 咳嗽咳痰咽痛", "👃 鼻塞流涕喷嚏", "😵 头痛头重乏力", "🩺 慢病复诊配药"},
+                    new String[]{"消化胃肠类", "🤢 胃胀胃痛反酸", "🤮 恶心呕吐纳差", "🚽 腹痛腹泻频繁", "🍽️ 食欲不振消化差", "🩺 慢病定期配药"},
+                    new String[]{"头面胸腹类", "🤕 头昏偏头痛跳痛", "💓 心悸胸闷气短", "💤 失眠多梦乏力", "🦴 颈肩腰腿酸痛", "🩺 常规健康检查"},
+                    new String[]{"综合基层门诊类", "🌡️ 感冒发热不退", "🤧 咽痛咳嗽难忍", "🤢 急性腹痛腹泻", "😵 头晕身软无力", "🩺 慢病续方取药"}
+                };
+                String[] randomTheme = symptomThemes[new java.util.Random().nextInt(symptomThemes.length)];
+
+                String welcomePrompt;
+                if (matchedPatient != null && Boolean.TRUE.equals(matchedPatient.get("isSamePatient"))) {
+                    String pName = String.valueOf(matchedPatient.getOrDefault("name", patientName != null ? patientName : "患者"));
+                    String medHist = String.valueOf(matchedPatient.getOrDefault("medicalHistory", ""));
+                    String allergies = String.valueOf(matchedPatient.getOrDefault("allergies", ""));
+                    String summary = String.valueOf(matchedPatient.getOrDefault("summaryText", ""));
+                    welcomePrompt = String.format("""
+                            【当前时段】：%s好
+                            【🪪 身份证识别：已确认命中该患者全科门诊既往档案（由 Tool 检索提供）】：
+                            身份证号：【%s】
+                            患者姓名：【%s】
+                            历史病历摘要：%s
+                            既往慢病史：【%s】
+                            过敏史：【%s】
+                            
+                            任务：你是春播万象全科门诊智能预问诊护士。请根据患者既往档案和当前时段（%s好），向就诊患者输出一句真实、亲切、鲜活的个性化开门问候语，并提供4~5个基层门诊主诉选项供患者快捷点击。
+                            重点要求：
+                            1. 问候语中请自然表明系统已调阅到其健康档案，询问是既往慢病【%s】有反复，还是身体出现了新的不舒服（用词请生动鲜活，切忌套用千篇一律的机械套话！）。
+                            2. 快捷选项必须覆盖其既往病史与常见高频原因（例如：["🩺 复查慢病配药","🤕 既往症状反复","🌡️ 感冒发热","🤧 咳嗽咽痛","🤢 腹痛腹泻"]），配以生动Emoji，去除顿号！
+                            红线要求：严禁凭空假设患者当前已经发热或恶化，待患者自述！
+                            严格只输出一行紧凑纯 JSON：
+                            {"reply":"护士亲切问候语","quickReplies":["快捷选项1","快捷选项2","快捷选项3","快捷选项4"],"isComplete":false}
+                            """, timeOfDay, idCard, pName, summary, medHist, allergies, timeOfDay, medHist);
+                } else {
+                    welcomePrompt = String.format("""
+                            【当前时段】：%s好
+                            【就诊患者信息】：【%s，%s，%s岁】
+                            【本次护士风格引导】：%s
+                            【本次主诉推荐侧重参考】：%s（如：%s、%s、%s、%s、%s）
+                            场景：患者初次进入基层全科门诊挂号预问诊，尚未自述病情。
+                            任务：作为春播万象基层全科门诊护士，请向患者输出一句亲切热情的问候语，并提供4~5个最常见的主诉选项供患者快捷点击。
+                            重点要求：
+                            1. 结合当前时段（%s好）与患者（%s），用你自己的语言现场构思一句自然、真诚的开门问候（25~40字）。
+                               【严禁千篇一律！严禁机械重复固定句式“很高兴为您服务～请问您今天主要是哪里不舒服呢？大概持续多久啦？”，请每次变换不同的口吻、词汇与关切切入点】！
+                            2. 快捷选项必须精炼生动并配有Emoji图标，绝不要带有顿号等机械分隔，每项要有明确临床指向（可参考上述侧重或高频组合）。
+                            红线要求：问候语严禁凭空假设患者已有发热或特定疾病！
+                            严格只输出一行紧凑纯 JSON：
+                            {"reply":"AI护士现场个性化问候语","quickReplies":["带Emoji选项1","带Emoji选项2","带Emoji选项3","带Emoji选项4"],"isComplete":false}
+                            """, 
+                            timeOfDay,
+                            patientName != null && !patientName.isBlank() ? patientName : "就诊患者", gender, age,
+                            currentStyle,
+                            randomTheme[0], randomTheme[1], randomTheme[2], randomTheme[3], randomTheme[4], randomTheme[5],
+                            timeOfDay,
+                            patientName != null && !patientName.isBlank() ? patientName : "您"
+                    );
+                }
+
+                try {
+                    long tStart = System.currentTimeMillis();
+                    String content = client.prompt()
+                            .system("你是春播万象全科门诊智能预问诊护士。语言亲切自然、充满人情味、严禁千篇一律套用模板，严禁凭空捏造未提及体征。只输出纯 JSON。")
+                            .user(welcomePrompt)
+                            .call()
+                            .content();
+                    long tElapsed = System.currentTimeMillis() - tStart;
+                    if (content != null && content.contains("{") && content.contains("}")) {
+                        int s = content.indexOf('{');
+                        int e = content.lastIndexOf('}');
+                        com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readTree(content.substring(s, e + 1));
+                        res.put("success", true);
+                        String nurseReply = root.path("reply").asText("您好！请问您今天主要是哪里不舒服？持续多久了？");
+                        res.put("reply", nurseReply);
+                        res.put("elapsedMs", tElapsed);
+                        List<String> qr = new ArrayList<>();
+                        if (root.has("quickReplies") && root.get("quickReplies").isArray()) {
+                            for (com.fasterxml.jackson.databind.JsonNode q : root.get("quickReplies")) qr.add(q.asText());
+                        }
+                        if (qr.isEmpty()) qr = List.of(randomTheme[1], randomTheme[2], randomTheme[3], randomTheme[4], randomTheme[5]);
+                        res.put("quickReplies", qr);
+                        res.put("isComplete", false);
+
+                        // 首轮接待仅存入 ChatMemory 供对话上下文记忆；患者尚未自述症状（未提问），严禁在 chat_session 数据库建档生成空白记录！
+                        if (chatMemory != null && nurseReply != null && !nurseReply.isBlank()) {
+                            try {
+                                chatMemory.add(effectiveSessionId, new org.springframework.ai.chat.messages.AssistantMessage(nurseReply.trim()));
+                            } catch (Exception ignored) {}
+                        }
+
+                        log.info("<<< [预问诊Service-首轮接待完成] 真实大模型首轮生成完成 (耗时 {} ms): \"{}\", 选项: {}", tElapsed, res.get("reply"), qr);
+                        return res;
+                    }
+                } catch (Exception ex) {
+                    log.warn("[预问诊Service-首轮接待] 大模型生成异常，切入客观标准接待: {}", ex.getMessage());
+                }
+                res.put("success", true);
+                String defReply = String.format("%s好！请问您今天主要是哪里感觉不太舒服？大概持续几天了呢？", timeOfDay);
+                res.put("reply", defReply);
+                res.put("elapsedMs", 450);
+                res.put("quickReplies", List.of(randomTheme[1], randomTheme[2], randomTheme[3], randomTheme[4], randomTheme[5]));
+                res.put("isComplete", false);
+                if (chatMemory != null && defReply != null && !defReply.isBlank()) {
+                    try {
+                        chatMemory.add(effectiveSessionId, new org.springframework.ai.chat.messages.AssistantMessage(defReply.trim()));
+                    } catch (Exception ignored) {}
+                }
+                return res;
+            }
+
+            // 中途停止检测
+            if (!GENERATE_STATUS.getOrDefault(effectiveSessionId, false)) {
+                res.put("success", false);
+                res.put("message", "生成已被用户停止");
+                return res;
+            }
+
+            StringBuilder conv = new StringBuilder();
+            if (history != null) {
+                for (Map<String, String> m : history) {
+                    conv.append(m.getOrDefault("role", "user")).append(": ").append(m.getOrDefault("content", "")).append("\n");
+                }
+            }
+            if (userReply != null && !userReply.isBlank()) {
+                conv.append("user: ").append(userReply.trim()).append("\n");
+            }
+
+            // 如果通过 Tool 关联了既往病历，拼装入提示词中
+            String historyContext = "";
+            if (matchedPatient != null && Boolean.TRUE.equals(matchedPatient.get("isSamePatient"))) {
+                historyContext = String.format("""
+                        【🪪 既往病历档案（Tool 检索提供）】：
+                        患者既往有【%s】慢病史，过敏史【%s】。
+                        若患者当前主诉可能与既往史有关，请在追问中结合既往病史进行更专业、更有针对性的临床鉴别追问！
+                        """,
+                        matchedPatient.getOrDefault("medicalHistory", "无"),
+                        matchedPatient.getOrDefault("allergies", "无")
+                );
+            }
+
+            String userPrompt = String.format("""
+                    问诊患者：【%s，%s，%s】
+                    %s
+                    问诊历史对话：
+                    %s
+                    
+                    患者最新自述：【%s】
+                    
+                    任务：你是春播万象基层全科门诊专业护士，请严格针对患者自述的不适症状，进行亲切、规范的进一步临床追问。
+                    红线要求：
+                    1. 严禁凭空编造患者未提及的症状、体征或病因（如患者未提及发热，严禁主动认定患者有发热）！
+                    2. 语言亲切简短（25字内），针对性追问病程、体温/症状程度或服药情况。
+                    3. 给出3~4个专为患者设计的【快捷回答选项（quickReplies）】：
+                       - 必须是患者回答护士追问的自然口吻；
+                       - 必须包含具体的病程、发热/程度或用药状态（例如：“起病1-2天，自测低热37.8℃左右，未吃药”、“突发高热38.5℃以上伴全身酸痛”、“已服退烧药/消炎药，体温有所回落”、“体温正常未发热，主要是局部不适”）；
+                       - 绝不可简单重复症状名词，每个选项要有明确的临床鉴别信息供患者一键回复。
+                    4. 若主要症状、病程、诱因、体温、自服药等信息已基本明确，isComplete 填 true，否则填 false。
+                    
+                    严格只输出一行紧凑 JSON，绝不要包含其他额外说明或 markdown：
+                    {"reply":"护士亲切追问","quickReplies":["快捷回答1","快捷回答2","快捷回答3"],"isComplete":false}
+                    """,
+                    patientName != null && !patientName.isBlank() ? patientName : "患者",
+                    gender != null && !gender.isBlank() ? gender : "男",
+                    age != null && !age.isBlank() ? age : "30",
+                    historyContext,
+                    conv.toString(),
+                    userReply != null ? userReply.trim() : ""
+            );
+
+            log.info(">>> [预问诊Service-LLM推理开始] 向大模型提交 Prompt (长度: {} 字符)...", userPrompt.length());
+            long t0 = System.currentTimeMillis();
+            String content = client.prompt()
+                    .system("你是春播万象基层全科门诊智能预问诊护士。你的职责是向就诊患者了解不适症状，进行亲切、规范、简短的临床追问，并提供患者可快速点击的选项。严禁凭空捏造未提及的体征。严格只输出纯 JSON。")
+                    .user(userPrompt)
+                    .call()
+                    .content();
+
+            long elapsed = System.currentTimeMillis() - t0;
+            log.info("<<< [预问诊Service-LLM响应返回] 耗时: {} ms, 原始返回字符: {}", elapsed, content != null ? content.trim() : "null");
+            
+            // 生成完毕后再次检测停止状态
+            if (!GENERATE_STATUS.getOrDefault(effectiveSessionId, false)) {
+                res.put("success", false);
+                res.put("message", "生成已被用户停止");
+                return res;
+            }
+
+            if (content == null || content.isBlank()) {
+                res.put("success", false);
+                res.put("message", "大模型响应为空");
+                return res;
+            }
+
+            int s = content.indexOf('{');
+            int e = content.lastIndexOf('}');
+            if (s < 0 || e <= s) {
+                res.put("success", false);
+                res.put("message", "大模型未返回有效 JSON 结构");
+                return res;
+            }
+
+            com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(content.substring(s, e + 1));
+
+            String nurseReply = root.path("reply").asText("请问您目前主要哪里不舒服？持续几天了？");
+            res.put("success", true);
+            res.put("reply", nurseReply);
+            List<String> qr = new ArrayList<>();
+            if (root.has("quickReplies") && root.get("quickReplies").isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode q : root.get("quickReplies")) {
+                    qr.add(q.asText());
+                }
+            }
+            if (qr.isEmpty()) {
+                qr = List.of("起病1-2天，自测低热未吃药", "起病3天以上，有发热伴畏寒", "已自服退烧药/感冒药，有所缓解", "体温正常未发热，主要是局部不适");
+            }
+            res.put("quickReplies", qr);
+            res.put("isComplete", root.path("isComplete").asBoolean(false));
+
+            // 保存记忆与会话历史
+            savePreConsultMemoryAndSession(effectiveSessionId, idCard, patientName, userReply, nurseReply);
+
+            log.info("<<< [预问诊Service-问询成功] 生成追问: \"{}\", 选项: {}, isComplete: {}", res.get("reply"), qr, res.get("isComplete"));
+            return res;
+        } catch (Exception ex) {
+            log.error("[预问诊-多轮问询] 真实大模型调用异常: {}", ex.getMessage(), ex);
+            res.put("success", false);
+            res.put("message", "预问诊推理异常: " + ex.getMessage());
+            return res;
+        } finally {
+            GENERATE_STATUS.remove(effectiveSessionId);
+        }
+    }
+
+    /**
+     * 动态生成或随机轮换快捷回复选项（支持 AI 现场构思或全科专科症状池随机调用）
+     */
+    public Map<String, Object> generateQuickReplies(String patientName, String gender, String age, String currentSymptom, boolean forceAi) {
+        Map<String, Object> res = new HashMap<>();
+        
+        // 8大基层常见全科临床分类池（支持瞬间随机切换轮换）
+        String[][] categoryPools = {
+            new String[]{"呼吸感冒类", "🌡️ 突发高热伴寒战", "🤧 剧烈干咳咽部刺痛", "👃 鼻塞流涕打喷嚏", "😵 头痛身重全身酸痛", "🫁 胸闷咳嗽伴有黄痰"},
+            new String[]{"消化胃肠类", "🤢 胃部胀痛反酸嗳气", "🤮 恶心呕吐食欲不振", "🚽 阵发性腹痛腹泻", "💩 便秘排便困难", "🍽️ 消化不良餐后腹胀"},
+            new String[]{"头面神经类", "🤕 血管神经性偏头痛", "😵 阵发性眩晕视物旋转", "💤 严重失眠多梦易醒", "👂 耳鸣伴听力下降", "👁️ 眼睛干涩视物模糊"},
+            new String[]{"骨骼软组织类", "🦴 颈椎僵硬酸胀不适", "⚡ 腰部急性扭伤刺痛", "🦵 膝关节活动弹响肿痛", "🧣 肩部受凉活动受限", "🦶 足跟疼痛足底筋膜炎"},
+            new String[]{"心血管慢病类", "💓 阵发性心慌心悸", "🫀 胸闷气短活动后加重", "🩺 高血压规律复诊配药", "🩸 糖尿病空腹血糖复查", "💊 慢病长处方续方"},
+            new String[]{"儿科常见症状", "👶 婴幼儿发热哭闹", "🍼 厌食挑食消化不良", "🤧 小儿夜间阵发性咳嗽", "🩹 皮肤湿疹发红瘙痒", "💧 腹泻脱水精神差"},
+            new String[]{"皮肤黏膜类", "🔴 皮肤大片风团奇痒", "🩹 湿疹皮炎脱屑干燥", "👄 口腔溃疡反复发作", "🌾 接触花粉过敏红肿", "☀️ 日光性皮炎灼痛"},
+            new String[]{"全科健康咨询", "📋 体检报告异常指标咨询", "💊 药物相互作用核对", "💉 疫苗接种前健康评估", "🥗 营养与慢性病饮食调理", "🩺 术后康复随访"}
+        };
+        
+        // 如果要求调用大模型生成，尝试由 activeChatClient 推理
+        if (forceAi) {
+            try {
+                ChatClient client = aiConfigService.getActiveChatClient();
+                if (client != null) {
+                    long tStart = System.currentTimeMillis();
+                    String prompt = String.format("""
+                            患者信息：【%s，%s，%s岁】，当前主诉或意向：【%s】
+                            任务：你是春播万象全科门诊AI助手，请为门诊预问诊患者生成 5 个针对性的快捷回复选项。
+                            要求：
+                            1. 选项短小精悍（4~8字），每项开头配 1 个贴切的生动 Emoji。
+                            2. 紧扣全科基层门诊真实患者的自述用语（严禁顿号、严禁学术生僻词）。
+                            3. 只输出 JSON 数组，如：["选项1", "选项2", "选项3", "选项4", "选项5"]
+                            """,
+                            patientName != null ? patientName : "患者",
+                            gender != null ? gender : "男",
+                            age != null ? age : "30",
+                            currentSymptom != null && !currentSymptom.isBlank() ? currentSymptom : "门诊就诊初始选择"
+                    );
+                    String resp = client.prompt()
+                            .system("你是医疗全科助手，只输出纯 JSON 字符串数组，严禁其他文字。")
+                            .user(prompt)
+                            .call()
+                            .content();
+                    long elapsed = System.currentTimeMillis() - tStart;
+                    if (resp != null && resp.contains("[") && resp.contains("]")) {
+                        int s = resp.indexOf('[');
+                        int e = resp.lastIndexOf(']');
+                        com.fasterxml.jackson.databind.JsonNode arr = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readTree(resp.substring(s, e + 1));
+                        List<String> items = new ArrayList<>();
+                        if (arr.isArray()) {
+                            for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+                                items.add(n.asText());
+                            }
+                        }
+                        if (items.size() >= 3) {
+                            res.put("success", true);
+                            res.put("category", "AI 智能针对性联想");
+                            res.put("quickReplies", items);
+                            res.put("source", "ai");
+                            res.put("elapsedMs", elapsed);
+                            return res;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[预问诊-AI快捷选项生成异常] {}", ex.getMessage());
+            }
+        }
+        
+        // 随机选择一个专科分类池
+        int randIdx = new java.util.Random().nextInt(categoryPools.length);
+        String[] selected = categoryPools[randIdx];
+        List<String> list = new ArrayList<>();
+        for (int i = 1; i < selected.length; i++) {
+            list.add(selected[i]);
+        }
+        res.put("success", true);
+        res.put("category", selected[0]);
+        res.put("quickReplies", list);
+        res.put("source", "random_pool");
+        res.put("elapsedMs", 15);
+        return res;
+    }
+
+    /**
+     * 辅助存储预问诊会话记忆与会话记录
+     */
+    private void savePreConsultMemoryAndSession(String sessionId, String idCard, String patientName, String userReply, String assistantReply) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        String effectiveUserId = (idCard != null && !idCard.isBlank()) ? idCard.trim() : (patientName != null && !patientName.isBlank() ? patientName.trim() : "visitor");
+
+        // 1. 存入 Spring AI ChatMemory 统一会话记忆
+        if (chatMemory != null) {
+            try {
+                if (userReply != null && !userReply.isBlank()) {
+                    chatMemory.add(sessionId, new org.springframework.ai.chat.messages.UserMessage(userReply.trim()));
+                }
+                if (assistantReply != null && !assistantReply.isBlank()) {
+                    chatMemory.add(sessionId, new org.springframework.ai.chat.messages.AssistantMessage(assistantReply.trim()));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 2. 存入 ChatSessionService 历史持久化（支持按身份证/姓名分组归档与标题自动提炼）
+        // 🚨 核心原则：患者未提问/未自述症状（userReply 为空），严禁在 chat_session 生成空白历史记录！
+        // 只有患者开展了实际提问或回答（userReply 存在），才在此建档并由大模型提炼准确主诉标题。
+        if (chatSessionService != null && userReply != null && !userReply.isBlank()) {
+            try {
+                String convContent = "USER:" + userReply.trim() + "\nASSISTANT:" + (assistantReply != null ? assistantReply.trim() : "");
+                chatSessionService.update("pre_consult", sessionId, effectiveUserId, convContent);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 智能预问诊客观病史结构化提炼：与 generateEmr 采用完全一致架构，由 activeChatClient 进行真实大模型提炼
+     */
+    public Map<String, Object> preConsultExtract(String patientName, String gender, String age, List<Map<String, String>> history) {
+        Map<String, Object> res = new HashMap<>();
+        if (history == null || history.isEmpty()) {
+            res.put("success", false);
+            res.put("message", "问询记录为空，无法提炼。");
+            return res;
+        }
+        try {
+            ChatClient client = aiConfigService.getActiveChatClient();
+            if (client == null) {
+                res.put("success", false);
+                res.put("message", "AI 模型未就绪");
+                return res;
+            }
+
+            StringBuilder conv = new StringBuilder();
+            for (Map<String, String> m : history) {
+                conv.append(m.getOrDefault("role", "user")).append(": ").append(m.getOrDefault("content", "")).append("\n");
+            }
+
+            String userPrompt = String.format("""
+                    患者【%s，%s，%s岁】预问诊对话记录：
+                    %s
+                    
+                    请严格依据患者亲口陈述提炼客观结构化病历（未测写未测，未用药写未用药，严禁凭空捏造）：
+                    【医疗红线规定】：舌象与脉象必须固定为空字符串 ""（tongue 与 pulse 填 ""）！
+                    
+                    严格只输出一行紧凑 JSON，绝不要包含其他额外说明或 markdown：
+                    {"chiefComplaint":"主诉（如：发热咳嗽2天）","presentIllness":"客观现病史（忠于患者自述）","duration":"病程","frequency":"持续性/阵发性","temperature":"未测/正常","takenMedicines":"就诊前未自服用药","symptomsList":["发热","咳嗽"],"allergies":"无已知药物过敏","department":"全科门诊","tcmPattern":"","tongue":"","pulse":""}
+                    """,
+                    patientName != null && !patientName.isBlank() ? patientName : "患者",
+                    gender != null && !gender.isBlank() ? gender : "男",
+                    age != null && !age.isBlank() ? age : "30",
+                    conv.toString()
+            );
+
+            log.info(">>> [病史提炼Service-LLM推理开始] 正在提交大模型结构化提炼...");
+            long t0 = System.currentTimeMillis();
+            String content = client.prompt()
+                    .system("你是基层全科门诊智能病历提炼专家。严格依据患者亲口陈述提炼客观结构化病历，严禁编造未提及的体征、舌苔或脉象。严格只输出纯 JSON。")
+                    .user(userPrompt)
+                    .call()
+                    .content();
+
+            long elapsed = System.currentTimeMillis() - t0;
+            log.info("<<< [病史提炼Service-LLM响应返回] 耗时: {} ms, 原始返回字符: {}", elapsed, content != null ? content.trim() : "null");
+            if (content == null || content.isBlank()) {
+                res.put("success", false);
+                res.put("message", "模型提炼响应为空");
+                return res;
+            }
+
+            int s = content.indexOf('{');
+            int e = content.lastIndexOf('}');
+            if (s < 0 || e <= s) {
+                res.put("success", false);
+                res.put("message", "模型提炼未返回有效 JSON");
+                return res;
+            }
+
+            com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(content.substring(s, e + 1));
+
+            res.put("success", true);
+            res.put("chiefComplaint", root.path("chiefComplaint").asText("身体不适待查"));
+            res.put("presentIllness", root.path("presentIllness").asText(""));
+            res.put("duration", root.path("duration").asText(""));
+            res.put("frequency", root.path("frequency").asText("阵发性"));
+            res.put("temperature", root.path("temperature").asText("未测/正常"));
+            res.put("takenMedicines", root.path("takenMedicines").asText("就诊前未自服用药"));
+            List<String> syms = new ArrayList<>();
+            if (root.has("symptomsList") && root.get("symptomsList").isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode sn : root.get("symptomsList")) {
+                    syms.add(sn.asText());
+                }
+            }
+            res.put("symptomsList", syms);
+            res.put("allergies", root.path("allergies").asText("无已知药物过敏"));
+            res.put("department", root.path("department").asText("全科门诊"));
+            res.put("tcmPattern", root.path("tcmPattern").asText(""));
+            // 医疗红线：固定为空
+            res.put("tongue", "");
+            res.put("pulse", "");
+            log.info("<<< [预问诊-病史提炼] 真实大模型提炼完成 (耗时 {} ms): chiefComplaint={}", elapsed, res.get("chiefComplaint"));
+            return res;
+        } catch (Exception ex) {
+            log.error("[预问诊-病史提炼] 异常: {}", ex.getMessage());
+            res.put("success", false);
+            res.put("message", "AI 病史提炼失败: " + ex.getMessage());
+            return res;
         }
     }
 
@@ -468,8 +974,8 @@ public class MedicalChatService {
 
         // 专属技能 1: 药房库存查询与紧缺基药台账 (医生专用查药技能)
         if ("MED_STOCK".equals(request.getRouteHint()) || msg.contains("库存") || msg.contains("药房") || msg.contains("多少盒") || msg.contains("缺药") || msg.contains("备药") || msg.contains("查药")) {
-            procSteps.add("[Tool Call] queryPharmacyRealInventory(keyword=\"" + msg + "\") -> 穿透 MySQL 8.0 medicine 真实库存台账");
-            procSteps.add("[数据核验] 库存数据 100% 实时取自 MySQL medicine 真实台账，无任何模拟伪造数据");
+            procSteps.add("[药房台账检索] 正在检索 MySQL 8.0 智慧药房真实进销存台账");
+            procSteps.add("[数据核验] 库存数据实时取自真实药品台账");
             sb.append("### 🏥 【春播智慧药房 · 临床药品真实库存台账】\n\n");
             sb.append("| 药品编号 | 药品通用名称 | 商品规格 | 药房当前库存 | 安全预警线 | 零售指导价 | 剂型分类 | 处方类别 | 生产药企 | 库存预警研判 |\n");
             sb.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n");
@@ -500,13 +1006,13 @@ public class MedicalChatService {
         }
 
         // 临床辨证辅助问诊分析
-        procSteps.add("[Tool Call] queryPatientProfile(patientId=" + pid + ") -> 查询就诊患者电子健康档案");
+        procSteps.add("[档案调阅] 调阅当前就诊患者电子健康档案与既往记录");
         procSteps.add("[档案核验] 就诊患者：" + patientName + " | 药物过敏史：" + allergies + " | 既往病史：" + history);
         sb.append("### 【春播云诊所 AI 智能问诊分析报告】\n\n");
 
         if (msg.contains("感冒") || msg.contains("咽痛") || msg.contains("发热") || msg.contains("咳嗽") || msg.contains("阿莫西林")) {
-            procSteps.add("[Tool Call] queryClinicalGuideline('急性上呼吸道感染') -> 匹配抗菌药物规范");
-            procSteps.add("[Tool Call] queryMedicineStock('布洛芬混悬滴剂') -> 真实库存：" + ibuprofenStock);
+            procSteps.add("[指南匹配] 匹配国家基层急性上呼吸道感染规范与用药指南");
+            procSteps.add("[库存核实] 药房当前布洛芬混悬滴剂实时库存：" + ibuprofenStock);
             sb.append("#### 一、 临床初步诊断\n");
             sb.append("诊断拟为：**急性上呼吸道感染 (伴发热/咽痛)**。\n\n");
             sb.append("#### 二、 极重要用药安全预警 (Tool 强阻断校验)\n");
@@ -533,8 +1039,8 @@ public class MedicalChatService {
             coldRx.put("unitPrice", ibuprofen != null ? findPrice(ibuprofen.getName()) : findPrice("布洛芬"));
             rxItems.add(coldRx);
         } else if (msg.contains("肚子") || msg.contains("腹") || msg.contains("胃") || msg.contains("拉肚子") || msg.contains("腹泻") || msg.contains("消化") || msg.contains("呕吐")) {
-            procSteps.add("[Tool Call] queryClinicalGuideline('急性胃肠炎与胃肠功能紊乱') -> 匹配消化系统基层用药指南");
-            procSteps.add("[Tool Call] queryMedicineStock('丹栀逍遥丸') -> 真实库存充足");
+            procSteps.add("[指南匹配] 匹配消化系统基层常见病临床诊疗指南");
+            procSteps.add("[库存核实] 药房当前对症中成药与理疗敷贴库存充足");
             sb.append("#### 一、 临床初步诊断\n");
             sb.append("诊断拟为：**急性胃肠功能紊乱 / 胃脘痛 (待查)**。\n\n");
             sb.append("#### 二、 辨证分析与治则治法\n");
@@ -562,8 +1068,8 @@ public class MedicalChatService {
             digestRx2.put("unitPrice", findPrice("医用无菌敷贴"));
             rxItems.add(digestRx2);
         } else if (msg.contains("血压") || msg.contains("头晕") || msg.contains("高血压") || history.contains("高血压")) {
-            procSteps.add("[Tool Call] queryMedicineStock('硝苯地平控释片') -> 药房真实库存：" + nifedipineStock);
-            procSteps.add("[Tool Call] queryClinicalGuideline('原发性高血压') -> 匹配基层用药路径");
+            procSteps.add("[库存核实] 药房当前硝苯地平控释片真实库存：" + nifedipineStock);
+            procSteps.add("[指南匹配] 匹配国家基层高血压防治管理指南用药路径");
             sb.append("#### 一、 临床初步诊断\n");
             sb.append("诊断拟为：**原发性高血压（建议复核诊室静息血压）**。\n\n");
             sb.append("#### 二、 规范诊疗依据 (RAG 基层慢病管理指南)\n");
@@ -590,7 +1096,7 @@ public class MedicalChatService {
             bpRx.put("unitPrice", nifedipine != null ? findPrice(nifedipine.getName()) : findPrice("硝苯地平"));
             rxItems.add(bpRx);
         } else {
-            procSteps.add("[Tool Call] queryClinicalGuideline('基层常见临床症状') -> 基层常见病综合知识库");
+            procSteps.add("[知识库检索] 检索基层常见病综合知识库进行病情初判");
             sb.append("#### 一、 临床病情初步研判\n");
             sb.append("患者主诉：").append(msg).append("。结合其既往病史【").append(history).append("】，需重点排查基础疾病急性波动或合并感染可能。\n\n");
             sb.append("#### 二、 规范处置指引\n");

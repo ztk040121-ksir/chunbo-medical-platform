@@ -8,6 +8,7 @@ import com.chunbo.medical.entity.MallOrder;
 import com.chunbo.medical.entity.MallProduct;
 import com.chunbo.medical.service.B2bMultiAgentService;
 import com.chunbo.medical.vo.ChatEventVO;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -39,8 +40,9 @@ public class MallAgentController {
     }
 
     @GetMapping("/orders")
-    public List<MallOrder> getOrders() {
-        return agentService.getOrders();
+    public List<MallOrder> getOrders(HttpServletRequest request) {
+        String username = (String) request.getAttribute("username");
+        return agentService.getOrdersForUser(username);
     }
 
     @PostMapping("/chat")
@@ -71,6 +73,8 @@ public class MallAgentController {
         // 多智能体路由：MallRouteAgent 判意图 → 业务智能体 processStream（携带附件标识，供图片识别）
         Map<String, Object> context = new HashMap<>();
         if (attachmentId != null && !attachmentId.isEmpty()) context.put(AgentConstant.ATTACHMENT_ID, attachmentId);
+        if (phone != null && !phone.isEmpty()) context.put("phone", phone);
+        if (userName != null && !userName.isEmpty()) context.put("userName", userName);
         return agentRouter.route(mallRouteAgent, mallGeneralAgent, message, sessionId, effectiveUserId, context);
     }
 
@@ -84,7 +88,12 @@ public class MallAgentController {
     }
 
     @PostMapping("/order/create")
-    public MallOrder createOrder(@RequestBody Map<String, Object> req) {
+    public MallOrder createOrder(@RequestBody Map<String, Object> req, HttpServletRequest request) {
+        // 从 token 解析当前登录用户名，用于订单落 user_id 精确隔离
+        String username = (String) request.getAttribute("username");
+        if (username != null && !username.isBlank()) {
+            req.put("_username", username);
+        }
         return agentService.createOrderFromBargain(req);
     }
 }

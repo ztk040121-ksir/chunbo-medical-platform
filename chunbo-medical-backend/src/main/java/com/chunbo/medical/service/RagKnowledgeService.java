@@ -47,7 +47,9 @@ public class RagKnowledgeService {
     /** 文本块源（title + text），用于向量库不可用时的关键词降级 */
     private volatile List<Chunk> chunks = new ArrayList<>();
     private volatile boolean ready = false;
-    /** 最近一次检索命中的文档标题（供前端展示"知识库引用"） */
+    /** 线程隔离的检索命中标题，防止并发问诊时引用串话 */
+    private final ThreadLocal<List<String>> threadLocalLastTitles = ThreadLocal.withInitial(ArrayList::new);
+    /** 最近一次检索命中的文档标题（兜底兼容） */
     private volatile List<String> lastTitles = new ArrayList<>();
 
     static class Chunk {
@@ -151,6 +153,7 @@ public class RagKnowledgeService {
                         titles.add(title);
                         hits.add("【" + title + "】\n" + d.getText());
                     }
+                    threadLocalLastTitles.set(titles);
                     lastTitles = titles;
                     return hits;
                 }
@@ -174,13 +177,18 @@ public class RagKnowledgeService {
                     titles.add(c.title);
                     hits.add("【" + c.title + "】\n" + c.text);
                 });
+        threadLocalLastTitles.set(titles);
         lastTitles = titles;
         return hits;
     }
 
-    /** 最近一次检索命中的文档标题列表 */
+    /** 最近一次检索命中的文档标题列表（线程隔离优先） */
     public List<String> getLastTitles() {
-        return lastTitles == null ? new ArrayList<>() : lastTitles;
+        List<String> tl = threadLocalLastTitles.get();
+        if (tl != null && !tl.isEmpty()) {
+            return new ArrayList<>(tl);
+        }
+        return lastTitles == null ? new ArrayList<>() : new ArrayList<>(lastTitles);
     }
 
     private boolean containsAny(String text, String query) {

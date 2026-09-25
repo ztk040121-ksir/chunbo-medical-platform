@@ -2,7 +2,7 @@
 
 > 基于 **Spring AI** 的基层医疗数字化平台，集 **云诊所智能问诊**、**运营管理中台**、**便民网上药房** 三大子系统于一体，深度集成 **MCP 协议工具调用**、**RAG 用药知识库检索** 与 **多智能体协同**。
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![Version](https://img.shields.io/badge/Version-3.0.0-red) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![Version](https://img.shields.io/badge/Version-4.0.0-red) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 ---
 
@@ -447,6 +447,38 @@ content
 ---
 
 ## 十、版本历史
+
+- **v4.0.0** — 架构解耦与临床纯净化 + 智能体多轮会话感知 + 真实数据穿透与全量 Bug 清零：
+  - 🏥 **系统解耦与业务边界纯正化**：
+    - 彻底理清三大子系统边界：**云诊所（5173 - 门诊医生/护士工作站）**、**管理运营中台（5174 - 院长/人事/财务运营大盘）**、**便民网上药房（5175 - 居民/患者便民零售）**；
+    - 云诊所顶栏彻底拔除误挂载的外部电商与OA组件，回归纯正的门诊医疗工作站 7 大核心闭环（门诊挂号、门诊接诊、划价收费、特色执行站、智慧药房、患者档案、系统设置）。
+  - 🧠 **剔除概念包装，落地纯正 Spring AI 多智能体与多轮上下文感知**：
+    - 彻底清除虚假“LangGraph”名号与纯静态假字符串包装；
+    - 重构智能体路由核心 `AgentRouter`，增加对时间词（`9月份`、`9月`、`2026-09`、`本月`）及极短回复（`<=10`字符）的上下文会话意图延续，彻底杜绝单轮路由误断为通用兜底提示的问题；
+    - 在 `OaRouteAgent` 中新增特色外治与贴敷理疗的确定性直达规则，0 延迟直达业务智能体。
+  - 🌿 **中台助手「特色中药穴位贴敷理疗」真实双表穿透**：
+    - 告别硬编码固定 Markdown 文本，全面穿透底层数据库：
+      - `oa_plaster_record`（贴敷财务台账）：真实动态聚合专案消耗贴数、项目营业额、专案品类分布与医生施术专属绩效提成；
+      - `clinic_treatment_record`（特色执行站）：真实穿透门诊接诊施术人次（已施术/待施术）、核心穴位配伍（大椎、肺俞、膻中等）、开方医生与执行护士明细；
+    - 修正工具参数 `@ToolParam` 为可选，并在 Prompt 中加入直接查库约束，首轮即可 0 延迟现场查库返回完整大盘，不再机械反问月份。
+  - 💊 **智慧药房商品档案多维度动态搜索与重置**：
+    - 彻底修复后端 `/api/pharmacy/medicines` 接口未接收查询参数（无条件 `selectList(null)` 导致前端检索 100% 被吞）的严重 Bug；
+    - 增加通用名、商品名、拼音助记码（大写不敏感，如 `amxl` 直达“阿莫西林”）、条形码、库位码全维度模糊搜索，以及分类与启用状态的精准过滤；
+    - 前端新增敲击回车即搜、一键清空及【🔄 重置】按钮。
+  - 🩺 **医生工作站真实后端接口与个性化医嘱生成**：
+    - 创建专用的 `AiDiagnoseController.java`，彻底修复门诊工作台请求 404 与硬编码退回 3 句假医嘱的漏洞；
+    - Spring AI ChatClient 现场基于患者实际主诉、西医诊断、中医证型实时生成个性化临床用药、起居调理与复诊医嘱；
+    - 清理工作站原本硬编码的测试 API Key 与过时配置路径，统一读取系统当前真实设置。
+  - 📦 **商城下单原子扣减与台账闭环**：
+    - 修复此前商城下单仅写订单未扣减商品库存的超卖隐患，引入带条件的原子扣减 SQL 与事务回滚，并自动记入出库流水。
+  - 🐞 **v4.0.0 核心 Bug 修复清单（Bug Fixes List）**：
+    1. `[Bug-Fix]` 修复智慧药房商品档案搜索与分类筛选完全无效的问题；
+    2. `[Bug-Fix]` 修复云诊所顶栏角色错位挂载商城 B2B 采购与 OA 薪酬页面的问题；
+    3. `[Bug-Fix]` 修复中台 AI 调度询问“贴敷理疗”时第一轮反问月份、第二轮回复“9月份”丢失业务意图退回泛化菜单的 Bug；
+    4. `[Bug-Fix]` 修复中台贴敷理疗统计返回写死静态字符串的问题，实现真实双表动态穿透；
+    5. `[Bug-Fix]` 修复医生工作站点击 AI 生成医嘱接口报 404 与写死测试 Key 的缺陷；
+    6. `[Bug-Fix]` 修复 MallProductTools 越权查单模糊撞库隐患；
+    7. `[Bug-Fix]` 修复系统登录界面版本号（统一升级展示为 v4.0.0）。
 
 - **v3.0.0** — 权限体系统一 + AI 深度接管 + 账号与权限动态化：
   - 🔐 **双系统动态权限体系**：`sys_role_permission` 引入 `scope` 维度（`CLINIC` 云诊所 / `ADMIN` 管理中台）两套独立配置，云诊所与中台菜单均按角色配置动态渲染；新增 **NURSE 护士角色**（云诊所仅挂号/划价/执行/药房/患者档案），**商户账号真实落库**，角色权限可在「医护账号与权限管理」页实时调整，登录/切换标签自动刷新权限

@@ -19,6 +19,8 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private static final List<String> WHITE_LIST = List.of(
             "/api/auth/",
+            "/api/medical/chat/pre-consult", // 智能预问诊接口开放（支持患者端/自助端免密问答）
+            "/api/session",                  // 会话历史接口开放（支持预问诊与各端调阅）
             "/api/mall/user/",
             "/api/mall/products",
             "/api/mall/chat",
@@ -77,12 +79,22 @@ public class JwtFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        // 商城普通用户（USER，可自助注册）仅能访问商城域，隔离医疗/管理接口，堵住自注册越权
+        if ("USER".equals(role) && !path.startsWith("/api/mall/")) {
+            writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u8BE5\u63A5\u53E3");
+            return;
+        }
         if (path.startsWith("/api/admin/") && !"ADMIN".equals(role) && !"HR".equals(role)) {
             writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u7BA1\u7406\u63A5\u53E3");
             return;
         }
         if (path.startsWith("/api/doctor/") && !"ADMIN".equals(role)) {
             writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u533B\u751F\u7BA1\u7406\u63A5\u53E3");
+            return;
+        }
+        // 数据导出中心涉及全院工资/订单等敏感数据，仅 ADMIN/HR 可导出
+        if (path.startsWith("/api/export/") && !"ADMIN".equals(role) && !"HR".equals(role)) {
+            writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u6570\u636E\u5BFC\u51FA\u63A5\u53E3");
             return;
         }
 

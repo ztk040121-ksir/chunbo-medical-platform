@@ -24,7 +24,7 @@
           </div>
           <div class="brand-info">
             <h1 class="brand-title">春播万象云诊所</h1>
-            <span class="brand-subtitle">AI 基层智慧医疗全栈工作台 · v3.0.0</span>
+            <span class="brand-subtitle">AI 基层智慧医疗全栈工作台 · v4.0.0</span>
           </div>
         </div>
 
@@ -84,7 +84,7 @@
         </el-form>
 
         <div class="card-footer">
-          <span>春播万象基层医疗数字化系统 v3.0.0</span>
+          <span>春播万象基层医疗数字化系统 v4.0.0</span>
           <span class="security-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shield-icon">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>

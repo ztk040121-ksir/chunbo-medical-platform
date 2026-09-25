@@ -15,6 +15,7 @@ import com.chunbo.medical.mapper.StaffAccountMapper;
 import com.chunbo.medical.mapper.SysTokenLogMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -215,6 +216,7 @@ public class OaAssistantService {
      * 商城订单发货出库（确定性，AI 工具与页面接口共用）：
      * 扣减商品真实库存 + 写入进销存流水 + 订单状态改为「已发货运输中」+ 生成便民速递单号
      */
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> shipOrder(String orderNo, String trackingNo, String operator) {
         Map<String, Object> res = new HashMap<>();
         if (mallOrderMapper == null) {
@@ -243,18 +245,37 @@ public class OaAssistantService {
                 com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(itemsJson);
                 if (rootNode.isArray()) {
                     for (com.fasterxml.jackson.databind.JsonNode item : rootNode) {
-                        Long prodId = item.has("id") ? item.get("id").asLong() : null;
+                        Long prodId = null;
+                        if (item.has("id") && !item.get("id").isNull()) {
+                            prodId = item.get("id").asLong();
+                        } else if (item.has("productId") && !item.get("productId").isNull()) {
+                            prodId = item.get("productId").asLong();
+                        }
+                        String prodName = item.has("productName") ? item.get("productName").asText() : null;
+                        if (prodId == null && prodName != null && !prodName.trim().isEmpty()) {
+                            List<com.chunbo.medical.entity.MallProduct> matched = mallProductMapper.selectList(
+                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallProduct>()
+                                    .like(com.chunbo.medical.entity.MallProduct::getProductName, prodName.trim())
+                                    .last("LIMIT 1")
+                            );
+                            if (matched != null && !matched.isEmpty()) {
+                                prodId = matched.get(0).getId();
+                            }
+                        }
                         int qty = item.has("quantity") ? item.get("quantity").asInt() : 1;
-                        if (prodId == null) continue;
+                        if (prodId == null) {
+                            logs.add("商品【" + (prodName != null ? prodName : "未知明细") + "】无匹配库存商品，跳过库存核减");
+                            continue;
+                        }
+                        // 原子扣减库存：不足直接抛异常触发回滚，防并发超卖
+                        if (mallProductMapper.deductStock(prodId, qty) == 0) {
+                            throw new RuntimeException("商品【" + (prodName != null ? prodName : ("#" + prodId)) + "】库存不足，无法履约发货");
+                        }
                         com.chunbo.medical.entity.MallProduct prod = mallProductMapper.selectById(prodId);
-                        if (prod == null) continue;
-                        int currentStock = prod.getStock() != null ? prod.getStock() : 0;
-                        int newStock = Math.max(0, currentStock - qty);
-                        prod.setStock(newStock);
-                        mallProductMapper.updateById(prod);
+                        int newStock = prod != null && prod.getStock() != null ? prod.getStock() : 0;
                         com.chunbo.medical.entity.InventoryRecord ir = new com.chunbo.medical.entity.InventoryRecord();
-                        ir.setMedicineId(prod.getId());
-                        ir.setMedicineName(prod.getProductName());
+                        ir.setMedicineId(prodId);
+                        ir.setMedicineName(prod != null ? prod.getProductName() : ("商品#" + prodId));
                         ir.setRecordType("商城订单发货出库");
                         ir.setChangeQty(-qty);
                         ir.setAfterStock(newStock);
@@ -263,20 +284,11 @@ public class OaAssistantService {
                         ir.setRemark("春播健康便民速递揽收 (单号: " + trackingNo + ", 送至: " + order.getClinicName() + ")");
                         ir.setCreateTime(LocalDateTime.now());
                         inventoryRecordMapper.insert(ir);
-                        logs.add("商品【" + prod.getProductName() + "】出库扣减 " + qty + " 件，结余库存: " + newStock);
+                        logs.add("商品【" + (prod != null ? prod.getProductName() : ("商品#" + prodId)) + "】出库扣减 " + qty + " 件，结余库存: " + newStock);
                     }
                 }
             } catch (Exception e) {
-                com.chunbo.medical.entity.InventoryRecord ir = new com.chunbo.medical.entity.InventoryRecord();
-                ir.setMedicineName("春播商城综合购药订单");
-                ir.setRecordType("商城订单发货出库");
-                ir.setChangeQty(-1);
-                ir.setAfterStock(0);
-                ir.setRefOrderNo(order.getOrderNo());
-                ir.setOperator(operator);
-                ir.setRemark("春播健康便民速递: " + trackingNo);
-                ir.setCreateTime(LocalDateTime.now());
-                inventoryRecordMapper.insert(ir);
+                throw new RuntimeException("订单商品明细处理失败：" + e.getMessage(), e);
             }
         }
         order.setStatus(com.chunbo.medical.enums.OrderStatusEnum.SHIPPED.getCode());
@@ -406,6 +418,7 @@ public class OaAssistantService {
     }
 
     /** 商品入库补货（库存累加 + 进销存入库流水） */
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> inboundProductByName(String productName, int qty) {
         Map<String, Object> res = new HashMap<>();
         List<com.chunbo.medical.entity.MallProduct> list = findProductsByName(productName);
@@ -423,23 +436,19 @@ public class OaAssistantService {
         com.chunbo.medical.entity.MallProduct p = list.get(0);
         int oldStock = p.getStock() != null ? p.getStock() : (p.getStockQty() != null ? p.getStockQty() : 0);
         int newStock = oldStock + qty;
-        p.setStock(newStock);
-        p.setStockQty(newStock);
-        mallProductMapper.updateById(p);
-        try {
-            com.chunbo.medical.entity.InventoryRecord record = new com.chunbo.medical.entity.InventoryRecord();
-            record.setMedicineId(p.getId());
-            record.setMedicineName(p.getProductName());
-            record.setRecordType("入库");
-            record.setChangeQty(qty);
-            record.setAfterStock(newStock);
-            record.setRefOrderNo("INB_" + System.currentTimeMillis());
-            record.setOperator("AI 中台调度");
-            record.setRemark("AI 中台补货入库");
-            record.setCreateTime(LocalDateTime.now());
-            inventoryRecordMapper.insert(record);
-        } catch (Exception ignored) {
-        }
+        // 原子累加库存（防并发丢失更新），再写流水；流水失败会随事务回滚库存
+        mallProductMapper.addStock(p.getId(), qty);
+        com.chunbo.medical.entity.InventoryRecord record = new com.chunbo.medical.entity.InventoryRecord();
+        record.setMedicineId(p.getId());
+        record.setMedicineName(p.getProductName());
+        record.setRecordType("入库");
+        record.setChangeQty(qty);
+        record.setAfterStock(newStock);
+        record.setRefOrderNo("INB_" + System.currentTimeMillis());
+        record.setOperator("AI 中台调度");
+        record.setRemark("AI 中台补货入库");
+        record.setCreateTime(LocalDateTime.now());
+        inventoryRecordMapper.insert(record);
         res.put("success", true);
         res.put("message", "商品【" + p.getProductName() + "】入库补货 " + qty + " 件成功，库存由 " + oldStock + " 变更为 " + newStock);
         return res;
@@ -506,9 +515,8 @@ public class OaAssistantService {
                 if (qty > 0) {
                     int oldStock = p.getStock() != null ? p.getStock() : 0;
                     int newStock = oldStock + qty;
-                    p.setStock(newStock);
-                    p.setStockQty(newStock);
-                    mallProductMapper.updateById(p);
+                    // 原子累加库存（防并发丢失更新），流水失败时如实标记该行失败
+                    mallProductMapper.addStock(p.getId(), qty);
                     try {
                         com.chunbo.medical.entity.InventoryRecord record = new com.chunbo.medical.entity.InventoryRecord();
                         record.setMedicineId(p.getId());
@@ -521,7 +529,12 @@ public class OaAssistantService {
                         record.setRemark("商品表格导入：已有商品库存累加");
                         record.setCreateTime(LocalDateTime.now());
                         inventoryRecordMapper.insert(record);
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        d.put("success", false);
+                        d.put("message", "库存已累加但入库流水写入失败：" + e.getMessage());
+                        failed++;
+                        details.add(d);
+                        continue;
                     }
                     d.put("success", true);
                     d.put("message", "商品已存在且价格一致，库存累加 " + qty + " 件（" + oldStock + " → " + newStock + "）");
@@ -600,7 +613,7 @@ public class OaAssistantService {
 
     public OaApproval createApproval(OaApproval approval) {
         if (approval.getStatus() == null) {
-            approval.setStatus("待审批");
+            approval.setStatus("待人事初审");
         }
         approval.setCreateTime(LocalDateTime.now());
         approvalMapper.insert(approval);

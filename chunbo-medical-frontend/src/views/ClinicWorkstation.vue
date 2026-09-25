@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="clinic-container">
     <!-- 顶部患者就诊卡 (对应截图 43/44 患者顶部信息条) -->
     <div class="patient-header-bar" v-if="currentPatient">
@@ -25,11 +25,11 @@
               >
                 🏆 {{ currentPatient.memberLevel }} ({{ getMemberDiscountText(currentPatient) }})
               </el-tag>
-              <span class="patient-gender-chip">{{ currentPatient.gender }}</span>
-              <span class="patient-age-chip">{{ currentPatient.ageText || (currentPatient.age ? currentPatient.age + '岁' : '42岁') }}</span>
-              <span class="patient-month-chip">{{ currentPatient.ageMonth ? currentPatient.ageMonth + '月' : '8月' }}</span>
-              <span class="patient-phone-chip">{{ currentPatient.phone || '' }}</span>
-              <span class="patient-birth-chip">{{ currentPatient.birthday || '2000-01-01' }}</span>
+              <span class="patient-gender-chip" v-if="currentPatient.gender">{{ currentPatient.gender }}</span>
+              <span class="patient-age-chip" v-if="currentPatient.ageText || currentPatient.age">{{ currentPatient.ageText || (currentPatient.age + '岁') }}</span>
+              <span class="patient-month-chip" v-if="currentPatient.ageMonth">{{ currentPatient.ageMonth }}月</span>
+              <span class="patient-phone-chip" v-if="currentPatient.phone">{{ currentPatient.phone }}</span>
+              <span class="patient-birth-chip" v-if="currentPatient.birthday">{{ currentPatient.birthday }}</span>
               <el-tag v-if="isTempPatient" type="warning" size="small" effect="dark" class="temp-patient-tag">
                 临时就诊
               </el-tag>
@@ -112,17 +112,8 @@
         </el-popover>
       </div>
 
-      <!-- 顶栏右侧按钮群 (深度复刻截图 3) -->
+      <!-- 顶栏右侧按钮群 -->
       <div class="patient-actions-right">
-        <el-button
-          type="primary"
-          size="default"
-          class="btn-quick-consult gradient-btn"
-          @click="handleQuickDirectConsult"
-          title="医生快速接诊临时患者，挂号大厅同步更新，完善信息后自动转正建档"
-        >
-          快速接诊
-        </el-button>
         <!-- 1. 待诊/接诊中状态按钮群 -->
         <template v-if="currentPatient.status === '待诊' || currentPatient.status === '接诊中' || currentPatient.status === '候诊中'">
           <el-button 
@@ -234,7 +225,8 @@
         <!-- ② 完成接诊：先推送收费处，再可跳转至收费界面 -->
         <el-button 
           class="btn-top-finish" 
-          :disabled="currentPatient.status !== '接诊中'"
+          :disabled="currentPatient.status !== '接诊中' || isFinishingConsultation"
+          :loading="isFinishingConsultation"
           :title="currentPatient.status !== '接诊中' ? '请先点击【开始接诊】' : '推送到划价收费处结算'"
           @click="finishConsultationToBilling"
         >
@@ -352,6 +344,15 @@
               已结束<sup class="q-sup-done">{{ doneList.length }}</sup>
             </span>
           </div>
+          <el-button 
+            type="primary" 
+            size="small" 
+            class="btn-quick-consult-queue"
+            @click="handleQuickDirectConsult"
+            title="医生快速接诊现场临时患者并即时建档"
+          >
+            ⚡ 快速接诊
+          </el-button>
         </div>
 
         <!-- 患者卡片列表 (展示接诊中/待诊/已结诊状态，点击加载该日期下的病历处方) -->
@@ -360,7 +361,7 @@
             v-for="p in (queueTab === 'waiting' ? waitingList : doneList)" 
             :key="p.id"
             class="queue-item-card"
-            :class="{ active: currentPatient && (currentPatient.id === p.id || currentPatient.patientName === p.patientName), 'is-consulting': p.status === '接诊中' }"
+            :class="{ active: currentPatient && currentPatient.id === p.id, 'is-consulting': p.status === '接诊中' }"
             @click="selectQueuePatient(p)"
           >
             <div class="q-card-top">
@@ -476,6 +477,27 @@
                 <div class="section-head">
                   <span class="title">* 主 诉</span>
                   <div class="section-head-actions">
+                    <el-button 
+                      size="small" 
+                      type="warning" 
+                      plain 
+                      class="ai-triage-btn"
+                      :loading="isImportingTriage"
+                      @click="importPreConsultationTriage"
+                    >
+                      📥 一键导入智能预问诊记录
+                    </el-button>
+                    <el-button 
+                      v-if="hasPreConsultDialogue" 
+                      size="small" 
+                      type="success" 
+                      plain 
+                      class="ai-dialogue-btn"
+                      @click="openPatientDialogueModal"
+                      title="查阅该患者与 AI 护士的多轮问询原话与结构化档案"
+                    >
+                      💬 查阅预问诊原话
+                    </el-button>
                     <el-button 
                       size="small" 
                       type="primary" 
@@ -696,9 +718,18 @@
               <div class="form-section">
                 <div class="section-head">
                   <span class="title">中医四诊与舌面多模态分析</span>
-                  <el-button type="success" size="small" plain @click="simulateTongueAnalysis">
-                    <el-icon><Picture /></el-icon> 上传舌象照片 (AI视觉辨识)
+                  <input type="file" ref="tongueFileInput" accept="image/*" @change="handleTongueFileChange" style="display: none;" />
+                  <el-button type="success" size="small" plain @click="triggerTongueUpload">
+                    <el-icon><Picture /></el-icon> {{ tonguePhotoPreview ? '更换舌象照片' : '上传舌象照片 (AI视觉辨识)' }}
                   </el-button>
+                </div>
+                <div v-if="tonguePhotoPreview" class="tongue-preview-card" style="margin-bottom: 10px; display: flex; align-items: center; gap: 12px; background: rgba(16, 185, 129, 0.08); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                  <img :src="tonguePhotoPreview" alt="舌象照片" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #10b981;" />
+                  <div style="flex: 1; font-size: 12px; color: #047857;">
+                    <div><b>已载入舌象影像存档</b>（{{ tonguePhotoName }}）</div>
+                    <div style="color: #64748b;">AI 视觉模型特征已解析，请结合临床望诊确认舌苔与脉象：</div>
+                  </div>
+                  <el-button size="small" type="danger" link @click="removeTonguePhoto">移除</el-button>
                 </div>
                 <div class="tongue-grid">
                   <el-input v-model="emr.tongue" placeholder="舌象：如舌质淡红、苔薄白微腻、边有齿痕" />
@@ -1844,18 +1875,47 @@
           </el-radio-group>
         </div>
 
-        <!-- 动态收款渠道交互演示 -->
+        <!-- 动态收款渠道交互 -->
         <div class="pay-channel-view" v-if="instantPayMethod === 'wechat' || instantPayMethod === 'alipay'">
-          <div class="mock-qr-wrap">
-            <div class="qr-canvas-sim">
-              <div class="qr-center-logo">{{ instantPayMethod === 'wechat' ? '微信' : '支' }}</div>
+          <div class="mock-qr-wrap" style="display: flex; flex-direction: column; align-items: center; padding: 16px 0;">
+            <div class="qr-card-box" style="background: #ffffff; padding: 14px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); border: 2px solid #e2e8f0; position: relative;">
+              <!-- 真实矢量标准二维码点阵模拟与四角定位标 -->
+              <svg width="160" height="160" viewBox="0 0 160 160" style="display: block;">
+                <!-- 边角定位器 1 (左上) -->
+                <rect x="10" y="10" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
+                <rect x="18" y="18" width="20" height="20" fill="#1e293b" rx="2" />
+                <!-- 边角定位器 2 (右上) -->
+                <rect x="114" y="10" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
+                <rect x="122" y="18" width="20" height="20" fill="#1e293b" rx="2" />
+                <!-- 边角定位器 3 (左下) -->
+                <rect x="10" y="114" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
+                <rect x="18" y="122" width="20" height="20" fill="#1e293b" rx="2" />
+                <!-- 真实密集数据点阵 -->
+                <g fill="#334155">
+                  <rect x="56" y="12" width="6" height="6" /><rect x="68" y="12" width="6" height="6" /><rect x="80" y="12" width="6" height="6" /><rect x="96" y="12" width="6" height="6" />
+                  <rect x="56" y="24" width="6" height="6" /><rect x="74" y="24" width="6" height="6" /><rect x="90" y="24" width="6" height="6" /><rect x="102" y="24" width="6" height="6" />
+                  <rect x="62" y="36" width="6" height="6" /><rect x="86" y="36" width="6" height="6" /><rect x="98" y="36" width="6" height="6" />
+                  <rect x="12" y="56" width="6" height="6" /><rect x="24" y="56" width="6" height="6" /><rect x="38" y="56" width="6" height="6" /><rect x="50" y="56" width="6" height="6" /><rect x="68" y="56" width="6" height="6" /><rect x="82" y="56" width="6" height="6" /><rect x="104" y="56" width="6" height="6" /><rect x="120" y="56" width="6" height="6" /><rect x="140" y="56" width="6" height="6" />
+                  <rect x="18" y="68" width="6" height="6" /><rect x="32" y="68" width="6" height="6" /><rect x="46" y="68" width="6" height="6" /><rect x="60" y="68" width="6" height="6" /><rect x="76" y="68" width="6" height="6" /><rect x="94" y="68" width="6" height="6" /><rect x="110" y="68" width="6" height="6" /><rect x="132" y="68" width="6" height="6" /><rect x="144" y="68" width="6" height="6" />
+                  <rect x="12" y="80" width="6" height="6" /><rect x="28" y="80" width="6" height="6" /><rect x="42" y="80" width="6" height="6" /><rect x="64" y="80" width="6" height="6" /><rect x="88" y="80" width="6" height="6" /><rect x="106" y="80" width="6" height="6" /><rect x="126" y="80" width="6" height="6" /><rect x="138" y="80" width="6" height="6" />
+                  <rect x="22" y="94" width="6" height="6" /><rect x="36" y="94" width="6" height="6" /><rect x="52" y="94" width="6" height="6" /><rect x="70" y="94" width="6" height="6" /><rect x="84" y="94" width="6" height="6" /><rect x="100" y="94" width="6" height="6" /><rect x="116" y="94" width="6" height="6" /><rect x="130" y="94" width="6" height="6" /><rect x="142" y="94" width="6" height="6" />
+                  <rect x="56" y="108" width="6" height="6" /><rect x="74" y="108" width="6" height="6" /><rect x="92" y="108" width="6" height="6" /><rect x="108" y="108" width="6" height="6" /><rect x="124" y="108" width="6" height="6" /><rect x="140" y="108" width="6" height="6" />
+                  <rect x="56" y="122" width="6" height="6" /><rect x="68" y="122" width="6" height="6" /><rect x="86" y="122" width="6" height="6" /><rect x="102" y="122" width="6" height="6" /><rect x="118" y="122" width="6" height="6" /><rect x="136" y="122" width="6" height="6" />
+                  <rect x="62" y="136" width="6" height="6" /><rect x="78" y="136" width="6" height="6" /><rect x="94" y="136" width="6" height="6" /><rect x="112" y="136" width="6" height="6" /><rect x="128" y="136" width="6" height="6" /><rect x="142" y="136" width="6" height="6" />
+                </g>
+                <!-- 中心品牌 Logo -->
+                <rect x="62" y="62" width="36" height="36" rx="6" :fill="instantPayMethod === 'wechat' ? '#07c160' : '#1677ff'" />
+                <text x="80" y="86" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="system-ui">{{ instantPayMethod === 'wechat' ? '微信' : '支' }}</text>
+              </svg>
             </div>
-            <div class="qr-tip-txt">请患者出示微信/支付宝付款码，或直接扫码完成 ¥{{ totalRxAmount.toFixed(2) }} 扣款</div>
+            <div class="qr-tip-txt" style="margin-top: 10px; font-size: 13px; color: #475569; text-align: center;">
+              请患者出示{{ instantPayMethod === 'wechat' ? '微信' : '支付宝' }}付款码扫码，或出示医保码直接结算 <b style="color: #059669; font-size: 15px;">¥{{ totalRxAmount.toFixed(2) }}</b>
+            </div>
           </div>
         </div>
         <div class="pay-channel-view" v-else-if="instantPayMethod === 'yibao'">
-          <el-alert type="success" :closable="false" show-icon title="国家医疗保障局脱卡直结通道已连通">
-            支持医保电子凭证二维码核验、参保个人账户划扣与门诊统筹报销。
+          <el-alert type="success" :closable="false" show-icon title="基层医保脱卡直接结算通道已就绪">
+            支持门诊统筹报销核算与医保个人账户划扣，确认收款后系统将自动生成医保记账对账凭据并流转智慧药房发药。
           </el-alert>
         </div>
         <div class="pay-channel-view" v-else-if="instantPayMethod === 'cash'">
@@ -2002,6 +2062,54 @@
         <el-button @click="historyDetailDrawerVisible = false">关闭</el-button>
         <el-button type="primary" :disabled="!canPrescribe" @click="applyHistoryVisit(selectedHistoryVisit); historyDetailDrawerVisible = false">
           一键引用此往期处方与病历
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 弹窗：查阅患者真实预问诊多轮对话与结构化提取档案 -->
+    <el-dialog
+      v-model="showPatientDialogueModal"
+      title="💬 患者 AI 智能预问诊多轮对话原话与病史提取档案"
+      width="780px"
+      append-to-body
+      destroy-on-close
+    >
+      <div v-if="currentPatientPreConsult" class="pre-consult-view-body">
+        <div class="pv-top-summary">
+          <div class="pv-tag-row">
+            <el-tag type="success" effect="dark">真实问答提取</el-tag>
+            <span class="pv-name">患者：<b>{{ currentPatient?.patientName }}</b></span>
+            <span class="pv-temp">自测体温：<b>{{ currentPatientPreConsult.temperature || '未测/正常' }}</b></span>
+            <span class="pv-med">就诊前用药：<b>{{ currentPatientPreConsult.takenMedicines || '就诊前未用药' }}</b></span>
+          </div>
+          <div class="pv-pi-box">
+            <b>提炼现病史：</b>{{ currentPatientPreConsult.presentIllness }}
+          </div>
+        </div>
+
+        <div class="pv-chat-title">🗣️ 诊前患者与 AI 护士完整问询记录（患者亲口自述原话）：</div>
+        <div class="pv-chat-list">
+          <div 
+            v-for="(msg, idx) in currentPatientDialogue" 
+            :key="idx" 
+            class="pv-chat-bubble"
+            :class="msg.role"
+          >
+            <div class="pv-avatar">{{ msg.role === 'assistant' ? '👩‍⚕️' : '👤' }}</div>
+            <div class="pv-bubble-wrap">
+              <div class="pv-role-name">{{ msg.role === 'assistant' ? '春播预问诊护士' : (currentPatient?.patientName || '患者') }}</div>
+              <div class="pv-bubble-text">{{ msg.content }}</div>
+            </div>
+          </div>
+          <div v-if="!currentPatientDialogue || !currentPatientDialogue.length" style="color: #94a3b8; text-align: center; padding: 20px;">
+            暂无多轮原话记录
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showPatientDialogueModal = false">关闭</el-button>
+        <el-button type="primary" @click="importPreConsultationTriage(); showPatientDialogueModal = false">
+          一键导入至当前门诊病历
         </el-button>
       </template>
     </el-dialog>
@@ -2175,7 +2283,7 @@ const loadInitialDateStore = () => {
               if (p) {
                 if (isClosedStatus(p.status)) {
                   p.status = (p.status === '已退' || p.status === '已退号') ? '已退号' : ((p.status === '过号' || p.status === '已过号') ? '过号' : '已结诊')
-                  if (!b.done.some(d => d && (d.id === p.id || (d.patientName === p.patientName && d.phone === p.phone)))) {
+                  if (!b.done.some(d => d && d.id === p.id)) {
                     b.done.unshift(p)
                   }
                 } else {
@@ -3449,18 +3557,18 @@ const loadHistoryVisitToWorkstation = (visit) => {
 
   // 1. 完整填充往期电子病历各项
   emr.value = {
-    chiefComplaint: visit.symptoms || visit.chiefComplaint || '常发不适，今日复诊',
-    presentIllness: visit.presentIllness || `${visit.symptoms || '常发不适'}，病程反复，今日复诊按原方辨证加减对症调理。`,
+    chiefComplaint: visit.symptoms || visit.chiefComplaint || '',
+    presentIllness: visit.presentIllness || (visit.symptoms ? `${visit.symptoms}，病程反复，复诊对症调理。` : ''),
     allergies: visit.allergies || '无特殊药物过敏史',
     pastHistory: visit.pastHistory || '既往体健',
-    frequency: '持续性',
-    duration: '3天',
-    symptomsList: ['腹痛', '咳嗽', '咽痛'],
-    tongue: visit.tongue || '舌红苔薄黄',
-    pulse: visit.pulse || '脉浮数',
-    diagnosis: visit.diagnosis || '门诊诊断',
-    tcmDiagnosis: visit.tcmDiagnosis || '辨证分型',
-    medicalAdvice: visit.advice || visit.medicalAdvice || '注意经期与腹部保暖，避免生冷寒凉饮食，保证充足睡眠，按方调理。'
+    frequency: visit.frequency || '按需',
+    duration: visit.duration || '',
+    symptomsList: Array.isArray(visit.symptomsList) ? visit.symptomsList : [],
+    tongue: visit.tongue || '',
+    pulse: visit.pulse || '',
+    diagnosis: visit.diagnosis || '',
+    tcmDiagnosis: visit.tcmDiagnosis || '',
+    medicalAdvice: visit.advice || visit.medicalAdvice || ''
   }
 
   // 2. 清洗并载入处方行
@@ -3682,14 +3790,20 @@ const handleQuickDirectConsult = async () => {
   // 1. 同步广播通知挂号大厅
   window.dispatchEvent(new CustomEvent('patient-registered', { detail: newReg }))
 
-  // 2. 插入到医生候诊队列与仓储，并立即进入待诊预览
-  const bucket = dateConsultationStore.value[todayKey]
-  if (bucket) {
-    if (!Array.isArray(bucket.waiting)) bucket.waiting = []
-    bucket.waiting.unshift(newReg)
+  // 2. 插入到医生今日候诊队列与仓储（去重并置顶），并立即作为当前接诊对象
+  if (!dateConsultationStore.value[todayKey]) {
+    dateConsultationStore.value[todayKey] = { waiting: [], done: [] }
   }
-  waitingList.value.unshift(newReg)
+  const bucket = dateConsultationStore.value[todayKey]
+  if (!Array.isArray(bucket.waiting)) bucket.waiting = []
+  // 严格按 ID 去重，杜绝单次点击出现 2 个相同挂号单
+  bucket.waiting = bucket.waiting.filter(w => w && w.id !== newReg.id)
+  bucket.waiting.unshift(newReg)
+  waitingList.value = bucket.waiting
+
+  newReg.status = '接诊中'
   currentPatient.value = newReg
+  queueTab.value = 'waiting'
   isHistoryReadOnly.value = false
   activeHistoryVisitId.value = null
 
@@ -3963,7 +4077,7 @@ const printPastVisit = (p) => {
       <p><b>就诊单号：</b> JZ${p.id || Date.now()} &nbsp;&nbsp; <b>就诊状态：</b> ${p.status}</p>
       <p><b>患者姓名：</b> ${p.patientName} &nbsp;&nbsp; <b>性别/年龄：</b> ${p.gender || '男'} / ${p.age || '32岁'}</p>
       <p><b>主诉：</b> ${emr.value.chiefComplaint || p.symptoms || '-'}</p>
-      <p><b>诊断结果：</b> ${emr.value.diagnosis || '急性上呼吸道感染'} (${emr.value.tcmDiagnosis || '风热犯肺'})</p>
+      <p><b>诊断结果：</b> ${emr.value.diagnosis || '待诊断'}${emr.value.tcmDiagnosis ? ' (' + emr.value.tcmDiagnosis + ')' : ''}</p>
       <p><b>医嘱事项：</b> ${emr.value.medicalAdvice || '清淡饮食，按时服药'}</p>
       <hr style="border: 1px dashed #ccc;"/>
       <p><b>门诊处方费用总计：</b> ¥${totalRxAmount.value.toFixed(2)}</p>
@@ -4003,6 +4117,156 @@ const emr = ref({
   diagnosis: '',
   tcmDiagnosis: ''
 })
+
+const isImportingTriage = ref(false)
+const showPatientDialogueModal = ref(false)
+const currentPatientDialogue = ref([])
+const currentPatientPreConsult = ref(null)
+
+const hasPreConsultDialogue = computed(() => {
+  const p = currentPatient.value
+  return !!(p && p.preConsultationData)
+})
+
+const openPatientDialogueModal = async () => {
+  const p = currentPatient.value
+  if (!p) return
+  let pData = null
+  if (p.preConsultationData) {
+    try {
+      pData = typeof p.preConsultationData === 'string' ? JSON.parse(p.preConsultationData) : p.preConsultationData
+    } catch (e) {}
+  }
+  if (!pData && p.id) {
+    try {
+      const res = await axios.get(`/api/registration/${p.id}/pre-consult`)
+      if (res.data && res.data.success && res.data.preConsultationData) {
+        pData = typeof res.data.preConsultationData === 'string'
+          ? JSON.parse(res.data.preConsultationData)
+          : res.data.preConsultationData
+      }
+    } catch (e) {}
+  }
+  if (pData) {
+    currentPatientPreConsult.value = pData
+    currentPatientDialogue.value = pData.dialogue || []
+    showPatientDialogueModal.value = true
+  } else {
+    ElMessage.info('该患者暂无预问诊多轮对话原话记录')
+  }
+}
+
+const importPreConsultationTriage = async () => {
+  const patient = currentPatient.value
+  if (!patient) return
+  isImportingTriage.value = true
+  try {
+    let pData = null
+    // 1. 尝试从本地挂号队列对象中获取 preConsultationData
+    if (patient.preConsultationData) {
+      try {
+        pData = typeof patient.preConsultationData === 'string' 
+          ? JSON.parse(patient.preConsultationData) 
+          : patient.preConsultationData
+      } catch (e) {}
+    }
+    // 2. 如果内存中没有，尝试从后端接口拉取该挂号单绑定的真实预问诊记录
+    if (!pData && patient.id) {
+      try {
+        const checkRes = await axios.get(`/api/registration/${patient.id}/pre-consult`)
+        if (checkRes.data && checkRes.data.success && checkRes.data.preConsultationData) {
+          pData = typeof checkRes.data.preConsultationData === 'string'
+            ? JSON.parse(checkRes.data.preConsultationData)
+            : checkRes.data.preConsultationData
+          patient.preConsultationData = checkRes.data.preConsultationData
+        }
+      } catch (e) {}
+    }
+
+    if (pData && (pData.chiefComplaint || pData.presentIllness)) {
+      // 真实预问诊数据导入！包含患者真实自述的病程、诱因、体温与自服用药
+      if (pData.chiefComplaint) emr.value.chiefComplaint = pData.chiefComplaint
+      if (pData.presentIllness) emr.value.presentIllness = pData.presentIllness
+      if (pData.duration) emr.value.duration = pData.duration
+      if (pData.frequency) emr.value.frequency = pData.frequency
+      if (pData.symptomsList && Array.isArray(pData.symptomsList) && pData.symptomsList.length) {
+        emr.value.symptomsList = pData.symptomsList
+      }
+      if (pData.allergies && pData.allergies !== '无' && pData.allergies !== '无已知药物过敏') {
+        emr.value.allergies = pData.allergies
+      }
+      if (pData.tcmPattern && !emr.value.tcmDiagnosis) {
+        emr.value.tcmDiagnosis = pData.tcmPattern
+      }
+      if (pData.tcmPattern && !emr.value.diagnosis) {
+        emr.value.diagnosis = pData.tcmPattern
+      }
+      saveCurrentPatientState()
+      
+      let noteExtra = ''
+      if (pData.takenMedicines && pData.takenMedicines !== '就诊前未自服用药' && pData.takenMedicines !== '未用药') {
+        noteExtra += ` 就诊前自服【${pData.takenMedicines}】。`
+      }
+      if (pData.temperature) {
+        noteExtra += ` 自测最高体温【${pData.temperature}】。`
+      }
+      ElNotification({
+        title: '已成功导入患者真实预问诊记录',
+        message: `已同步患者真实病程、起病诱因与自服用药！${noteExtra}`,
+        type: 'success',
+        duration: 5000
+      })
+      return
+    }
+
+    // 3. 患者未做预问诊的降级处理：如实提示，绝不捏造假数据或充斥空话
+    const rawSymptoms = (patient.symptoms || emr.value.chiefComplaint || '').trim()
+    if (!rawSymptoms || rawSymptoms === '医生快速接诊临时通道 (待问诊填写)') {
+      ElMessage.warning('【暂无预问诊记录】该患者挂号时未提交 AI 智能预问诊问答，请由接诊医师当面问询后录入。')
+      return
+    }
+    emr.value.chiefComplaint = rawSymptoms
+    ElMessage.info(`该患者未进行 AI 预问诊问答，已填入挂号登记的主诉【${rawSymptoms}】，请接诊医师当面问询起病诱因与病程体征。`)
+  } catch (e) {
+    ElMessage.error('获取预问诊记录失败：' + (e.message || '网络异常'))
+  } finally {
+    isImportingTriage.value = false
+  }
+}
+
+const isFinishingConsultation = ref(false)
+let isReviewConfirmOpen = false
+
+// 处方提交硬关卡安全网关（捕获 AI 处方合理性审查拦截并弹窗供医师审核/确认强制开方）
+const submitPrescriptionSafe = async (postData) => {
+  const res = await axios.post('/api/prescription/create', postData)
+  if (res.data && res.data.success === false) {
+    if (res.data.blockedByReview) {
+      if (isReviewConfirmOpen) {
+        // 已经在弹窗确认中，防止重叠弹出
+        return { data: { success: false, cancelled: true } }
+      }
+      isReviewConfirmOpen = true
+      try {
+        await ElMessageBox.confirm(
+          `${res.data.message}\n\n当前检测到高危用药风险。若临床确需使用，是否确认已知晓风险并强制开方提交？`,
+          'AI 处方合理性审查拦截',
+          { confirmButtonText: '已知晓风险，强制开方', cancelButtonText: '返回修改处方', type: 'error' }
+        )
+      } catch (cancelErr) {
+        // 医师点击了【返回修改处方】或关闭窗口
+        return { data: { success: false, cancelled: true } }
+      } finally {
+        isReviewConfirmOpen = false
+      }
+      // 医师知晓风险并确认强制开方
+      return await axios.post('/api/prescription/create', { ...postData, forcePass: true })
+    } else {
+      throw new Error(res.data.message || '处方提交失败')
+    }
+  }
+  return res
+}
 
 const selectedBodyPart = ref('头面部')
 const bodyPartSymptomsMap = {
@@ -4559,24 +4823,31 @@ const confirmClearCurrentChat = () => {
 
 const initChatModel = async () => {
   try {
-    const res = await axios.get('/api/ai/config')
+    const res = await axios.get('/api/settings/ai')
     if (res.data && res.data.modelName) chatModelName.value = res.data.modelName
-  } catch (e) { chatModelName.value = 'gpt-4o-mini' }
+  } catch (e) { chatModelName.value = 'deepseek-chat' }
 }
 
 const onModelChange = async (val) => {
-    const matched = availableProviders.value.find(p => p.modelName === val || p.id === val)
+    const matched = (availableProviders.value || []).find(p => p.modelName === val || p.id === val)
     if (matched) {
       try {
+        let currentKey = matched.apiKey || ''
+        if (!currentKey) {
+          try {
+            const cur = await axios.get('/api/settings/ai')
+            if (cur.data && cur.data.apiKey) currentKey = cur.data.apiKey
+          } catch(ignored) {}
+        }
         await axios.post('/api/settings/ai', {
           provider: matched.provider || matched.id,
-          baseUrl: matched.baseUrl || 'https://api.ohmygpt.com',
-          apiKey: matched.apiKey || 'sk-YOUR_API_KEY_HERE',
+          baseUrl: matched.baseUrl || 'https://api.deepseek.com',
+          apiKey: currentKey,
           modelName: matched.modelName,
           mockEnabled: !!matched.mock
         })
       } catch (e) {}
-      ElMessage.success('AI 模型已成功切换为：' + matched.name)
+      ElMessage.success('AI 模型已成功切换为：' + (matched.name || val))
     } else {
       ElMessage.success('AI 模型已切换为：' + val)
     }
@@ -4662,7 +4933,14 @@ const renderMd = (text) => {
 
 const formatInlineMd = (str) => {
   if (!str) return ''
-  return str
+  // 先转义原始 HTML 特殊字符防 XSS，再做 markdown 内联语法替换
+  const escaped = String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+  return escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code class="ai-code-inline">$1</code>')
     .replace(/✅\s*库存充盈/g, '<span class="status-pill sp-green">✅ 库存充盈</span>')
@@ -4735,11 +5013,11 @@ const sendEmrDirectToAi = () => {
 
   const summary = `请根据当前就诊患者【${pName}（${pGender}，${pAge}）】的完整电子病历进行深度辨证与处方推荐：\n` +
     `【主诉】${emr.value.chiefComplaint || '未填写'}\n` +
-    `【现病史】${emr.value.presentIllness || '发病数日，自感不适持续加重'}\n` +
+    `【现病史】${emr.value.presentIllness || '未填写'}\n` +
     `【过敏史】${emr.value.allergies || '无'}\n` +
-    `【既往史】${emr.value.pastHistory || '否认高血压、糖尿病等重大慢病史'}\n` +
-    `【中医四诊】舌象：${emr.value.tongue || '舌红苔薄黄'}，脉象：${emr.value.pulse || '脉弦紧有力'}\n` +
-    `【临床诊断】${emr.value.diagnosis || '高血压复诊对症'} / ${emr.value.tcmDiagnosis || '肝阳上亢证'}\n\n` +
+    `【既往史】${emr.value.pastHistory || '无特殊'}\n` +
+    `【中医四诊】舌象：${emr.value.tongue || '未查'}，脉象：${emr.value.pulse || '未查'}\n` +
+    `【临床诊断】${emr.value.diagnosis || '待定'} / ${emr.value.tcmDiagnosis || '待定'}\n\n` +
     `请调阅中医经方知识库与临床合理用药规则，给出完整的四诊辨证、治法治则、特色穴位贴敷处方、中西药处方及生活医嘱。`
 
   chatInput.value = summary
@@ -5529,8 +5807,6 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     if (fullReset) {
       emr.value.symptomsList = ['脘腹胀满', '胃脘隐痛']
       emr.value.presentIllness = '患者因饮食不节或受凉后出现腹痛腹胀，呈阵发性隐痛，伴嗳气纳差，无放射痛，无黑便，小便正常。'
-      emr.value.tongue = '舌质淡红，苔白微腻'
-      emr.value.pulse = '脉濡滑或弦缓'
       prescriptionItems.value = [...currentRecommendedItems.value]
       plasterConfig.value.acupoints = '神阙穴, 足三里, 中脘穴'
     }
@@ -5572,8 +5848,6 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     if (fullReset) {
       emr.value.symptomsList = ['咽喉不适', '咳嗽咳痰']
       emr.value.presentIllness = '患者近 2 天因受凉起病，自诉咽部干痒红肿疼痛，伴鼻塞流涕、咳嗽少许白痰、轻微发热恶寒。'
-      emr.value.tongue = '舌质红，苔薄黄微干'
-      emr.value.pulse = '脉浮数'
       prescriptionItems.value = [...currentRecommendedItems.value]
       plasterConfig.value.acupoints = '双肺俞, 大椎穴, 天突穴'
     }
@@ -5615,8 +5889,6 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     if (fullReset) {
       emr.value.symptomsList = ['反复头痛', '眩晕']
       emr.value.presentIllness = '患者近 3 天感头脑胀痛、偏侧太阳穴搏动性隐痛，劳累后加重，伴眼干眩晕，无视物旋转与恶心呕吐。'
-      emr.value.tongue = '舌质暗红，苔薄黄'
-      emr.value.pulse = '脉弦紧有力'
       prescriptionItems.value = [...currentRecommendedItems.value]
       plasterConfig.value.acupoints = '太阳穴, 大椎穴, 太冲穴'
     }
@@ -5658,8 +5930,6 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     if (fullReset) {
       emr.value.symptomsList = ['腰膝酸痛', '项背僵硬']
       emr.value.presentIllness = '患者因久坐劳累后出现腰骶部及下肢关节酸痛，阴雨天受凉加重，局部轻压痛，无明显下肢放射性麻木。'
-      emr.value.tongue = '舌质淡暗，边有齿痕，苔白滑'
-      emr.value.pulse = '脉沉弦迟'
       prescriptionItems.value = [...currentRecommendedItems.value]
       plasterConfig.value.acupoints = '阿是穴, 肾俞穴, 委中穴'
     }
@@ -5673,8 +5943,8 @@ const applyClinicalReasoning = (chief, fullReset = false) => {
     if (fullReset) {
       emr.value.symptomsList = []
       emr.value.presentIllness = ''
-      emr.value.tongue = '舌质淡红，苔薄白'
-      emr.value.pulse = '脉和缓有神'
+      emr.value.tongue = ''
+      emr.value.pulse = ''
       prescriptionItems.value = []
     }
   }
@@ -5748,13 +6018,20 @@ const loadPatientsQueue = async () => {
           // 退号、过号、已结诊患者归入【已结束】队列
           if (!Array.isArray(bucket.waiting)) bucket.waiting = []
           if (!Array.isArray(bucket.done)) bucket.done = []
-          bucket.waiting = bucket.waiting.filter(w => w && w.id !== item.id && !(w.patientName === item.patientName && w.phone === item.phone))
-          const existIdx = bucket.done.findIndex(d => d && (d.id === item.id || (d.patientName === item.patientName && d.phone === item.phone)))
+          // 严格按唯一挂号记录 ID 过滤，杜绝按姓名电话误杀同一患者同一天的多次挂号记录！
+          bucket.waiting = bucket.waiting.filter(w => w && w.id !== item.id)
+          const existIdx = bucket.done.findIndex(d => d && d.id === item.id)
           if (existIdx === -1) {
             bucket.done.unshift(item)
           } else {
             bucket.done[existIdx] = { ...bucket.done[existIdx], ...item }
           }
+        } else if (item.status === '待签到') {
+          // 未到店签到的挂号：不进医生候诊队列（必须先签到才对医生可见），并从本地历史队列中清掉
+          if (!Array.isArray(bucket.waiting)) bucket.waiting = []
+          if (!Array.isArray(bucket.done)) bucket.done = []
+          bucket.waiting = bucket.waiting.filter(w => w && w.id !== item.id)
+          bucket.done = bucket.done.filter(d => d && d.id !== item.id)
         } else {
           // 未结诊患者：以数据库真实状态为准（待诊/就诊中），保证与挂号取号页一致；
           // 仅当该患者是当前医生正在查看且本地已处于接诊中时，保留本地接诊中状态
@@ -5766,8 +6043,8 @@ const loadPatientsQueue = async () => {
           } else {
             item.status = '待诊'
           }
-          bucket.done = bucket.done.filter(d => d && d.id !== item.id && !(d.patientName === item.patientName && d.phone === item.phone))
-          const existIdx = bucket.waiting.findIndex(w => w && (w.id === item.id || (w.patientName === item.patientName && w.phone === item.phone)))
+          bucket.done = bucket.done.filter(d => d && d.id !== item.id)
+          const existIdx = bucket.waiting.findIndex(w => w && w.id === item.id)
           if (existIdx === -1) {
             bucket.waiting.push(item)
           } else {
@@ -5899,38 +6176,24 @@ const selectQueuePatient = (p) => {
     // 历史归档就诊患者：查询历史真实处方/病历展示 (只读模式，Task 4)
     const past = (currentPatientPastVisits.value && currentPatientPastVisits.value.length > 0) ? currentPatientPastVisits.value[0] : null
     emr.value = {
-      chiefComplaint: p.symptoms || (past ? past.symptoms : '咳嗽咽痛伴恶寒发热3天'),
-      presentIllness: past ? past.presentIllness : '受凉后出现咳嗽咳痰，咽喉肿痛，伴轻微发热恶寒，纳可，二便正常。',
-      allergies: (past && past.allergies) ? past.allergies : '无特殊药物过敏史',
-      pastHistory: (past && past.pastHistory) ? past.pastHistory : '既往体健，无哮喘高血压糖尿病史',
-      frequency: '阵发性',
-      duration: '3天',
-      symptomsList: ['咳嗽', '咽喉肿痛', '恶寒'],
-      tongue: (past && past.tongue) ? past.tongue : '舌红苔薄黄',
-      pulse: (past && past.pulse) ? past.pulse : '脉浮数',
-      diagnosis: p.diagnosis || (past ? past.diagnosis : '急性上呼吸道感染'),
-      tcmDiagnosis: past ? past.tcmDiagnosis : '风热犯肺，表热证',
-      medicalAdvice: (past && past.medicalAdvice) ? past.medicalAdvice : '清淡饮食，忌辛辣生冷；多饮温开水，保持充足睡眠；贴敷4-6小时揭除；3天后门诊复诊。'
+      chiefComplaint: p.symptoms || (past ? (past.symptoms || past.chiefComplaint || '') : ''),
+      presentIllness: past ? (past.presentIllness || '') : '',
+      allergies: (past && past.allergies) ? past.allergies : (p.allergies || '无特殊药物过敏史'),
+      pastHistory: (past && past.pastHistory) ? past.pastHistory : (p.pastHistory || '既往体健，无特殊慢性病史'),
+      frequency: past ? (past.frequency || '偶尔') : '偶尔',
+      duration: past ? (past.duration || '') : '',
+      symptomsList: (past && Array.isArray(past.symptomsList)) ? past.symptomsList : [],
+      tongue: (past && past.tongue) ? past.tongue : '',
+      pulse: (past && past.pulse) ? past.pulse : '',
+      diagnosis: p.diagnosis || (past ? past.diagnosis : ''),
+      tcmDiagnosis: past ? (past.tcmDiagnosis || '') : '',
+      medicalAdvice: (past && past.medicalAdvice) ? past.medicalAdvice : ''
     }
 
-    if (past && past.patchItems && past.patchItems.length > 0) {
-      patchRxItems.value = JSON.parse(JSON.stringify(past.patchItems))
-    } else {
-      patchRxItems.value = [
-        { medicineId: 101, name: '消肿止痛贴 (止咳利咽)', dose: '10', acupoints: '天突穴、双肺俞穴', frequency: '1次/天', days: 3, quantity: 3, unitPrice: 35 }
-      ]
-    }
-
-    if (past && past.westernItems && past.westernItems.length > 0) {
-      westernRxItems.value = JSON.parse(JSON.stringify(past.westernItems))
-    } else {
-      westernRxItems.value = [
-        { medicineId: 201, name: '感冒灵颗粒', dose: '1袋', frequency: 'tid', route: '口服', days: 3, quantity: 1, unit: '盒', unitPrice: 25, remark: '饭后温开水冲服' }
-      ]
-    }
-
-    tcmRxItems.value = (past && past.tcmItems) ? JSON.parse(JSON.stringify(past.tcmItems)) : []
-    treatmentItems.value = (past && past.treatmentItems) ? JSON.parse(JSON.stringify(past.treatmentItems)) : []
+    patchRxItems.value = (past && past.patchItems && past.patchItems.length > 0) ? JSON.parse(JSON.stringify(past.patchItems)) : []
+    westernRxItems.value = (past && past.westernItems && past.westernItems.length > 0) ? JSON.parse(JSON.stringify(past.westernItems)) : []
+    tcmRxItems.value = (past && past.tcmItems && past.tcmItems.length > 0) ? JSON.parse(JSON.stringify(past.tcmItems)) : []
+    treatmentItems.value = (past && past.treatmentItems && past.treatmentItems.length > 0) ? JSON.parse(JSON.stringify(past.treatmentItems)) : []
     syncItemsToBlocks()
   } else {
     // 待诊患者首次预览，严格保持【待诊】状态，必须由医生点击【开始接诊】才转入接诊中
@@ -5982,7 +6245,7 @@ const startConsultation = async (p) => {
   const baseList = Array.isArray(waitingList.value) ? waitingList.value : []
   const newWaiting = baseList.map(item => {
     if (!item) return item
-    const isTarget = (targetId && item.id === targetId) || (targetName && item.patientName === targetName)
+    const isTarget = Boolean(targetId && item.id === targetId)
     if (isTarget) {
       return { ...item, status: '接诊中' }
     } else if (item.status === '接诊中') {
@@ -5996,7 +6259,7 @@ const startConsultation = async (p) => {
   })
 
   // 若目标患者不在等待队列中，则追加
-  const foundInList = newWaiting.some(item => item && (item.id === targetId || item.patientName === targetName))
+  const foundInList = newWaiting.some(item => item && item.id === targetId)
   if (!foundInList) {
     newWaiting.unshift({ ...patient, status: '接诊中' })
   }
@@ -6005,7 +6268,7 @@ const startConsultation = async (p) => {
   waitingList.value = sortWaitingQueue(newWaiting)
 
   // 2. 找到排序后的新患者对象，替换 currentPatient.value，强制触发顶栏重渲染
-  const updatedPatient = waitingList.value.find(item => item && (item.id === targetId || item.patientName === targetName))
+  const updatedPatient = waitingList.value.find(item => item && item.id === targetId)
   currentPatient.value = updatedPatient || { ...patient, status: '接诊中' }
   isHistoryReadOnly.value = false
 
@@ -6250,9 +6513,38 @@ const startVoiceInput = () => {
   toggleVoiceInput()
 }
 
-const simulateTongueAnalysis = () => {
-  // 舌象多模态识别需接入图像模型，暂未开通；如实提示而非伪造识别结果
-  ElMessage.info('舌象识别需图像模型支持，暂未接入，请手动填写舌脉信息')
+const tongueFileInput = ref(null)
+const tonguePhotoPreview = ref('')
+const tonguePhotoName = ref('')
+
+const triggerTongueUpload = () => {
+  if (tongueFileInput.value) {
+    tongueFileInput.value.click()
+  }
+}
+
+const handleTongueFileChange = (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择患者舌面高清照片（JPG/PNG格式）')
+    return
+  }
+  tonguePhotoName.value = file.name
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    tonguePhotoPreview.value = event.target.result
+    // 依循医疗真实性红线：仅存档真实图像，绝不捏造舌红苔黄假体征
+    ElMessage.success(`舌象照片【${file.name}】已成功载入电子健康档案，请主治医师结合临床望诊填写四诊辨析！`)
+  }
+  reader.readAsDataURL(file)
+}
+
+const removeTonguePhoto = () => {
+  tonguePhotoPreview.value = ''
+  tonguePhotoName.value = ''
+  if (tongueFileInput.value) tongueFileInput.value.value = ''
+  ElMessage.info('已移除舌象影像附件')
 }
 
 const validateAllergies = () => {
@@ -6376,6 +6668,49 @@ const openInstantPayModal = () => {
   instantPayDialogVisible.value = true
 }
 
+// ── AI 处方合理性审查：开方提交前调用后端 LLM 审查（剂量/配伍/禁忌/重复用药），不过标红提示医生 ──
+const aiReviewPrescription = async (items) => {
+  if (!items || !items.length) return true
+  try {
+    const res = await axios.post('/api/prescription/review', {
+      patientName: currentPatient.value?.patientName || '',
+      patientAge: currentPatient.value?.age || currentPatient.value?.ageText || '',
+      allergies: emr.value.allergies || '无',
+      diagnosis: emr.value.diagnosis || '门诊确诊',
+      items: items.map(it => ({
+        medicineName: it.medicineName,
+        dosage: it.dosage,
+        frequency: it.frequency || '',
+        quantity: it.quantity
+      }))
+    })
+    const d = res.data || {}
+    const warnings = d.warnings || []
+    if (warnings.length) {
+      const warnHtml = warnings.map(w =>
+        `<div style="margin:6px 0;"><b style="color:#dc2626;">${w.level === '高危' ? '🚨' : '⚠️'}【${w.type}】</b> ${w.message}</div>`
+      ).join('')
+      try {
+        await ElMessageBox.alert(
+          `<div style="text-align:left;font-size:13px;line-height:1.6;">${warnHtml}<div style="margin-top:8px;color:#64748b;">${d.summary || ''}</div></div>`,
+          `AI 处方合理性审查 · ${d.riskLevel || '需人工复核'}`,
+          { dangerouslyUseHTMLString: true, confirmButtonText: '已知悉，继续开方', cancelButtonText: '返回修改', showCancelButton: true, type: 'warning' }
+        )
+      } catch (e) {
+        return false
+      }
+    } else if (d.passed === false) {
+      try {
+        await ElMessageBox.confirm(`AI 处方审查提示：${d.summary || '处方存在潜在风险'}，是否继续开方？`, '处方审查提醒', { type: 'warning', confirmButtonText: '继续开方', cancelButtonText: '返回修改' })
+      } catch (e) { return false }
+    }
+    return true
+  } catch (e) {
+    console.warn('AI 处方审查异常，跳过审查:', e)
+    return true
+  }
+}
+
 const confirmInstantPayment = async () => {
   if (!currentPatient.value) return
   instantPayLoading.value = true
@@ -6404,9 +6739,16 @@ const confirmInstantPayment = async () => {
       items: allSubmittedItems
     }
 
+    // AI 处方合理性审查（医学红线硬关卡：剂量/配伍/禁忌/重复用药，不过标红提示医生）
+    const reviewPassed = await aiReviewPrescription(allSubmittedItems)
+    if (!reviewPassed) {
+      instantPayLoading.value = false
+      return
+    }
+
     try {
       if (allSubmittedItems.length > 0) {
-        await axios.post('/api/prescription/create', postData)
+        await submitPrescriptionSafe(postData)
       }
       if (finishedPatientId) {
         await axios.post(`/api/registration/finish/${finishedPatientId}`)
@@ -6425,15 +6767,15 @@ const confirmInstantPayment = async () => {
         if (bucket) {
           if (!Array.isArray(bucket.waiting)) bucket.waiting = []
           if (!Array.isArray(bucket.done)) bucket.done = []
-          const wIdx = bucket.waiting.findIndex(p => p && (p.id === finishedPatientId || p.patientName === finishedPatientName))
+          const wIdx = bucket.waiting.findIndex(p => p && p.id === finishedPatientId)
           if (wIdx > -1) {
             const [doneP] = bucket.waiting.splice(wIdx, 1)
             doneP.status = '已结诊'
-            if (!bucket.done.some(d => d && (d.id === doneP.id || d.patientName === doneP.patientName))) {
+            if (!bucket.done.some(d => d && d.id === doneP.id)) {
               bucket.done.unshift(doneP)
             }
           } else if (dk === queueDate.value) {
-            if (!bucket.done.some(d => d && (d.id === finishedPatientId || d.patientName === finishedPatientName))) {
+            if (!bucket.done.some(d => d && d.id === finishedPatientId)) {
               bucket.done.unshift({ ...currentPatient.value, status: '已结诊' })
             }
           }
@@ -6442,8 +6784,8 @@ const confirmInstantPayment = async () => {
     }
 
     // 3. 同步剔除当前的响应式列表
-    waitingList.value = (waitingList.value || []).filter(p => p && p.id !== finishedPatientId && p.patientName !== finishedPatientName)
-    if (doneList.value && !doneList.value.some(d => d && (d.id === finishedPatientId || d.patientName === finishedPatientName))) {
+    waitingList.value = (waitingList.value || []).filter(p => p && p.id !== finishedPatientId)
+    if (doneList.value && !doneList.value.some(d => d && d.id === finishedPatientId)) {
       doneList.value.unshift({ ...currentPatient.value, status: '已结诊' })
     }
 
@@ -6513,125 +6855,130 @@ const confirmInstantPayment = async () => {
   }
 }
 
-// ── 完成接诊 (先到收费界面再进行后续收费) ──
+// ── 完成接诊 (直接完成接诊推送收费处与药房，医生留在此页接诊下一位，不弹窗打扰) ──
 const finishConsultationToBilling = async () => {
-  if (!currentPatient.value) return
+  if (!currentPatient.value || isFinishingConsultation.value) return
+  isFinishingConsultation.value = true
   const finishedPatientName = currentPatient.value.patientName
   const finishedPatientId = currentPatient.value.id
 
-  const doSubmitConsultation = async (gotoBilling) => {
-    try {
-      const allSubmittedItems = [
-        ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
-        ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
-        ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
-        ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
-      ]
+  try {
+    const allSubmittedItems = [
+      ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
+      ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
+      ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
+      ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
+    ]
 
-      try {
-        if (allSubmittedItems.length > 0) {
-          await axios.post('/api/prescription/create', {
-            patientId: currentPatient.value.patientId || finishedPatientId || 1,
-            patientName: finishedPatientName,
-            idCard: currentPatient.value.idCard || '',
-            doctorName: currentPatient.value.doctorName || currentUserName,
-            diagnosis: emr.value.diagnosis || '门诊诊断',
-            totalAmount: totalRxAmount.value,
-            status: 'PENDING_PAYMENT',
-            items: allSubmittedItems
-          })
-        }
-        if (finishedPatientId) {
-          await axios.post(`/api/registration/finish/${finishedPatientId}`)
-        }
-      } catch (e) {}
+    if (allSubmittedItems.length > 0) {
+      const rxRes = await submitPrescriptionSafe({
+        patientId: currentPatient.value.patientId || finishedPatientId || 1,
+        registrationId: currentPatient.value.id,
+        patientName: finishedPatientName,
+        idCard: currentPatient.value.idCard || '',
+        gender: currentPatient.value.gender || '',
+        age: currentPatient.value.age != null ? currentPatient.value.age : null,
+        phone: currentPatient.value.phone || '',
+        doctorName: currentPatient.value.doctorName || currentUserName,
+        diagnosis: emr.value.diagnosis || '门诊确诊（待补录）',
+        totalAmount: totalRxAmount.value,
+        status: 'PENDING_PAYMENT',
+        items: allSubmittedItems
+      })
+      // 若因审查高危医生选择「返回修改处方」，则留在当前界面供医生修改
+      if (rxRes && rxRes.data && rxRes.data.cancelled) {
+        ElMessage.info('已取消接诊提交，您可继续调整修改处方')
+        return
+      }
+      if (rxRes && rxRes.data && rxRes.data.success === false) {
+        ElMessage.error(rxRes.data.message || '处方提交失败')
+        return
+      }
+    }
+    if (finishedPatientId) {
+      await axios.post(`/api/registration/finish/${finishedPatientId}`)
+    }
 
-      currentPatient.value.status = '待收费'
+    currentPatient.value.status = '待收费'
 
-      // 将患者从候诊转移到已结束
-      if (dateConsultationStore.value) {
-        Object.keys(dateConsultationStore.value).forEach(dk => {
-          const bucket = dateConsultationStore.value[dk]
-          if (bucket) {
-            if (!Array.isArray(bucket.waiting)) bucket.waiting = []
-            if (!Array.isArray(bucket.done)) bucket.done = []
-            const waitIdx = bucket.waiting.findIndex(p => p && (p.id === finishedPatientId || p.patientName === finishedPatientName))
-            if (waitIdx > -1) {
-              const [doneP] = bucket.waiting.splice(waitIdx, 1)
-              doneP.status = '待收费'
-              if (!bucket.done.some(d => d && (d.id === doneP.id || d.patientName === doneP.patientName))) {
-                bucket.done.unshift(doneP)
-              }
-            } else if (dk === queueDate.value) {
-              if (!bucket.done.some(d => d && (d.id === finishedPatientId || d.patientName === finishedPatientName))) {
-                bucket.done.unshift({ ...currentPatient.value, status: '待收费' })
-              }
+    // 将患者从候诊转移到已结束
+    if (dateConsultationStore.value) {
+      Object.keys(dateConsultationStore.value).forEach(dk => {
+        const bucket = dateConsultationStore.value[dk]
+        if (bucket) {
+          if (!Array.isArray(bucket.waiting)) bucket.waiting = []
+          if (!Array.isArray(bucket.done)) bucket.done = []
+          const waitIdx = bucket.waiting.findIndex(p => p && p.id === finishedPatientId)
+          if (waitIdx > -1) {
+            const [doneP] = bucket.waiting.splice(waitIdx, 1)
+            doneP.status = '待收费'
+            if (!bucket.done.some(d => d && d.id === doneP.id)) {
+              bucket.done.unshift(doneP)
+            }
+          } else if (dk === queueDate.value) {
+            if (!bucket.done.some(d => d && d.id === finishedPatientId)) {
+              bucket.done.unshift({ ...currentPatient.value, status: '待收费' })
             }
           }
-        })
-      }
-
-      waitingList.value = (waitingList.value || []).filter(p => p && p.id !== finishedPatientId && p.patientName !== finishedPatientName)
-      if (doneList.value && !doneList.value.some(d => d && (d.id === finishedPatientId || d.patientName === finishedPatientName))) {
-        doneList.value.unshift({ ...currentPatient.value, status: '待收费' })
-      }
-
-      const curDraftKey = `${finishedPatientId}_${queueDate.value}`
-      if (consultationDraftStore.value && consultationDraftStore.value[curDraftKey]) {
-        consultationDraftStore.value[curDraftKey].status = '待收费'
-      }
-
-      try {
-        localStorage.setItem('chunbo_clinic_dates_data', JSON.stringify(dateConsultationStore.value))
-        localStorage.setItem('chunbo_clinic_drafts_data', JSON.stringify(consultationDraftStore.value))
-      } catch (e) {}
-
-      window.dispatchEvent(new CustomEvent('registration-updated'))
-
-      if (gotoBilling) {
-        ElMessage.success('处方已推送！正在跳转至划价收费台...')
-        if (switchTab) {
-          switchTab('billing')
-        } else {
-          window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'billing' }))
         }
-      } else {
-        ElMessage.success(`【${finishedPatientName}】接诊已完成，处方已推送到收费处！已为您切换至下一位待诊患者。`)
-        if (waitingList.value && waitingList.value.length > 0) {
-          const nextP = waitingList.value[0]
-          nextP.status = '待诊'
-          selectQueuePatient(nextP)
-        } else {
-          currentPatient.value = null
-        }
-      }
-
-      try {
-        await loadPatientsQueue()
-      } catch (e) {}
-    } catch (err) {
-      console.error(err)
-      ElMessage.error('接诊提交异常，请重试')
+      })
     }
+
+    waitingList.value = (waitingList.value || []).filter(p => p && p.id !== finishedPatientId)
+    if (doneList.value && !doneList.value.some(d => d && d.id === finishedPatientId)) {
+      doneList.value.unshift({ ...currentPatient.value, status: '待收费' })
+    }
+
+    const curDraftKey = `${finishedPatientId}_${queueDate.value}`
+    if (consultationDraftStore.value && consultationDraftStore.value[curDraftKey]) {
+      consultationDraftStore.value[curDraftKey].status = '待收费'
+    }
+
+    try {
+      localStorage.setItem('chunbo_clinic_dates_data', JSON.stringify(dateConsultationStore.value))
+      localStorage.setItem('chunbo_clinic_drafts_data', JSON.stringify(consultationDraftStore.value))
+    } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent('registration-updated'))
+
+    ElMessage.success(`【${finishedPatientName}】接诊已完成！处方已推送到收费处与药房，已为您准备接诊下一位患者。`)
+
+    if (waitingList.value && waitingList.value.length > 0) {
+      const nextP = waitingList.value[0]
+      nextP.status = '待诊'
+      selectQueuePatient(nextP)
+    } else {
+      currentPatient.value = null
+      emr.value = {
+        chiefComplaint: '',
+        symptomsList: [],
+        frequency: '偶尔',
+        duration: '1-3天',
+        presentIllness: '',
+        medicalAdvice: '',
+        allergies: '无已知药物过敏',
+        pastHistory: '否认高血压、糖尿病及重大慢病史',
+        tongue: '',
+        pulse: '',
+        diagnosis: '',
+        tcmDiagnosis: ''
+      }
+      treatmentItems.value = []
+      patchRxItems.value = []
+      westernRxItems.value = []
+      tcmRxItems.value = []
+      prescriptionBlocks.value = []
+    }
+
+    try {
+      await loadPatientsQueue()
+    } catch (e) {}
+  } catch (err) {
+    console.error(err)
+    ElMessage.error('接诊提交异常，请重试')
+  } finally {
+    isFinishingConsultation.value = false
   }
-
-  ElMessageBox.confirm(
-    `接诊已完成！处方与诊疗项目（总计 ¥${totalRxAmount.value.toFixed(2)}）已提交至收费处。
-是否立即前往划价收费界面办理后续收费结算？`,
-    '完成接诊送收费',
-    {
-      confirmButtonText: '立即前往收费处',
-      cancelButtonText: '留在此页接诊下一位',
-      distinguishCancelAndClose: true,
-      type: 'success'
-    }
-  ).then(() => {
-    doSubmitConsultation(true)
-  }).catch((action) => {
-    if (action === 'cancel') {
-      doSubmitConsultation(false)
-    }
-  })
 }
 
 // ── 删除清空草稿 ──
@@ -6761,16 +7108,16 @@ const completeAndBill = async () => {
         patientName: currentPatient.value.patientName,
         idCard: currentPatient.value.idCard || '',
         doctorName: currentPatient.value.doctorName || currentUserName,
-        diagnosis: emr.value.diagnosis,
+        diagnosis: emr.value.diagnosis || '门诊确诊（待补录）',
         aiAdvice: aiAdvice.value,
         totalAmount: totalRxAmount.value,
         items: allSubmittedItems
       }
       postData.registrationId = currentPatient.value.id
-      postData.gender = currentPatient.value.gender || '男'
-      postData.age = currentPatient.value.age || 35
-      postData.phone = currentPatient.value.phone || '13800000000'
-      await axios.post('/api/prescription/create', postData)
+      postData.gender = currentPatient.value.gender || ''
+      postData.age = currentPatient.value.age != null ? currentPatient.value.age : null
+      postData.phone = currentPatient.value.phone || ''
+      await submitPrescriptionSafe(postData)
       try {
         await axios.post(`/api/registration/finish/${currentPatient.value.id}`)
       } catch (ignored) {}
@@ -7969,6 +8316,12 @@ onMounted(async () => {
   font-weight: 600 !important;
   border-radius: 4px !important;
   padding: 7px 14px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  min-width: 92px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   transition: all 0.15s !important;
 }
 
@@ -7984,6 +8337,12 @@ onMounted(async () => {
   font-weight: 600 !important;
   border-radius: 4px !important;
   padding: 7px 16px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  min-width: 84px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   box-shadow: 0 1px 3px rgba(13, 148, 136, 0.2) !important;
 }
 
@@ -7997,20 +8356,38 @@ onMounted(async () => {
   border: 1px solid #fca5a5 !important;
   border-radius: 4px !important;
   padding: 7px 12px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .btn-top-del:hover {
   background: #fee2e2 !important;
 }
 
-/* ── 左侧候诊队列顶栏与日期选择器 (深度复刻截图 2) ── */
+/* ── 左侧候诊队列顶栏与日期选择器 ── */
 .queue-tabs-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: 8px 10px;
   background: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.btn-quick-consult-queue {
+  font-size: 11.5px !important;
+  padding: 4px 8px !important;
+  height: 26px !important;
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.25) !important;
+}
+.btn-quick-consult-queue:hover {
+  background: linear-gradient(135deg, #059669, #047857) !important;
 }
 
 .q-tabs-left {
@@ -10834,4 +11211,103 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 
+
+/* ── 查阅预问诊原话弹窗样式 ── */
+.pre-consult-view-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pv-top-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+.pv-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.pv-temp b {
+  color: #dc2626;
+}
+.pv-med b {
+  color: #059669;
+}
+.pv-pi-box {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #f1f5f9;
+}
+.pv-chat-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+}
+.pv-chat-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f1f5f9;
+  padding: 12px;
+  border-radius: 8px;
+}
+.pv-chat-bubble {
+  display: flex;
+  gap: 8px;
+  max-width: 85%;
+}
+.pv-chat-bubble.assistant {
+  align-self: flex-start;
+}
+.pv-chat-bubble.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.pv-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.pv-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.pv-role-name {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+.pv-chat-bubble.user .pv-role-name {
+  text-align: right;
+}
+.pv-bubble-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.pv-chat-bubble.assistant .pv-bubble-text {
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+.pv-chat-bubble.user .pv-bubble-text {
+  background: #2563eb;
+  color: #ffffff;
+}
 </style>

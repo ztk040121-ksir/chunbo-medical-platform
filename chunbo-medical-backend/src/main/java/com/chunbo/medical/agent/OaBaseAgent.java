@@ -78,16 +78,19 @@ public abstract class OaBaseAgent extends AbstractAgent {
             return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
         }
 
-        // 商城履约：AI 自主调用发货/确认送达工具（真实扣库存 + 出库台账 + 状态流转），支持按收货人姓名或订单号
+        // 商城履约：AI 自主调用发货/确认送达/待发货清单工具（真实扣库存 + 出库台账 + 状态流转），支持按收货人姓名或订单号
         if ("OA_ORDER".equals(skillHint())) {
             String sys = "你是「春播云管理系统中台 · 商城履约调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【订单发货与送达必须自主调用工具，严禁凭空描述结果】\n"
-                    + "1. 用户要求发货/出库（如「给李先生发货」）时，调用 shipCustomerOrder(customerOrOrderNo) 工具——支持收货人姓名或订单号，"
+                    + "【核心数据边界约束】：本管理中台 AI 调度的数据仅受限于【春播云管理系统】与【春播商城】，只处理春播商城 C 端便民购药订单（B2C 开头），绝不涉及云门诊临床诊疗业务与院内药品采购单！\n"
+                    + "【订单查询、发货与送达必须自主调用工具，严禁凭空描述结果或推脱无法查询】\n"
+                    + "1. 用户要求查看待发货订单清单、查询全部订单或列表（如「商城待发货订单清单」「查询所有订单」「看看有哪些待发货」「最新订单列表」）时，"
+                    + "必须调用 queryMallOrdersList(statusFilter, limit) 工具——statusFilter 可传「待发货」「全部」「运输中」等；\n"
+                    + "2. 用户要求发货/出库（如「给李先生发货」）时，调用 shipCustomerOrder(customerOrOrderNo) 工具——支持收货人姓名或订单号，"
                     + "系统会匹配其最新待发货订单，真实扣减库存、写入进销存流水并生成春播便民速递运单号；\n"
-                    + "2. 用户要求确认送达/签收（如「李先生的订单已送到了」）时，调用 confirmCustomerDelivered(customerOrOrderNo) 工具——"
+                    + "3. 用户要求确认送达/签收（如「李先生的订单已送到了」）时，调用 confirmCustomerDelivered(customerOrOrderNo) 工具——"
                     + "系统自动匹配其最新运输中订单并把状态改为「已送达 / 居民已签收」；\n"
-                    + "3. 一条回复只处理用户当前要求的动作，不要既发货又确认送达；\n"
-                    + "4. 工具返回成功后，向用户清晰转述运单号/状态变化；工具返回失败（如查无订单、重复发货）时如实告知原因，不要编造。";
+                    + "4. 用户要查某个具体客户的全部订单（如「查陈素芬的订单」）时，调用 queryMallUserOrders(userKeyword)；\n"
+                    + "5. 一条回复只处理用户当前要求的动作；工具返回成功后，向用户清晰转述结果；工具返回失败时如实告知原因，不要编造。";
             return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
         }
 
@@ -102,19 +105,22 @@ public abstract class OaBaseAgent extends AbstractAgent {
                     + "5. 工具返回成功后清晰转述变更（价格从 X 到 Y、库存变化等）；失败时如实告知原因，不要编造。";
             return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
         }
-        // 商城用户管理：注册引导 / 查用户订单 / 用户统计，AI 自主调用工具真实落库与查询
+        // 商城用户管理：查询用户列表 / 注册引导 / 查用户订单 / 用户统计，AI 自主调用工具真实落库与查询
         if ("OA_MALL_USER".equals(skillHint())) {
             String sys = "你是「春播云管理系统中台 · 商城用户管理智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【用户注册必须走工具，严禁凭空声称已注册】\n"
-                    + "1. 用户要注册/新增春播商城账户时，调用 registerMallUser(username, password, nickname, phone, address)；\n"
+                    + "【核心数据边界约束】：本管理中台 AI 调度的数据仅受限于【春播云管理系统】与【春播商城】，绝不涉及云门诊临床诊疗业务！\n"
+                    + "【用户查询与注册必须走真实工具，严禁编造或推脱无法查询】\n"
+                    + "1. 用户询问商城注册了哪些用户、查询用户列表、或列出商城用户名单（如「商城注册了哪些用户」「查看注册用户名单」「有哪些用户」）时，"
+                    + "必须调用 queryMallUsersList(keyword, limit) 工具，如实返回包含账号、姓名、手机号、健康金余额与注册时间的真实用户清单表格；\n"
+                    + "2. 用户要注册/新增春播商城账户时，调用 registerMallUser(username, password, nickname, phone, address)；\n"
                     + "   - 必填项与商城注册页完全一致：登录账号、登录密码（至少6位）、真实姓名或称呼、11位手机号（1开头）；只有收货地址可选；\n"
                     + "   - 用户没提供时**一步一步引导**，一次问一项，别一口气抛一堆问题；信息齐了才调用工具一次完成注册；\n"
                     + "   - 用户中途只补充部分信息（如只发一个手机号）时，继续引导剩余必填项，不要重新开始也不要胡乱套用；\n"
                     + "   - 注册成功后如实转述账号信息与 ¥200 新人体验金；工具返回 NEED_MORE_INFO 时按清单继续提问；\n"
                     + "   - 返回账号/手机号已占用时，如实转述是哪一个被占用，并给出换号或用原账号登录的建议。\n"
-                    + "2. 用户要查某个用户的订单（如「看看陈素芬的订单」）时，调用 queryMallUserOrders(userKeyword)——支持账号/手机号/姓名；\n"
-                    + "3. 用户问用户总数/活跃账户/冻结账户/新人购药金时，调用 queryMallUserStats()；\n"
-                    + "4. 一切以工具返回的真实数据为准，查询不到就如实说明，不要编造。";
+                    + "3. 用户要查某个用户的订单（如「看看陈素芬的订单」）时，调用 queryMallUserOrders(userKeyword)——支持账号/手机号/姓名；\n"
+                    + "4. 用户问用户总数/活跃账户/冻结账户/新人购药金汇总时，调用 queryMallUserStats()；\n"
+                    + "5. 一切以工具返回的真实数据为准，查询不到就如实说明，不要编造。";
             return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
         }
         // OA 请假审批：AI 自主调用名单查询/批准驳回/删除工具（真实落库，申请人端状态同步）
@@ -129,6 +135,45 @@ public abstract class OaBaseAgent extends AbstractAgent {
                     + "5. 工具返回成功后如实转述单号/申请人/审批结果；查不到或失败时如实说明，不要编造。";
             return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
         }
+
+        // 药房库存与智能补货调度：调用真实库存查询与补货预警工具
+        if ("OA_INVENTORY".equals(skillHint())) {
+            String sys = "你是「春播云管理系统中台 · 智慧药房与库存调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
+                    + "【药品库存与补货预警必须调用真实工具，严禁凭空编造数据】\n"
+                    + "1. 用户查询药品库存（如「查一下阿莫西林还有多少」「感冒灵库存」）时，调用 queryPharmacyInventory(keyword)；\n"
+                    + "2. 用户询问药房缺药、库存预警、临期药品或需要补货采购（如「哪些药快没了」「生成采购补货清单」「临期预警」）时，调用 queryMedicineReplenishmentWarning()；\n"
+                    + "3. 工具返回成功后，向用户清晰展示表格与关键预警项，提供专业采购调拨建议。";
+            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+        }
+
+        // 大盘经营诊断：调用真实全院门诊与营收工具
+        if ("OA_ANALYTICS".equals(skillHint())) {
+            String sys = "你是「春播云管理系统中台 · 门诊大盘经营诊断智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
+                    + "【大盘经营与营收数据必须调用真实工具，严禁编造假数据】\n"
+                    + "1. 用户询问今日经营、门诊接诊量、挂号收入、处方销售或综合营收（如「今天门诊怎么样」「看下本月营收」「今年总收入」）时，调用 queryClinicAnalytics(period)——period可传 today / month / year；\n"
+                    + "2. 工具返回数据后，结构化解读门诊运营现状，提炼亮点与改善建议。";
+            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+        }
+
+        // 特色中药贴敷理疗：调用真实贴敷统计工具
+        if ("OA_PLASTER".equals(skillHint())) {
+            String sys = "你是「春播云管理系统中台 · 中药贴敷特色理疗智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
+                    + "【贴敷理疗核算必须自主调用真实工具，严禁追问用户】\n"
+                    + "1. 用户询问贴敷统计、疗程量、品类分布、收入、理疗运营数据（如「查询特色贴敷理疗的运营数据」「贴敷创收情况」「9月份」）时，"
+                    + "必须立刻调用 queryPlasterStatistics(month, category) 工具——用户未明确指定具体月份时，month 传 null 即可，严禁追问用户月份！"
+                    + "如果用户提供了月份（如 9月份 / 2026-09），则将月份传入。\n"
+                    + "2. 工具返回后详细转述疗程量、各贴敷类型占比、执行站施术人次与创收数据，并结合真实数据给出专业的运营亮点与增收分析。";
+            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+        }
+
+        // 门诊值班排班：调用排班日历工具
+        if ("OA_SCHEDULE".equals(skillHint())) {
+            String sys = "你是「春播云管理系统中台 · 医生护士排班值班智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
+                    + "1. 用户查询排班、值班、坐诊日历或请假情况时，调用 checkShiftOrLeave(queryDate)；\n"
+                    + "2. 结合工具返回结果清晰呈现排班表。";
+            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+        }
+
         return assistantController.buildOaContentFlux(question, userId, role, name, skillHint());
     }
 

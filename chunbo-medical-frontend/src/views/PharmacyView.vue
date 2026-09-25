@@ -89,8 +89,14 @@
             >
               <div class="card-line1">
                 <span class="rx-no">#{{ item.prescription.prescriptionNo }}</span>
-                <el-tag :type="dispenseSubTab === 'pending' ? 'danger' : 'success'" size="small" effect="dark">
-                  {{ dispenseSubTab === 'pending' ? '待发药' : '已核销发药' }}
+                <el-tag v-if="dispenseSubTab !== 'pending'" type="success" size="small" effect="dark">
+                  已发药
+                </el-tag>
+                <el-tag v-else-if="isRxPaid(item)" type="success" size="small" effect="dark">
+                  已缴费·待发药
+                </el-tag>
+                <el-tag v-else type="warning" size="small" effect="dark">
+                  待收费处缴费
                 </el-tag>
               </div>
               <div class="card-line2">
@@ -117,18 +123,36 @@
                   <span class="big-name">{{ selectedPrescription.prescription.patientName }}</span>
                   <span class="rx-title">处方号：{{ selectedPrescription.prescription.prescriptionNo }}</span>
                   <span class="diag-badge">{{ selectedPrescription.prescription.diagnosis }}</span>
+                  <el-tag v-if="isRxPaid(selectedPrescription)" type="success" size="small" effect="light" style="margin-left: 8px;">
+                    ✓ 费用已结清
+                  </el-tag>
+                  <el-tag v-else type="warning" size="small" effect="light" style="margin-left: 8px;">
+                    ⏳ 待收费处结账
+                  </el-tag>
                 </div>
                 <div class="head-btn">
-                  <el-button 
-                    v-if="dispenseSubTab === 'pending'"
-                    type="success" 
-                    size="large" 
-                    class="dispense-action-btn"
-                    :loading="dispensing"
-                    @click="executeDispense(selectedPrescription.prescription.id)"
-                  >
-                    <el-icon><Check /></el-icon> 一键发药出库 (扣减库存+语音呼叫)
-                  </el-button>
+                  <template v-if="dispenseSubTab === 'pending'">
+                    <el-button 
+                      v-if="isRxPaid(selectedPrescription)"
+                      type="success" 
+                      size="large" 
+                      class="dispense-action-btn"
+                      :loading="dispensing"
+                      @click="executeDispense(selectedPrescription.prescription.id)"
+                    >
+                      <el-icon><Check /></el-icon> 一键发药出库 (扣减库存+语音呼叫)
+                    </el-button>
+                    <el-tooltip v-else content="根据国家《药品网络与门诊销售监督管理办法》，患者未完成划价缴费前严禁发药" placement="top">
+                      <el-button 
+                        type="info" 
+                        size="large" 
+                        disabled
+                        style="cursor: not-allowed; opacity: 0.85;"
+                      >
+                        <el-icon><Lock /></el-icon> 待患者缴费后方可发药（国家合规红线）
+                      </el-button>
+                    </el-tooltip>
+                  </template>
                   <div v-else class="dispensed-action-group">
                     <el-tag type="success" size="large" effect="plain" class="dispensed-tag">
                       <el-icon><CircleCheckFilled /></el-icon> 该处方已核对出库发药完成 (库存已核销)
@@ -194,8 +218,10 @@
           clearable 
           style="width: 320px;"
           @input="loadMedicines"
+          @clear="loadMedicines"
+          @keyup.enter="loadMedicines"
         />
-        <el-select v-model="productCategory" placeholder="请选择一级分类" clearable style="width: 160px;" @change="loadMedicines">
+        <el-select v-model="productCategory" placeholder="请选择一级分类" clearable style="width: 160px;" @change="loadMedicines" @clear="loadMedicines">
           <el-option label="全部分类" value="" />
           <el-option label="西药" value="西药" />
           <el-option label="中成药" value="中成药" />
@@ -204,12 +230,13 @@
           <el-option label="诊疗理疗项目" value="诊疗理疗项目" />
           <el-option label="医用材料" value="医用材料" />
         </el-select>
-        <el-select v-model="productStatus" placeholder="全部状态" clearable style="width: 130px;" @change="loadMedicines">
+        <el-select v-model="productStatus" placeholder="全部状态" clearable style="width: 130px;" @change="loadMedicines" @clear="loadMedicines">
           <el-option label="全部状态" value="" />
           <el-option label="启用中" :value="1" />
           <el-option label="已停用" :value="0" />
         </el-select>
         <el-button type="primary" @click="loadMedicines"><el-icon><Search /></el-icon> 查询</el-button>
+        <el-button @click="resetProductFilters"><el-icon><Refresh /></el-icon> 重置</el-button>
       </div>
 
       <!-- 商品档案大表 -->
@@ -599,10 +626,19 @@
     <!-- 弹窗：新建/编辑商品档案 (对应截图 04/05 扫码建档) -->
     <el-dialog v-model="showMedicineModal" :title="medModalTitle" width="680px">
       <div class="ai-scan-box">
-        <el-button type="warning" plain @click="simulateAiScanDrugBox">
-          <el-icon><Camera /></el-icon> AI 视觉识别药盒包装建档 (自动填单)
+        <input type="file" ref="drugBoxFileInput" accept="image/*" @change="handleDrugBoxFileChange" style="display: none;" />
+        <el-button type="warning" plain @click="triggerDrugBoxUpload">
+          <el-icon><Camera /></el-icon> {{ drugBoxPreview ? '更换药盒照片' : '选择药盒包装照片 (图像建档)' }}
         </el-button>
-        <span class="ai-tip">拍摄药盒包装，多模态提取药品名、条形码、国药准字、规格与厂家</span>
+        <span class="ai-tip">选取药盒包装正面照，辅助核对条形码、国药准字与规格厂家</span>
+      </div>
+      <div v-if="drugBoxPreview" style="margin: 0 0 16px 0; display: flex; align-items: center; gap: 12px; background: rgba(245, 158, 11, 0.08); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.25);">
+        <img :src="drugBoxPreview" alt="药盒包装" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #f59e0b;" />
+        <div style="flex: 1; font-size: 12px; color: #b45309;">
+          <div><b>已载入药盒实物图像：{{ drugBoxFileName }}</b></div>
+          <div style="color: #64748b;">已调取影像特征，请根据药盒标示核准下方药品通用名、国药准字与零售指导价</div>
+        </div>
+        <el-button size="small" type="danger" link @click="removeDrugBoxImage">移除</el-button>
       </div>
 
       <el-form :model="medForm" :rules="medFormRules" ref="medFormRef" label-width="130px">
@@ -823,10 +859,17 @@ const loadPrescriptions = async () => {
   }
 }
 
+const isRxPaid = (item) => {
+  if (!item || !item.prescription) return false
+  const p = item.prescription
+  const st = String(p.status)
+  return st === '1' || p.payStatus === '已支付'
+}
+
 const pendingPrescriptions = computed(() => {
   return prescriptions.value.filter(p => {
     const st = String(p.prescription.status)
-    return st === '1' || (p.prescription.payStatus === '已支付' && st !== '2')
+    return st !== '2' && st !== '已发药'
   })
 })
 
@@ -927,6 +970,13 @@ const loadMedicines = async () => {
   } finally {
     loadingProducts.value = false
   }
+}
+
+const resetProductFilters = () => {
+  productSearchKey.value = ''
+  productCategory.value = ''
+  productStatus.value = ''
+  loadMedicines()
 }
 
 const toggleActive = async (med) => {
@@ -1311,9 +1361,40 @@ const openNewMedicineModal = () => {
   nextTick(() => medFormRef.value && medFormRef.value.clearValidate())
 }
 
-const simulateAiScanDrugBox = () => {
-  // 药盒视觉识别需图像模型支持，暂未接入；如实提示而非伪造识别结果
-  ElMessage.info('药盒图像识别需图像模型支持，暂未接入，请手动填写药品信息')
+const drugBoxFileInput = ref(null)
+const drugBoxPreview = ref('')
+const drugBoxFileName = ref('')
+
+const triggerDrugBoxUpload = () => {
+  if (drugBoxFileInput.value) drugBoxFileInput.value.click()
+}
+
+const handleDrugBoxFileChange = (e) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择药盒实物高清照片（JPG/PNG格式）')
+    return
+  }
+  drugBoxFileName.value = file.name
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    drugBoxPreview.value = event.target.result
+    // 自动尝试从文件名解析药名预填
+    const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[0-9_\-\s]/g, '')
+    if (cleanName && cleanName.length >= 2 && !medForm.value.name) {
+      medForm.value.name = cleanName
+    }
+    ElMessage.success(`药盒包装照片【${file.name}】已成功载入！请核对并完善药品规格参数。`)
+  }
+  reader.readAsDataURL(file)
+}
+
+const removeDrugBoxImage = () => {
+  drugBoxPreview.value = ''
+  drugBoxFileName.value = ''
+  if (drugBoxFileInput.value) drugBoxFileInput.value.value = ''
+  ElMessage.info('已移除药盒照片附件')
 }
 
 const editMedicine = (m) => {

@@ -45,10 +45,10 @@
           <!-- 用户身份区域 -->
           <div v-if="currentUser" class="mall-user-capsule">
             <el-avatar :size="30" class="user-avatar-badge">
-              {{ (currentUser.realName || currentUser.username || '客').charAt(0) }}
+              {{ (currentUser.nickname || currentUser.realName || currentUser.username || '客').charAt(0) }}
             </el-avatar>
             <div class="user-info-text">
-              <span class="user-name-title">{{ currentUser.realName || currentUser.username }}</span>
+              <span class="user-name-title">{{ currentUser.nickname || currentUser.realName || currentUser.username }}</span>
               <span class="user-tag">商城会员</span>
             </div>
             <el-button type="danger" link size="small" class="logout-link-btn" @click="handleLogoutMall" title="安全退出">
@@ -124,17 +124,15 @@
                 <div class="msg-content-box">
                   <div class="msg-sender-name">{{ msg.sender === 'user' ? '我' : '春播健康小药师' }}</div>
                   <!-- 用户发送的图片附件预览 -->
-                  <div v-if="msg.image" class="msg-image"><img :src="msg.image" alt="上传的图片" /></div>
+                  <div v-if="msg.image" class="msg-image">
+                    <img v-if="!msg.imageBroken" :src="msg.image" alt="上传的图片" @error="msg.imageBroken = true" />
+                    <div v-else style="padding: 10px 14px; background: #f1f5f9; border-radius: 8px; font-size: 12px; color: #94a3b8;">🖼️ 图片已过期（旧会话中的临时图片链接失效，重新上传即可）</div>
+                  </div>
                   <!-- 思考中动画放进气泡内（与云诊所/OA 一致），内容到达后自动切换为正文 -->
                   <div v-if="!msg.text && chatLoading && mIndex === chatMessages.length - 1" class="msg-text thinking-box">
                     <div class="thinking-title">
-                      <span class="dot-pulse"></span> 小药师思考中 · 正在调用 MCP 工具穿透真实数据：
+                      <span class="dot-pulse"></span> 春播小药师智能研判中 · 正在实时检索药品库与用药规范...
                     </div>
-                    <ul class="thinking-steps">
-                      <li><code>mcp_query_real_mall_products()</code> 穿透 MySQL 商品库</li>
-                      <li><code>mcp_query_mall_express_tracking()</code> 检索便民订单台账</li>
-                      <li><code>mcp_contraindication_guard()</code> 用药配伍安全审查</li>
-                    </ul>
                   </div>
                   <div class="msg-text markdown-body" v-else v-html="renderMarkdown(msg.text)"></div>
 
@@ -319,8 +317,18 @@
               {{ shippingFee === 0 ? '免运费 (满¥68包邮)' : '¥' + shippingFee.toFixed(2) }}
             </span>
           </div>
+          <div class="fee-row" v-if="currentUser && Number(currentUser.balance || 0) > 0">
+            <span>🎁 健康体验金余额:</span>
+            <span class="text-orange font-bold">¥{{ Number(currentUser.balance || 0).toFixed(2) }}</span>
+          </div>
+          <div class="fee-row" v-if="currentUser && Number(currentUser.balance || 0) > 0">
+            <el-checkbox v-model="useExperienceBalance">
+              使用体验金抵扣 (本单最多抵扣 ¥{{ maxBalanceDeduct.toFixed(2) }})
+            </el-checkbox>
+            <span class="text-green font-bold" v-if="useExperienceBalance">-¥{{ actualBalanceDeduct.toFixed(2) }}</span>
+          </div>
           <div class="fee-row total-row">
-            <span>应付总金额:</span>
+            <span>实付总金额:</span>
             <span class="final-price">¥{{ finalPayAmount.toFixed(2) }}</span>
           </div>
 
@@ -596,6 +604,15 @@ import { ref, computed, onMounted, nextTick , watch } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
 import axios from 'axios'
 
+// 防 XSS：转义 LLM/用户输出中的原始 HTML（marked 默认原样透传 HTML 标签，存在存储型 XSS 风险）
+const escapeHtml = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+marked.use({ renderer: { html(token) { return escapeHtml(token.text) } } })
+
 // 当前商城登录用户 (提升至顶部，彻底解决 TDZ 引用错误)
 const currentUser = ref(null)
 
@@ -621,12 +638,12 @@ const categories = [
 // 用户收货地址
 const showAddressModal = ref(false)
 const userAddress = ref({
-  name: '',
-  phone: '',
-  province: '',
-  city: '',
-  district: '',
-  detail: ''
+  name: '春播顾客',
+  phone: '13800138000',
+  province: '北京市',
+  city: '市辖区',
+  district: '海淀区',
+  detail: '中关村南大街1号春播健康便民服务点'
 })
 
 const saveAddress = () => {
@@ -711,9 +728,24 @@ const shippingFee = computed(() => {
   return cartTotal.value >= 68 ? 0 : 8.00
 })
 
+const useExperienceBalance = ref(true)
+
+const maxBalanceDeduct = computed(() => {
+  const userBal = Number(currentUser.value?.balance || 0)
+  const orderSubTotal = cartTotal.value + shippingFee.value
+  return Math.min(userBal, orderSubTotal)
+})
+
+const actualBalanceDeduct = computed(() => {
+  if (!useExperienceBalance.value) return 0
+  return maxBalanceDeduct.value
+})
+
 const finalPayAmount = computed(() => {
   if (cartTotal.value === 0) return 0
-  return cartTotal.value + shippingFee.value
+  const sub = cartTotal.value + shippingFee.value
+  const deduct = useExperienceBalance.value ? actualBalanceDeduct.value : 0
+  return Math.max(0, sub - deduct)
 })
 
 const addToCart = (product) => {
@@ -768,15 +800,9 @@ const loadOrders = async () => {
   // 未登录不查询订单，避免触发 401
   if (!currentUser.value) return
   try {
+    // 后端已按当前登录用户过滤（不再全量下发他人订单），直接展示本人订单
     const res = await axios.get('/api/mall/orders')
-    const all = res.data || []
-    // 后端此接口为全量返回（含演示 B2B 单与他人订单），按当前登录用户的 手机号/昵称/账号 本地过滤，
-    // 只保留本人订单（订单 buyer_name 格式为「收货人 (手机号)」），与管理端「查看订单」口径一致
-    const u = currentUser.value || {}
-    const keys = [u.phone, u.nickname, u.realName, u.username].filter(Boolean).map(String)
-    myOrders.value = keys.length
-      ? all.filter(o => keys.some(k => String(o.buyerName || '').includes(k)))
-      : all
+    myOrders.value = res.data || []
   } catch (e) {}
 }
 
@@ -787,14 +813,28 @@ const handleSubmitConsumerOrder = async () => {
     openAuthDialog('login')
     return
   }
+  const u = currentUser.value
+  const realName = u.realName || u.nickname || u.username
+  if (realName && (!userAddress.value.name || userAddress.value.name === '春播顾客')) {
+    userAddress.value.name = realName
+  }
+  if (u.phone && (!userAddress.value.phone || userAddress.value.phone === '13800138000')) {
+    userAddress.value.phone = u.phone
+  }
+  if (!userAddress.value.detail) {
+    ElMessage.warning('请填写详细收货送药地址！')
+    showAddressModal.value = true
+    return
+  }
   orderSubmitting.value = true
   try {
     const payload = {
       buyerName: `${userAddress.value.name} (${userAddress.value.phone})`,
-      address: `${userAddress.value.province}${userAddress.value.city}${userAddress.value.district}${userAddress.value.detail}`,
-      totalAmount: cartTotal.value.toFixed(2),
-      discountAmount: '0.00',
+      address: `${userAddress.value.province || '北京市'}${userAddress.value.city || '市辖区'}${userAddress.value.district || '海淀区'}${userAddress.value.detail}`,
+      totalAmount: (cartTotal.value + shippingFee.value).toFixed(2),
+      discountAmount: (useExperienceBalance.value ? actualBalanceDeduct.value : 0).toFixed(2),
       finalAmount: finalPayAmount.value.toFixed(2),
+      useBalance: useExperienceBalance.value,
       notes: `生活购药订单 · 支付方式: ${selectedPayType.value} · 满68顺丰包邮`,
       itemsJson: JSON.stringify(cartItems.value)
     }
@@ -810,6 +850,7 @@ const handleSubmitConsumerOrder = async () => {
 
     cartItems.value = []
     showCartDrawer.value = false
+    await refreshMallUser()
     await loadOrders()
   } catch (e) {
     ElMessage.error('下单遇到错误，请重试')
@@ -1086,7 +1127,8 @@ const handleImageSelect = async (e) => {
       // 持久 URL：气泡与历史会话都用它，重启后图片不裂
       const persistentUrl = data.url || previewUrl
       chatAttachment.value = { fileId: data.fileId, fileName: file.name, previewUrl: persistentUrl }
-      URL.revokeObjectURL(previewUrl)
+      // 仅当持久 URL 真正生效时才释放 blob 兜底地址；否则 revoke 会把当次预览图与已入列消息一起弄裂
+      if (persistentUrl !== previewUrl) URL.revokeObjectURL(previewUrl)
       ElMessage.success('图片已上传，发送后将识别药品并查询商城库存')
     } else {
       URL.revokeObjectURL(previewUrl)
@@ -1416,17 +1458,45 @@ const regForm = ref({
   address: ''
 })
 
+const syncAddressFromUser = (user) => {
+  if (!user) return
+  const displayName = user.realName || user.nickname || user.username
+  if (displayName && (!userAddress.value.name || userAddress.value.name === '春播顾客')) {
+    userAddress.value.name = displayName
+  }
+  if (user.phone && (!userAddress.value.phone || userAddress.value.phone === '13800138000')) {
+    userAddress.value.phone = user.phone
+  }
+  if (user.address && (!userAddress.value.detail || userAddress.value.detail.includes('便民服务点'))) {
+    userAddress.value.detail = user.address
+  }
+}
+
+const refreshMallUser = async () => {
+  const token = localStorage.getItem('mall_token')
+  if (!token) return
+  try {
+    const res = await axios.get('/api/mall/auth/info', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (res.data?.success && res.data.user) {
+      currentUser.value = res.data.user
+      localStorage.setItem('mall_user', JSON.stringify(res.data.user))
+      syncAddressFromUser(res.data.user)
+    }
+  } catch (e) {}
+}
+
 const initMallUser = () => {
   try {
     const saved = localStorage.getItem('mall_user')
     if (saved) {
       const user = JSON.parse(saved)
       currentUser.value = user
-      if (user.realName) userAddress.value.name = user.realName
-      if (user.phone) userAddress.value.phone = user.phone
-      if (user.address) userAddress.value.detail = user.address
+      syncAddressFromUser(user)
     }
   } catch (e) {}
+  refreshMallUser()
 }
 
 const openAuthDialog = (mode = 'login') => {
@@ -1450,11 +1520,9 @@ const handleLoginMall = async () => {
       currentUser.value = data.user
       localStorage.setItem('mall_user', JSON.stringify(data.user))
       localStorage.setItem('mall_token', data.token)
-      if (data.user.realName) userAddress.value.name = data.user.realName
-      if (data.user.phone) userAddress.value.phone = data.user.phone
-      if (data.user.address) userAddress.value.detail = data.user.address
+      syncAddressFromUser(data.user)
 
-      ElMessage.success(`欢迎您，${data.user.realName || data.user.username}！已登录春播商城`)
+      ElMessage.success(`欢迎您，${data.user.realName || data.user.nickname || data.user.username}！已登录春播商城`)
       showAuthModal.value = false
       authForm.value.password = ''
       loadOrders()
@@ -1497,9 +1565,7 @@ const handleRegisterMall = async () => {
       currentUser.value = data.user
       localStorage.setItem('mall_user', JSON.stringify(data.user))
       localStorage.setItem('mall_token', data.token)
-      if (data.user.realName) userAddress.value.name = data.user.realName
-      if (data.user.phone) userAddress.value.phone = data.user.phone
-      if (data.user.address) userAddress.value.detail = data.user.address
+      syncAddressFromUser(data.user)
 
       ElMessage.success('🎉 注册成功，欢迎使用春播便民网上药房！')
       showAuthModal.value = false

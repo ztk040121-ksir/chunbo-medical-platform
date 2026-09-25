@@ -25,7 +25,7 @@ spring:
 
   ai:
     openai:
-      api-key: sk-YOUR_API_KEY_HERE
+      api-key: sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77
       base-url: https://api.ohmygpt.com
       connect-timeout: 3s
       read-timeout: 8s
@@ -39,7 +39,7 @@ spring:
       audio:
         speech:
           base-url: https://api.ohmygpt.com
-          api-key: sk-YOUR_API_KEY_HERE
+          api-key: sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77
           options:
             model: tts-1
             voice: alloy
@@ -47,7 +47,7 @@ spring:
             speed: 1.0
         transcription:
           base-url: https://api.ohmygpt.com
-          api-key: sk-YOUR_API_KEY_HERE
+          api-key: sk-1FEAUBAdC6ee71Eaf9a3T3BLbkFJ6756Bd2A1B6B40B8aa77
           options:
             model: whisper-1
             language: zh      # 强制中文识别（whisper 默认自动检测，短音频常误判为英文）

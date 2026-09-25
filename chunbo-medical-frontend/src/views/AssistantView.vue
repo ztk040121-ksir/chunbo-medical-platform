@@ -26,7 +26,7 @@
         </div>
         <div class="metric-item">
           <span class="m-label">Token 成本累计</span>
-          <span class="m-val text-danger">¥{{ tokenStats.totalCostCny ? Number(tokenStats.totalCostCny).toFixed(4) : '0.0060' }}</span>
+          <span class="m-val text-danger">¥{{ tokenStats.totalCostCny ? Number(tokenStats.totalCostCny).toFixed(4) : '0.0000' }}</span>
         </div>
       </div>
     </div>
@@ -94,7 +94,7 @@
             <div v-for="(item, idx) in messageList" :key="idx" class="oa-bubble" :class="item.role">
               <div class="avatar">{{ item.role === 'user' ? '👨‍⚕️' : '💼' }}</div>
               <div class="content">
-                <div class="sender">{{ item.role === 'user' ? '李文华 (全科医生)' : '春播助手 AI 职能专家' }}</div>
+                <div class="sender">{{ item.role === 'user' ? `${currentDoctorName} (${currentDoctorTitle})` : '春播助手 AI 职能专家' }}</div>
                 <div class="markdown-body" v-html="renderMarkdown(item.content)"></div>
               </div>
             </div>
@@ -110,7 +110,7 @@
           <div class="chat-input-bar">
             <el-input 
               v-model="queryInput" 
-              placeholder="例如：查询李文华医生的上个月工资条明细、查询特色贴敷分成、发起调休申请" 
+              :placeholder="`例如：查询${currentDoctorName}的上个月工资条明细、查询特色贴敷分成、发起调休申请`" 
               @keyup.enter="sendQuery"
             />
             <el-button type="primary" :loading="loading" @click="sendQuery" icon="Promotion">发送问询</el-button>
@@ -306,6 +306,15 @@ import { marked } from 'marked'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+// 防 XSS：转义 LLM/用户输出中的原始 HTML
+const escapeHtml = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+marked.use({ renderer: { html(token) { return escapeHtml(token.text) } } })
+
 const currentTab = ref('chat')
 const messageList = ref([
   {
@@ -313,6 +322,10 @@ const messageList = ref([
     content: '您好！我是基层医生专属的「春播助手」。我可以为您查询：\n- 💵 **个人工资条明细与绩效提成**\n- 🌿 **诊所特色贴敷治疗疗程营收统计**\n- 📋 **在线发起调休、请假 OA 审批**\n- 📅 **门诊医生与护士值班排班安排**\n请点击上方快捷问询或直接在下方输入您的问题。'
   }
 ])
+const currentDoctorName = ref(localStorage.getItem('chunbo_display_name') || localStorage.getItem('chunbo_username') || '门诊医生')
+const currentDoctorId = ref(localStorage.getItem('chunbo_doctor_id') || 'DOC_1001')
+const currentDoctorTitle = ref(localStorage.getItem('chunbo_title') || '全科医生')
+
 const queryInput = ref('')
 const loading = ref(false)
 const scrollRef = ref(null)
@@ -323,7 +336,7 @@ const approvals = ref([])
 const tokenStats = ref({})
 
 const currentNetSalary = computed(() => {
-  return salarySlips.value.length > 0 ? salarySlips.value[0].netSalary : 13120.00
+  return salarySlips.value.length > 0 ? salarySlips.value[0].netSalary : 0.00
 })
 
 const pendingApprovalsCount = computed(() => {
@@ -379,7 +392,10 @@ const sendQuery = async () => {
   loading.value = true
 
   try {
-    const res = await axios.post('/api/assistant/chat', { message: text, doctorId: 'DOC_1001' })
+    const res = await axios.post('/api/assistant/chat', { 
+      message: text, 
+      doctorId: currentDoctorId.value || 'DOC_1001' 
+    })
     messageList.value.push({ role: 'assistant', content: res.data })
     await fetchAllOaData() // 刷新最新审批或 Token 数据
   } catch (e) {
@@ -395,7 +411,7 @@ const handleApprove = async (id, status) => {
     await axios.post('/api/assistant/approval/process', {
       id,
       status,
-      approver: '李文华 (全科主任)',
+      approver: `${currentDoctorName.value} (${currentDoctorTitle.value})`,
       comment: status === '已通过' ? '审核通过，已协调门诊轮值' : '不同意，请重新提交'
     })
     ElMessage.success(`审批单 OA${id} 已变更为【${status}】！`)

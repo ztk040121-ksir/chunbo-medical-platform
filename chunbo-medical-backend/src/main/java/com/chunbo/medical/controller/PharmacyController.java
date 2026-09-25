@@ -36,6 +36,9 @@ public class PharmacyController {
     @Autowired
     private ClinicSupplierMapper supplierMapper;
 
+    @Autowired(required = false)
+    private ClinicRegistrationMapper registrationMapper;
+
     @Autowired
     private CurrentUserService currentUserService;
 
@@ -61,11 +64,41 @@ public class PharmacyController {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Prescription p : list) {
             Map<String, Object> map = new HashMap<>();
-            map.put("prescription", p);
             List<PrescriptionItem> items = itemMapper.selectList(
                     new LambdaQueryWrapper<PrescriptionItem>().eq(PrescriptionItem::getPrescriptionId, p.getId())
             );
             map.put("items", items);
+
+            // 真实穿透关联挂号信息（获取真实门诊挂号诊金与挂号单流水号）
+            if (registrationMapper != null) {
+                try {
+                    ClinicRegistration reg = null;
+                    if (p.getPatientId() != null) {
+                        reg = registrationMapper.selectById(p.getPatientId());
+                    }
+                    if (reg == null && p.getPatientName() != null && !p.getPatientName().isEmpty()) {
+                        reg = registrationMapper.selectOne(new LambdaQueryWrapper<ClinicRegistration>()
+                                .eq(ClinicRegistration::getPatientName, p.getPatientName())
+                                .orderByDesc(ClinicRegistration::getId)
+                                .last("LIMIT 1"));
+                    }
+                    if (reg != null) {
+                        BigDecimal fee = reg.getRegFee() != null ? reg.getRegFee() : (reg.getFee() != null ? reg.getFee() : new BigDecimal("10.00"));
+                        p.setRegistrationId(reg.getId());
+                        p.setRegFee(fee);
+                        p.setRegNo(reg.getRegNo() != null ? reg.getRegNo() : ("GH" + reg.getId()));
+                        p.setRegType(reg.getRegType() != null ? reg.getRegType() : "普通门诊");
+                        p.setRegStatus(reg.getStatus() != null ? reg.getStatus() : "已结诊");
+
+                        map.put("registrationId", reg.getId());
+                        map.put("registrationNo", p.getRegNo());
+                        map.put("regFee", fee);
+                        map.put("regType", p.getRegType());
+                        map.put("regStatus", p.getRegStatus());
+                    }
+                } catch (Exception ignored) {}
+            }
+            map.put("prescription", p);
             result.add(map);
         }
         return result;
@@ -90,6 +123,12 @@ public class PharmacyController {
         if ("2".equals(p.getStatus()) || "已发药".equals(p.getStatus())) {
             res.setSuccess(false);
             res.setMessage("该处方已完成发药出库，请勿重复发药！");
+            return res;
+        }
+        // 门诊调剂发药硬红线：处方必须完成划价收费方可出库
+        if (!"1".equals(p.getStatus()) && !"已支付".equals(p.getPayStatus())) {
+            res.setSuccess(false);
+            res.setMessage("处方【" + (p.getPrescriptionNo() != null ? p.getPrescriptionNo() : prescriptionId) + "】尚未划价收费（当前状态: " + (p.getPayStatus() != null ? p.getPayStatus() : "待支付") + "），严禁调配发药！请患者先前往划价收费处缴费。");
             return res;
         }
 
@@ -144,11 +183,32 @@ public class PharmacyController {
     }
 
     /**
-     * 3. 获取药房药品字典与实时库存
+     * 3. 获取药房药品字典与实时库存（支持按通名/商品名/拼音码/条形码/库位码、一级分类、启用状态动态过滤）
      */
     @GetMapping("/medicines")
-    public List<Medicine> getMedicines() {
-        return medicineMapper.selectList(new LambdaQueryWrapper<Medicine>().orderByAsc(Medicine::getId));
+    public List<Medicine> getMedicines(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "primaryCategory", required = false) String primaryCategory,
+            @RequestParam(value = "isActive", required = false) Integer isActive) {
+
+        LambdaQueryWrapper<Medicine> qw = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            String kw = keyword.trim();
+            qw.and(w -> w.like(Medicine::getName, kw)
+                    .or().like(Medicine::getTradeName, kw)
+                    .or().like(Medicine::getPinyinCode, kw.toUpperCase())
+                    .or().like(Medicine::getBarcode, kw)
+                    .or().like(Medicine::getLocationCode, kw));
+        }
+        if (primaryCategory != null && !primaryCategory.trim().isEmpty()) {
+            qw.and(w -> w.eq(Medicine::getPrimaryCategory, primaryCategory.trim())
+                    .or().like(Medicine::getCategory, primaryCategory.trim()));
+        }
+        if (isActive != null) {
+            qw.eq(Medicine::getIsActive, isActive);
+        }
+        qw.orderByAsc(Medicine::getId);
+        return medicineMapper.selectList(qw);
     }
 
     /**

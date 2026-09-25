@@ -92,10 +92,12 @@ public class PatientController {
             @RequestParam("amount") Double amount) {
         Patient p = patientMapper.selectById(id);
         if (p == null) return Map.of("success", false, "msg", "患者不存在");
-        double newBalance = (p.getBalance() == null ? 0 : p.getBalance()) + amount;
+        java.math.BigDecimal cur = java.math.BigDecimal.valueOf(p.getBalance() == null ? 0.0 : p.getBalance());
+        java.math.BigDecimal add = java.math.BigDecimal.valueOf(amount != null ? amount : 0.0);
+        double newBalance = cur.add(add).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
         p.setBalance(newBalance);
         // 充值同时增加积分 (1元=1积分)
-        int newPoints = (p.getPoints() == null ? 0 : p.getPoints()) + (int) Math.floor(amount);
+        int newPoints = (p.getPoints() == null ? 0 : p.getPoints()) + (int) Math.floor(amount != null ? amount : 0.0);
         p.setPoints(newPoints);
         patientMapper.updateById(p);
         return Map.of("success", true, "balance", newBalance, "points", newPoints);
