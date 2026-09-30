@@ -45,6 +45,9 @@ public abstract class OaBaseAgent extends AbstractAgent {
     @Autowired
     protected com.chunbo.medical.service.OaAssistantService oaAssistantService;
 
+    @Autowired(required = false)
+    protected com.chunbo.medical.agent.react.ReActEngine reActEngine;
+
     @Override
     public String bizType() {
         return "oa";
@@ -65,6 +68,11 @@ public abstract class OaBaseAgent extends AbstractAgent {
         String role = resolveRole(userId);
         String name = resolveName(userId, role);
 
+        // 🧠 核心架构升级：ReAct 多步自主链式任务引擎
+        if (reActEngine != null && reActEngine.isCompositeTask(question)) {
+            return reActEngine.executeReActStream(question, sessionId, userId, role, name);
+        }
+
         // 附件（工资表图片/Excel）→ 提取表格 + function-calling 发工资
         String attachmentId = context != null ? String.valueOf(context.getOrDefault(AgentConstant.ATTACHMENT_ID, "")) : "";
         String attachmentFileName = context != null ? String.valueOf(context.getOrDefault(AgentConstant.ATTACHMENT_FILE_NAME, "")) : "";
@@ -72,106 +80,218 @@ public abstract class OaBaseAgent extends AbstractAgent {
             return salaryPaymentFlux(question, sessionId, userId, role, attachmentId, attachmentFileName);
         }
 
-        // 薪资绩效：升级为真正的 function-calling，LLM 自主调用 querySalarySlip（工具内部做 RBAC 校验）
+        org.springframework.ai.chat.model.ToolContext toolContext = createToolContext(sessionId, userId, role);
+
+        // 1. 薪资绩效：预取真实工资条数据，纯流式输出（杜绝带 tools 导致网关聚合缓冲）
         if ("OA_SALARY".equals(skillHint())) {
-            String sys = buildSalarySystemPrompt(name, role, userId);
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            String salaryData = "";
+            try {
+                boolean isSummaryQuery = question.contains("全院") || question.contains("汇总") || question.contains("全部") || question.contains("所有人") || question.contains("清单") || question.contains("列表");
+                String extracted = extractEmployee(question);
+                if (isSummaryQuery || (extracted == null && ("ADMIN".equals(role) || "HR".equals(role)))) {
+                    salaryData = assistantTools.queryAllSalarySlips(toolContext);
+                } else {
+                    String targetId = (extracted != null && !extracted.isBlank()) ? extracted : userId;
+                    salaryData = assistantTools.querySalarySlip(targetId, null, toolContext);
+                }
+            } catch (Exception e) {
+                salaryData = "查询工资条异常：" + e.getMessage();
+            }
+            String sys = buildSalarySystemPrompt(name, role, userId)
+                    + "\n\n【春播OA系统实时核验工资数据】\n" + salaryData
+                    + "\n\n【本轮回复无需调用任何工具】系统已在上方预取真实薪酬数据。请直接基于上方真实数据向用户解答，条理清晰，使用标准 Markdown 表格排版。";
+            return functionCallingFlux(question, sessionId, userId, role, sys);
         }
 
-        // 商城履约：AI 自主调用发货/确认送达/待发货清单工具（真实扣库存 + 出库台账 + 状态流转），支持按收货人姓名或订单号
+        // 2. 商城履约：精准区分「列表查询」与「发货动作」，预取真实订单数据后纯流式下发
         if ("OA_ORDER".equals(skillHint())) {
-            String sys = "你是「春播云管理系统中台 · 商城履约调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【核心数据边界约束】：本管理中台 AI 调度的数据仅受限于【春播云管理系统】与【春播商城】，只处理春播商城 C 端便民购药订单（B2C 开头），绝不涉及云门诊临床诊疗业务与院内药品采购单！\n"
-                    + "【订单查询、发货与送达必须自主调用工具，严禁凭空描述结果或推脱无法查询】\n"
-                    + "1. 用户要求查看待发货订单清单、查询全部订单或列表（如「商城待发货订单清单」「查询所有订单」「看看有哪些待发货」「最新订单列表」）时，"
-                    + "必须调用 queryMallOrdersList(statusFilter, limit) 工具——statusFilter 可传「待发货」「全部」「运输中」等；\n"
-                    + "2. 用户要求发货/出库（如「给李先生发货」）时，调用 shipCustomerOrder(customerOrOrderNo) 工具——支持收货人姓名或订单号，"
-                    + "系统会匹配其最新待发货订单，真实扣减库存、写入进销存流水并生成春播便民速递运单号；\n"
-                    + "3. 用户要求确认送达/签收（如「李先生的订单已送到了」）时，调用 confirmCustomerDelivered(customerOrOrderNo) 工具——"
-                    + "系统自动匹配其最新运输中订单并把状态改为「已送达 / 居民已签收」；\n"
-                    + "4. 用户要查某个具体客户的全部订单（如「查陈素芬的订单」）时，调用 queryMallUserOrders(userKeyword)；\n"
-                    + "5. 一条回复只处理用户当前要求的动作；工具返回成功后，向用户清晰转述结果；工具返回失败时如实告知原因，不要编造。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            StringBuilder sysBuilder = new StringBuilder();
+            sysBuilder.append("你是「春播云管理系统中台 · 商城履约调度智能体」，当前登录用户：").append(name)
+                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            try {
+                boolean isListQuery = question.contains("清单") || question.contains("列表") || question.contains("有哪些")
+                        || question.contains("查看") || question.contains("查询") || question.contains("待发货订单")
+                        || question.contains("所有订单") || question.contains("全部订单") || question.contains("看看") || question.contains("全部");
+
+                if (!isListQuery && (question.contains("发货") || question.contains("出库")) && (question.contains("给") || question.contains("为") || question.contains("B2C") || question.matches(".*[\\u4e00-\\u9fa5]{2,4}.*发货.*"))) {
+                    String customer = extractTargetName(question, "发货", "出库", "给", "为");
+                    String res = assistantTools.shipCustomerOrder(customer, toolContext);
+                    sysBuilder.append("\n【系统执行订单发货结果】\n").append(res).append("\n");
+                } else if (!isListQuery && (question.contains("送达") || question.contains("签收")) && (question.contains("给") || question.contains("为") || question.contains("B2C") || question.contains("确认") || question.matches(".*[\\u4e00-\\u9fa5]{2,4}.*(送达|签收).*"))) {
+                    String customer = extractTargetName(question, "送达", "签收", "确认");
+                    String res = assistantTools.confirmCustomerDelivered(customer, toolContext);
+                    sysBuilder.append("\n【系统确认送达结果】\n").append(res).append("\n");
+                } else {
+                    String filter = "全部";
+                    if (question.contains("待发") || question.contains("未发") || question.contains("待出库")) filter = "待发货";
+                    else if (question.contains("运输") || question.contains("在途") || question.contains("已发")) filter = "运输中";
+                    else if (question.contains("送达") || question.contains("已完成") || question.contains("已签收")) filter = "已送达";
+                    String res = assistantTools.queryMallOrdersList(filter, 15, toolContext);
+                    sysBuilder.append("\n【系统查询商城订单列表结果】\n").append(res).append("\n");
+                }
+            } catch (Exception e) {
+                sysBuilder.append("\n【操作结果】").append(e.getMessage()).append("\n");
+            }
+            sysBuilder.append("\n【本回复无需调用任何工具】系统已自动核查真实数据，请直接将上述真实订单履约看板和清单表格忠实清晰地转述输出，严禁擅自宣称无订单。");
+            return functionCallingFlux(question, sessionId, userId, role, sysBuilder.toString());
         }
 
-        // 商品与进销存：AI 自主调用上下架/调价/入库工具（真实改库），支持商品名模糊匹配
+        // 3. 商品与进销存：预取商品库存或执行上下架/调价/入库后纯流式下发
         if ("OA_PRODUCT".equals(skillHint())) {
-            String sys = "你是「春播云管理系统中台 · 商品与进销存调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【商品操作必须自主调用工具，严禁凭空描述结果】\n"
-                    + "1. 用户要求下架/上架商品（如「给稳健医疗医用外科口罩下架」）时，调用 changeProductSaleStatus(productName, action)；\n"
-                    + "2. 用户要求调价（如「口罩调价到 13.5」）时，调用 changeProductPrice(productName, newRetailPrice, newWholesalePrice)；\n"
-                    + "3. 用户要求入库补货（如「口罩补货 200 件」）时，调用 inboundProductStock(productName, quantity)；\n"
-                    + "4. 工具返回 needConfirm/候选清单时，向用户列出候选并询问操作哪一个，不要擅自选择；\n"
-                    + "5. 工具返回成功后清晰转述变更（价格从 X 到 Y、库存变化等）；失败时如实告知原因，不要编造。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            StringBuilder sysBuilder = new StringBuilder();
+            sysBuilder.append("你是「春播云管理系统中台 · 商品与进销存调度智能体」，当前登录用户：").append(name)
+                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            try {
+                boolean isAnalysisOrOverview = question.contains("研判") || question.contains("预警") || question.contains("分析")
+                        || question.contains("概况") || question.contains("报告") || question.contains("全部") || question.contains("清单") || question.contains("列表") || question.contains("所有");
+
+                if (!isAnalysisOrOverview && question.contains("下架") && (question.contains("把") || question.contains("给") || question.matches(".*[\\u4e00-\\u9fa5]{2,6}.*下架.*"))) {
+                    String pName = extractProductName(question, "下架", "把", "给");
+                    String res = assistantTools.changeProductSaleStatus(pName, "下架", toolContext);
+                    sysBuilder.append("\n【系统执行商品下架结果】\n").append(res).append("\n");
+                } else if (!isAnalysisOrOverview && question.contains("上架") && (question.contains("把") || question.contains("给") || question.matches(".*[\\u4e00-\\u9fa5]{2,6}.*上架.*"))) {
+                    String pName = extractProductName(question, "上架", "把", "给");
+                    String res = assistantTools.changeProductSaleStatus(pName, "上架", toolContext);
+                    sysBuilder.append("\n【系统执行商品上架结果】\n").append(res).append("\n");
+                } else if (!isAnalysisOrOverview && (question.contains("调价") || question.contains("改价")) && extractPrice(question) != null) {
+                    Double newPrice = extractPrice(question);
+                    String pName = extractProductName(question, "调价", "改价", "价格", "到", "为");
+                    String res = assistantTools.changeProductPrice(pName, newPrice, null, toolContext);
+                    sysBuilder.append("\n【系统执行商品调价结果】\n").append(res).append("\n");
+                } else if (!isAnalysisOrOverview && (question.contains("补货") || question.contains("入库")) && extractQuantity(question) != null) {
+                    Integer qty = extractQuantity(question);
+                    String pName = extractProductName(question, "补货", "入库", "件", "盒");
+                    String res = assistantTools.inboundProductStock(pName, qty, toolContext);
+                    sysBuilder.append("\n【系统执行商品入库结果】\n").append(res).append("\n");
+                } else {
+                    String res = assistantTools.queryMallInventoryAndPriceAnalysis(toolContext);
+                    sysBuilder.append("\n【系统全盘商品进销存与补货调价研判大盘数据】\n").append(res).append("\n");
+                }
+            } catch (Exception e) {
+                sysBuilder.append("\n【操作结果】").append(e.getMessage()).append("\n");
+            }
+            sysBuilder.append("\n【本回复无需调用任何工具】系统已自动核查真实商品进销存数据，请直接将上述【系统全盘商品进销存与补货调价研判大盘数据】忠实清晰地呈现给用户，做专业的补货优先级与调价策略解读，严禁声称未找到商品！");
+            return functionCallingFlux(question, sessionId, userId, role, sysBuilder.toString());
         }
-        // 商城用户管理：查询用户列表 / 注册引导 / 查用户订单 / 用户统计，AI 自主调用工具真实落库与查询
+
+        // 4. 商城用户管理：预取用户清单或统计后纯流式下发
         if ("OA_MALL_USER".equals(skillHint())) {
-            String sys = "你是「春播云管理系统中台 · 商城用户管理智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【核心数据边界约束】：本管理中台 AI 调度的数据仅受限于【春播云管理系统】与【春播商城】，绝不涉及云门诊临床诊疗业务！\n"
-                    + "【用户查询与注册必须走真实工具，严禁编造或推脱无法查询】\n"
-                    + "1. 用户询问商城注册了哪些用户、查询用户列表、或列出商城用户名单（如「商城注册了哪些用户」「查看注册用户名单」「有哪些用户」）时，"
-                    + "必须调用 queryMallUsersList(keyword, limit) 工具，如实返回包含账号、姓名、手机号、健康金余额与注册时间的真实用户清单表格；\n"
-                    + "2. 用户要注册/新增春播商城账户时，调用 registerMallUser(username, password, nickname, phone, address)；\n"
-                    + "   - 必填项与商城注册页完全一致：登录账号、登录密码（至少6位）、真实姓名或称呼、11位手机号（1开头）；只有收货地址可选；\n"
-                    + "   - 用户没提供时**一步一步引导**，一次问一项，别一口气抛一堆问题；信息齐了才调用工具一次完成注册；\n"
-                    + "   - 用户中途只补充部分信息（如只发一个手机号）时，继续引导剩余必填项，不要重新开始也不要胡乱套用；\n"
-                    + "   - 注册成功后如实转述账号信息与 ¥200 新人体验金；工具返回 NEED_MORE_INFO 时按清单继续提问；\n"
-                    + "   - 返回账号/手机号已占用时，如实转述是哪一个被占用，并给出换号或用原账号登录的建议。\n"
-                    + "3. 用户要查某个用户的订单（如「看看陈素芬的订单」）时，调用 queryMallUserOrders(userKeyword)——支持账号/手机号/姓名；\n"
-                    + "4. 用户问用户总数/活跃账户/冻结账户/新人购药金汇总时，调用 queryMallUserStats()；\n"
-                    + "5. 一切以工具返回的真实数据为准，查询不到就如实说明，不要编造。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            StringBuilder sysBuilder = new StringBuilder();
+            sysBuilder.append("你是「春播云管理系统中台 · 商城用户管理智能体」，当前登录用户：").append(name)
+                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            try {
+                if (question.contains("统计") || question.contains("总数") || question.contains("概况")) {
+                    String res = assistantTools.queryMallUserStats(toolContext);
+                    sysBuilder.append("\n【商城用户大盘统计结果】\n").append(res).append("\n");
+                } else {
+                    String kw = extractCleanKeyword(question, "商城", "用户", "名单", "列表", "有哪些", "查看", "查询", "注册");
+                    String res = assistantTools.queryMallUsersList(kw, 15, toolContext);
+                    sysBuilder.append("\n【商城注册用户名单结果】\n").append(res).append("\n");
+                }
+            } catch (Exception e) {
+                sysBuilder.append("\n【查询结果】").append(e.getMessage()).append("\n");
+            }
+            sysBuilder.append("\n【本回复无需调用任何工具】系统已自动检索真实商城用户数据，请基于上述结果向用户清晰转述与排版。");
+            return functionCallingFlux(question, sessionId, userId, role, sysBuilder.toString());
         }
-        // OA 请假审批：AI 自主调用名单查询/批准驳回/删除工具（真实落库，申请人端状态同步）
+
+        // 5. OA 请假审批：预取请假名单或执行审批动作后纯流式下发
         if ("OA_APPROVAL".equals(skillHint())) {
-            String sys = "你是「春播云管理系统中台 · OA 请假审批调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【审批操作必须调用工具，严禁凭空描述结果】\n"
-                    + "1. 用户要请假名单（如「把请假人员名单列出来」「未批准的请假人员」）时，调用 queryLeaveApprovals(onlyPending)——查未批准的传 true，查全部传 false；\n"
-                    + "2. 用户要批准/驳回请假（如「批准张小芳的请假」）时，调用 processLeaveApproval(applicantOrId, action)；\n"
-                    + "   - 工具返回候选清单（同一申请人多张单）时，先向用户确认处理哪一张，不要擅自选择；\n"
-                    + "3. 用户要删除请假单（如「把张小芳那个请假删了」）时，调用 deleteLeaveApproval(applicantOrId)；删除不可恢复，用户意图不明确时先确认；\n"
-                    + "4. 用户要提交请假申请（如「我明天想请一天病假」）时，调用 submitLeaveApproval(applicantName, approvalType, reason, startTime, endTime, days)——缺必填信息（假别/时间/事由）先一次性引导补齐再提交；\n"
-                    + "5. 工具返回成功后如实转述单号/申请人/审批结果；查不到或失败时如实说明，不要编造。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            StringBuilder sysBuilder = new StringBuilder();
+            sysBuilder.append("你是「春播云管理系统中台 · OA 请假审批调度智能体」，当前登录用户：").append(name)
+                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            try {
+                if (question.contains("批准") || question.contains("通过") || question.contains("同意")) {
+                    String target = extractTargetName(question, "批准", "通过", "同意", "请假", "单", "的");
+                    String res = assistantTools.processLeaveApproval(target, "批准", toolContext);
+                    sysBuilder.append("\n【系统执行审批批准结果】\n").append(res).append("\n");
+                } else if (question.contains("驳回") || question.contains("拒绝")) {
+                    String target = extractTargetName(question, "驳回", "拒绝", "请假", "单", "的");
+                    String res = assistantTools.processLeaveApproval(target, "驳回", toolContext);
+                    sysBuilder.append("\n【系统执行审批驳回结果】\n").append(res).append("\n");
+                } else if (question.contains("删")) {
+                    String target = extractTargetName(question, "删", "删除", "请假", "单", "的");
+                    String res = assistantTools.deleteLeaveApproval(target, toolContext);
+                    sysBuilder.append("\n【系统执行删除请假单结果】\n").append(res).append("\n");
+                } else {
+                    boolean onlyPending = question.contains("未") || question.contains("待");
+                    String res = assistantTools.queryLeaveApprovals(onlyPending, toolContext);
+                    sysBuilder.append("\n【系统查询请假单名单结果】\n").append(res).append("\n");
+                }
+            } catch (Exception e) {
+                sysBuilder.append("\n【操作结果】").append(e.getMessage()).append("\n");
+            }
+            sysBuilder.append("\n【本回复无需调用任何工具】系统已自动核查/执行上述指令，请基于上述真实审批结果向用户汇报。");
+            return functionCallingFlux(question, sessionId, userId, role, sysBuilder.toString());
         }
 
-        // 药房库存与智能补货调度：调用真实库存查询与补货预警工具
+        // 6. 药房库存与智能补货调度：预取药房库存或临期预警后纯流式下发
         if ("OA_INVENTORY".equals(skillHint())) {
-            String sys = "你是「春播云管理系统中台 · 智慧药房与库存调度智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【药品库存与补货预警必须调用真实工具，严禁凭空编造数据】\n"
-                    + "1. 用户查询药品库存（如「查一下阿莫西林还有多少」「感冒灵库存」）时，调用 queryPharmacyInventory(keyword)；\n"
-                    + "2. 用户询问药房缺药、库存预警、临期药品或需要补货采购（如「哪些药快没了」「生成采购补货清单」「临期预警」）时，调用 queryMedicineReplenishmentWarning()；\n"
-                    + "3. 工具返回成功后，向用户清晰展示表格与关键预警项，提供专业采购调拨建议。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+            StringBuilder sysBuilder = new StringBuilder();
+            sysBuilder.append("你是「春播云管理系统中台 · 智慧药房与库存调度智能体」，当前登录用户：").append(name)
+                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            try {
+                if (question.contains("补货") || question.contains("预警") || question.contains("缺药") || question.contains("临期") || question.contains("采购") || question.contains("快没")) {
+                    String res = assistantTools.queryMedicineReplenishmentWarning(toolContext);
+                    sysBuilder.append("\n【药房补货与临期预警实时分析】\n").append(res).append("\n");
+                } else {
+                    String kw = extractMedicineName(question);
+                    String res = assistantTools.queryPharmacyInventory(kw, toolContext);
+                    sysBuilder.append("\n【门诊药房真实库存查询结果】\n").append(res).append("\n");
+                }
+            } catch (Exception e) {
+                sysBuilder.append("\n【查询结果】").append(e.getMessage()).append("\n");
+            }
+            sysBuilder.append("\n【本回复无需调用任何工具】系统已检索真实药房进销存数据，请基于上述数据以专业医药管理口吻向用户汇报。");
+            return functionCallingFlux(question, sessionId, userId, role, sysBuilder.toString());
         }
 
-        // 大盘经营诊断：调用真实全院门诊与营收工具
+        // 7. 大盘经营诊断：预取门诊统计后纯流式下发
         if ("OA_ANALYTICS".equals(skillHint())) {
+            String period = "today";
+            if (question.contains("年")) period = "year";
+            else if (question.contains("月")) period = "month";
+            String res = "";
+            try {
+                res = assistantTools.queryClinicAnalytics(period, toolContext);
+            } catch (Exception e) {
+                res = "大盘数据获取异常：" + e.getMessage();
+            }
             String sys = "你是「春播云管理系统中台 · 门诊大盘经营诊断智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【大盘经营与营收数据必须调用真实工具，严禁编造假数据】\n"
-                    + "1. 用户询问今日经营、门诊接诊量、挂号收入、处方销售或综合营收（如「今天门诊怎么样」「看下本月营收」「今年总收入」）时，调用 queryClinicAnalytics(period)——period可传 today / month / year；\n"
-                    + "2. 工具返回数据后，结构化解读门诊运营现状，提炼亮点与改善建议。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+                    + "\n【门诊大盘与综合营收真实统计】\n" + res
+                    + "\n\n【本回复无需调用任何工具】请基于上述真实门诊运营大盘数据，结构化解读现状，提炼亮点与改善建议。";
+            return functionCallingFlux(question, sessionId, userId, role, sys);
         }
 
-        // 特色中药贴敷理疗：调用真实贴敷统计工具
+        // 8. 特色中药贴敷理疗：预取贴敷理疗台账后纯流式下发
         if ("OA_PLASTER".equals(skillHint())) {
+            String month = null;
+            if (question.contains("9月") || question.contains("09")) month = "2026-09";
+            else if (question.contains("8月") || question.contains("08")) month = "2026-08";
+            String res = "";
+            try {
+                res = assistantTools.queryPlasterStatistics(month, null, toolContext);
+            } catch (Exception e) {
+                res = "贴敷数据获取异常：" + e.getMessage();
+            }
             String sys = "你是「春播云管理系统中台 · 中药贴敷特色理疗智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "【贴敷理疗核算必须自主调用真实工具，严禁追问用户】\n"
-                    + "1. 用户询问贴敷统计、疗程量、品类分布、收入、理疗运营数据（如「查询特色贴敷理疗的运营数据」「贴敷创收情况」「9月份」）时，"
-                    + "必须立刻调用 queryPlasterStatistics(month, category) 工具——用户未明确指定具体月份时，month 传 null 即可，严禁追问用户月份！"
-                    + "如果用户提供了月份（如 9月份 / 2026-09），则将月份传入。\n"
-                    + "2. 工具返回后详细转述疗程量、各贴敷类型占比、执行站施术人次与创收数据，并结合真实数据给出专业的运营亮点与增收分析。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+                    + "\n【中药贴敷特色理疗运营真实统计】\n" + res
+                    + "\n\n【本回复无需调用任何工具】请基于上述真实贴敷统计数据，详细转述疗程量、各贴敷类型占比、施术人次与创收数据，给出专业运营分析。";
+            return functionCallingFlux(question, sessionId, userId, role, sys);
         }
 
-        // 门诊值班排班：调用排班日历工具
+        // 9. 门诊值班排班：预取排班表后纯流式下发
         if ("OA_SCHEDULE".equals(skillHint())) {
+            String res = "";
+            try {
+                res = assistantTools.checkShiftOrLeave(null, toolContext);
+            } catch (Exception e) {
+                res = "排班数据获取异常：" + e.getMessage();
+            }
             String sys = "你是「春播云管理系统中台 · 医生护士排班值班智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "1. 用户查询排班、值班、坐诊日历或请假情况时，调用 checkShiftOrLeave(queryDate)；\n"
-                    + "2. 结合工具返回结果清晰呈现排班表。";
-            return functionCallingFlux(question, sessionId, userId, role, sys, assistantTools);
+                    + "\n【门诊轮值排班与请假真实日历】\n" + res
+                    + "\n\n【本回复无需调用任何工具】请基于上述真实排班表，清晰呈现医生护士的值班安排。";
+            return functionCallingFlux(question, sessionId, userId, role, sys);
         }
 
         return assistantController.buildOaContentFlux(question, userId, role, name, skillHint());
@@ -330,5 +450,84 @@ public abstract class OaBaseAgent extends AbstractAgent {
         } catch (Exception ignored) {
         }
         return userId == null || userId.isEmpty() ? "系统用户" : userId;
+    }
+
+    private org.springframework.ai.chat.model.ToolContext createToolContext(String sessionId, String userId, String role) {
+        return new org.springframework.ai.chat.model.ToolContext(buildToolContext(sessionId, currentRequestId(), userId, role));
+    }
+
+    private String extractEmployee(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(DOC_\\w+|HR_\\w+|ADM_\\w+|[\\u4e00-\\u9fa5]{2,4}(?:医生|大夫|护士|主任)?)").matcher(text);
+        while (m.find()) {
+            String hit = m.group(1).replaceAll("(医生|大夫|护士|主任)", "");
+            if (!hit.matches("工资|薪酬|明细|考勤|查询|看看|多少|本月|上月|这个月")) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
+    private String extractTargetName(String text, String... verbs) {
+        if (text == null) return "";
+        java.util.regex.Matcher b2cMatcher = java.util.regex.Pattern.compile("(B2C\\w+)").matcher(text);
+        if (b2cMatcher.find()) {
+            return b2cMatcher.group(1);
+        }
+        java.util.regex.Matcher numMatcher = java.util.regex.Pattern.compile("\\b(\\d+)\\b").matcher(text);
+        if (numMatcher.find()) {
+            return numMatcher.group(1);
+        }
+        String clean = text;
+        for (String v : verbs) {
+            clean = clean.replace(v, "");
+        }
+        clean = clean.replaceAll("[，。？！、,?!\\s]", "").trim();
+        return clean.isEmpty() ? text : clean;
+    }
+
+    private String extractProductName(String text, String... stopwords) {
+        if (text == null) return "";
+        String clean = text;
+        for (String sw : stopwords) {
+            clean = clean.replace(sw, "");
+        }
+        clean = clean.replaceAll("[，。？！、,?!\\s]", "").trim();
+        return clean;
+    }
+
+    private Double extractPrice(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d{1,2})?)").matcher(text);
+        if (m.find()) {
+            try { return Double.parseDouble(m.group(1)); } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private Integer extractQuantity(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+        if (m.find()) {
+            try { return Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private String extractCleanKeyword(String text, String... stopwords) {
+        if (text == null) return null;
+        String clean = text;
+        for (String sw : stopwords) {
+            clean = clean.replace(sw, "");
+        }
+        clean = clean.replaceAll("[，。？！、,?!\\s]", "").trim();
+        return clean.isEmpty() ? null : clean;
+    }
+
+    private String extractMedicineName(String text) {
+        if (text == null) return null;
+        String clean = text.replaceAll("(查询|查一下|库存|还有多少|有没有|看看|门诊药房|药房|药品)", "")
+                .replaceAll("[，。？！、,?!\\s]", "").trim();
+        return clean.isEmpty() ? null : clean;
     }
 }

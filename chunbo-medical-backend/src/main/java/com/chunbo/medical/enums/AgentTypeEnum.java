@@ -19,6 +19,7 @@ public enum AgentTypeEnum {
     MED_DIAGNOSE("MED_DIAGNOSE", "辨证开方智能体"),
     MED_STOCK("MED_STOCK", "药房库存智能体"),
     MED_KNOWLEDGE("MED_KNOWLEDGE", "用药知识智能体"),
+    MED_MALL("MED_MALL", "便民购药智能体"),
 
     // ============ OA ============
     OA_ROUTE("OA_ROUTE", "中台路由智能体"),

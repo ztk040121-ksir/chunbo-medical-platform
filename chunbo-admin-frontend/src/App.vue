@@ -18,7 +18,7 @@
 
         <div class="login-tab-title">
           <h3>中台统一身份认证</h3>
-          <span class="version-tag">RBAC 安全系统 v4.0.0</span>
+          <span class="version-tag">RBAC 安全系统 v5.0.0</span>
         </div>
 
 

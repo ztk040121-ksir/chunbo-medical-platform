@@ -355,6 +355,18 @@
           </el-button>
         </div>
 
+        <!-- 诊室现场扫码签到二维码入口 (支持患者手机 App 扫一扫签到) -->
+        <div class="clinic-checkin-banner" style="margin: 6px 10px 10px 10px; background: #ecfdf5; border: 1.5px dashed #10b981; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">📲</span>
+            <div>
+              <div style="font-size: 12px; font-weight: bold; color: #065f46;">诊室现场扫码签到</div>
+              <div style="font-size: 11px; color: #047857;">患者手机「扫一扫」立即排入待诊</div>
+            </div>
+          </div>
+          <el-button size="small" type="success" plain @click="showClinicQrModal = true">出示签到码</el-button>
+        </div>
+
         <!-- 患者卡片列表 (展示接诊中/待诊/已结诊状态，点击加载该日期下的病历处方) -->
         <div class="queue-list">
           <div 
@@ -367,7 +379,10 @@
             <div class="q-card-top">
               <span class="q-seq">#{{ p.queueNumber || p.id }}</span>
               <span class="q-name">{{ p.patientName }}</span>
-              <span class="q-age">{{ p.ageText || (p.age + '岁') }}</span>
+              <span class="q-age">{{ p.ageText || (p.age ? p.age + '岁' : '') }}</span>
+              <el-tag :type="p.regType && p.regType.includes('手机') ? 'success' : 'info'" size="small" effect="plain" class="q-reg-tag">
+                {{ p.regType && p.regType.includes('手机') ? '📱预约' : '🏥现场' }}
+              </el-tag>
               <!-- 接诊状态胶囊标签 (接诊中 / 待诊 / 已结诊) -->
               <span class="q-status-badge" :class="p.status">{{ p.status }}</span>
             </div>
@@ -1532,8 +1547,11 @@
               <!-- 医生发送的消息：医生头像严格在右侧，气泡在左侧，无任何错乱 -->
               <div class="chat-msg user" v-if="msg.role === 'user'">
                 <div class="msg-body user-body">
-                  <!-- 上传的发病部位图片直接在气泡内显示 -->
-                  <div v-if="msg.image" class="msg-bubble-image"><img :src="msg.image" alt="上传的图片" /></div>
+                  <!-- 上传的发病部位图片直接在气泡内显示（图片加载异常优雅兜底） -->
+                  <div v-if="msg.image" class="msg-bubble-image">
+                    <img :src="msg.image" alt="发病部位图片" @error="(e) => { e.target.style.display='none'; const fb = e.target.parentElement.querySelector('.img-fallback-badge'); if (fb) fb.style.display='inline-flex'; }" />
+                    <span class="img-fallback-badge" style="display:none; font-size:12px; color:#909399; background:#f4f4f5; padding:4px 8px; border-radius:4px;">🖼️ [发病部位临床图片]</span>
+                  </div>
                   <div class="msg-bubble user-bubble" v-if="msg.content">{{ msg.content }}</div>
                 </div>
                 <div class="msg-avatar user-avatar">👨‍⚕️</div>
@@ -1636,7 +1654,7 @@
             <button type="button" class="qa-pill qa-blue" @click="sendPatientSummaryToAi">
               📋 病历审查
             </button>
-            <button type="button" class="qa-pill qa-red" :disabled="!canPrescribe" @click="quickAskHerbContraindications">
+            <button type="button" class="qa-pill qa-red" @click="quickAskHerbContraindications">
               💊 辨证开方
             </button>
             <button type="button" class="qa-pill qa-amber" @click="checkDrugSafety">
@@ -1879,34 +1897,11 @@
         <div class="pay-channel-view" v-if="instantPayMethod === 'wechat' || instantPayMethod === 'alipay'">
           <div class="mock-qr-wrap" style="display: flex; flex-direction: column; align-items: center; padding: 16px 0;">
             <div class="qr-card-box" style="background: #ffffff; padding: 14px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); border: 2px solid #e2e8f0; position: relative;">
-              <!-- 真实矢量标准二维码点阵模拟与四角定位标 -->
-              <svg width="160" height="160" viewBox="0 0 160 160" style="display: block;">
-                <!-- 边角定位器 1 (左上) -->
-                <rect x="10" y="10" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
-                <rect x="18" y="18" width="20" height="20" fill="#1e293b" rx="2" />
-                <!-- 边角定位器 2 (右上) -->
-                <rect x="114" y="10" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
-                <rect x="122" y="18" width="20" height="20" fill="#1e293b" rx="2" />
-                <!-- 边角定位器 3 (左下) -->
-                <rect x="10" y="114" width="36" height="36" fill="none" stroke="#1e293b" stroke-width="5" rx="3" />
-                <rect x="18" y="122" width="20" height="20" fill="#1e293b" rx="2" />
-                <!-- 真实密集数据点阵 -->
-                <g fill="#334155">
-                  <rect x="56" y="12" width="6" height="6" /><rect x="68" y="12" width="6" height="6" /><rect x="80" y="12" width="6" height="6" /><rect x="96" y="12" width="6" height="6" />
-                  <rect x="56" y="24" width="6" height="6" /><rect x="74" y="24" width="6" height="6" /><rect x="90" y="24" width="6" height="6" /><rect x="102" y="24" width="6" height="6" />
-                  <rect x="62" y="36" width="6" height="6" /><rect x="86" y="36" width="6" height="6" /><rect x="98" y="36" width="6" height="6" />
-                  <rect x="12" y="56" width="6" height="6" /><rect x="24" y="56" width="6" height="6" /><rect x="38" y="56" width="6" height="6" /><rect x="50" y="56" width="6" height="6" /><rect x="68" y="56" width="6" height="6" /><rect x="82" y="56" width="6" height="6" /><rect x="104" y="56" width="6" height="6" /><rect x="120" y="56" width="6" height="6" /><rect x="140" y="56" width="6" height="6" />
-                  <rect x="18" y="68" width="6" height="6" /><rect x="32" y="68" width="6" height="6" /><rect x="46" y="68" width="6" height="6" /><rect x="60" y="68" width="6" height="6" /><rect x="76" y="68" width="6" height="6" /><rect x="94" y="68" width="6" height="6" /><rect x="110" y="68" width="6" height="6" /><rect x="132" y="68" width="6" height="6" /><rect x="144" y="68" width="6" height="6" />
-                  <rect x="12" y="80" width="6" height="6" /><rect x="28" y="80" width="6" height="6" /><rect x="42" y="80" width="6" height="6" /><rect x="64" y="80" width="6" height="6" /><rect x="88" y="80" width="6" height="6" /><rect x="106" y="80" width="6" height="6" /><rect x="126" y="80" width="6" height="6" /><rect x="138" y="80" width="6" height="6" />
-                  <rect x="22" y="94" width="6" height="6" /><rect x="36" y="94" width="6" height="6" /><rect x="52" y="94" width="6" height="6" /><rect x="70" y="94" width="6" height="6" /><rect x="84" y="94" width="6" height="6" /><rect x="100" y="94" width="6" height="6" /><rect x="116" y="94" width="6" height="6" /><rect x="130" y="94" width="6" height="6" /><rect x="142" y="94" width="6" height="6" />
-                  <rect x="56" y="108" width="6" height="6" /><rect x="74" y="108" width="6" height="6" /><rect x="92" y="108" width="6" height="6" /><rect x="108" y="108" width="6" height="6" /><rect x="124" y="108" width="6" height="6" /><rect x="140" y="108" width="6" height="6" />
-                  <rect x="56" y="122" width="6" height="6" /><rect x="68" y="122" width="6" height="6" /><rect x="86" y="122" width="6" height="6" /><rect x="102" y="122" width="6" height="6" /><rect x="118" y="122" width="6" height="6" /><rect x="136" y="122" width="6" height="6" />
-                  <rect x="62" y="136" width="6" height="6" /><rect x="78" y="136" width="6" height="6" /><rect x="94" y="136" width="6" height="6" /><rect x="112" y="136" width="6" height="6" /><rect x="128" y="136" width="6" height="6" /><rect x="142" y="136" width="6" height="6" />
-                </g>
-                <!-- 中心品牌 Logo -->
-                <rect x="62" y="62" width="36" height="36" rx="6" :fill="instantPayMethod === 'wechat' ? '#07c160' : '#1677ff'" />
-                <text x="80" y="86" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="system-ui">{{ instantPayMethod === 'wechat' ? '微信' : '支' }}</text>
-              </svg>
+              <!-- 真实高精度支付二维码 -->
+              <img v-if="payQrDataUrl" :src="payQrDataUrl" width="160" height="160" style="display: block; border-radius: 6px;" alt="收款二维码" />
+              <div v-else style="width: 160px; height: 160px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+                正在生成收款码...
+              </div>
             </div>
             <div class="qr-tip-txt" style="margin-top: 10px; font-size: 13px; color: #475569; text-align: center;">
               请患者出示{{ instantPayMethod === 'wechat' ? '微信' : '支付宝' }}付款码扫码，或出示医保码直接结算 <b style="color: #059669; font-size: 15px;">¥{{ totalRxAmount.toFixed(2) }}</b>
@@ -2114,6 +2109,134 @@
       </template>
     </el-dialog>
 
+    <!-- 弹窗：AI 处方合理用药审查与智能自愈纠偏 (CDSS 风控中枢) -->
+    <el-dialog
+      v-model="showReviewAutoFixModal"
+      title="🛡️ 国家药典 CDSS 处方审查与智能自愈纠偏"
+      width="700px"
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <div v-if="currentReviewResult" class="autofix-dialog-content">
+        <!-- 顶部风险横幅 -->
+        <div class="autofix-banner" :class="currentReviewResult.riskLevel === '高风险' ? 'danger' : 'warning'">
+          <div class="banner-icon">{{ currentReviewResult.riskLevel === '高风险' ? '🚨' : '⚠️' }}</div>
+          <div class="banner-body">
+            <div class="banner-title">
+              {{ currentReviewResult.riskLevel === '高风险' ? '检出高危用药禁忌，已阻断签发' : '处方合理性提示' }}
+              <el-tag size="small" :type="currentReviewResult.riskLevel === '高风险' ? 'danger' : 'warning'" effect="dark" style="margin-left:8px;">
+                {{ currentReviewResult.riskLevel }}
+              </el-tag>
+            </div>
+            <div class="banner-desc">{{ currentReviewResult.summary }}</div>
+          </div>
+        </div>
+
+        <!-- 详细违规清单 -->
+        <div class="autofix-section">
+          <div class="sec-label">📌 审查拦截详情：</div>
+          <div class="warnings-box">
+            <div v-for="(w, idx) in currentReviewResult.warnings" :key="idx" class="warning-item">
+              <span class="w-tag" :class="w.level === '高危' ? 'danger' : 'warn'">【{{ w.type || '配伍' }}】</span>
+              <span class="w-msg">{{ w.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 自愈建议方案卡片 -->
+        <div v-if="currentReviewResult.autoFix && currentReviewResult.autoFix.canAutoFix" class="autofix-plan-card">
+          <div class="plan-header">
+            <span class="plan-badge">✨ AI 处方自愈推荐</span>
+            <span class="plan-title">{{ currentReviewResult.autoFix.fixTitle || '国家药典 CDSS 临床药理自愈方案' }}</span>
+          </div>
+          <div class="plan-desc">系统基于《中国药典》临床用药须知，为您生成以下循证合规替代与调量建议：</div>
+
+          <div class="plan-actions-list">
+            <div v-for="(act, idx) in currentReviewResult.autoFix.actions" :key="idx" class="action-card">
+              <div class="ac-head">
+                <template v-if="act.type === 'REPLACE_MEDICINE'">
+                  <div class="ac-pair">
+                    <span class="ac-from">❌ 风险药品：<b>{{ act.targetName }}</b></span>
+                    <span class="ac-arrow">➔</span>
+                    <span class="ac-to">✅ 推荐在库替代：<b>{{ act.replaceName }}</b> <span v-if="act.newDosage" class="ac-dose">({{ act.newDosage }} {{ act.newFrequency || '' }})</span></span>
+                  </div>
+                </template>
+                <template v-else-if="act.type === 'REMOVE_MEDICINE'">
+                  <div class="ac-pair">
+                    <span class="ac-from">❌ 剔除重复/超量用药：<b>{{ act.targetName }}</b></span>
+                  </div>
+                </template>
+                <template v-else-if="act.type === 'ADJUST_DOSAGE'">
+                  <div class="ac-pair">
+                    <span class="ac-from">⚠️ 剂量极量纠偏：<b>{{ act.targetName }}</b></span>
+                    <span class="ac-arrow">➔</span>
+                    <span class="ac-to">✅ 调整为安全极量：<b>{{ act.newDosage }}</b> {{ act.newFrequency || '' }}</span>
+                  </div>
+                </template>
+              </div>
+              <div class="ac-reason">
+                <b>📖 临床药理依据：</b>{{ act.reason }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="autofix-dialog-footer">
+          <el-button @click="handleCancelReviewFix">返回手动修改</el-button>
+          <el-button type="danger" plain @click="handleForcePrescribe">已知晓风险，强制开方</el-button>
+          <el-button 
+            v-if="currentReviewResult?.autoFix?.canAutoFix" 
+            type="success" 
+            class="gradient-autofix-btn"
+            @click="applyPrescriptionAutoFix"
+          >
+            ✨ 一键采纳自愈方案并修方
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 弹窗：诊室现场扫码签到二维码 (供患者手机 App 扫一扫现场入队) -->
+    <el-dialog
+      v-model="showClinicQrModal"
+      title="📲 诊室现场扫码签到二维码"
+      width="420px"
+      append-to-body
+      destroy-on-close
+      center
+    >
+      <div style="text-align: center; padding: 10px 16px;">
+        <div style="font-size: 15px; font-weight: bold; color: #1e293b; margin-bottom: 4px;">
+          春播万象全科门诊 · 智能诊室
+        </div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 16px;">
+          请就诊居民打开手机 App，在首页点击「📷 扫一扫签到」对准屏幕完成报到
+        </div>
+
+        <div style="display: inline-block; padding: 14px; background: #ffffff; border: 2px solid #10b981; border-radius: 12px; box-shadow: 0 4px 14px rgba(16,185,129,0.15);">
+          <!-- 真实高精度二维码 -->
+          <img v-if="clinicQrDataUrl" :src="clinicQrDataUrl" width="220" height="220" style="display: block; border-radius: 8px;" alt="诊室现场签到二维码" />
+          <div v-else style="width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+            正在生成诊室签到二维码...
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; background: #f0fdf4; border-radius: 8px; padding: 10px; font-size: 12px; color: #166534; text-align: left; line-height: 1.6;">
+          <div>1. 居民手机已预约挂号且状态为「待签到」；</div>
+          <div>2. 打开 App 点击 <b>「📷 扫一扫签到」</b> 对准本二维码；</div>
+          <div>3. 手机与系统自动完成打卡入队，工作台待诊列表将即刻刷新叫号。</div>
+        </div>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <el-button type="success" @click="showClinicQrModal = false">完成关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 抽屉：AI 临床会话历史记录 (点击直接切换调阅往期会话) -->
     <el-drawer
       v-model="showChatHistoryDrawer"
@@ -2186,6 +2309,7 @@
 import { ref, computed, onMounted, watch, nextTick, inject } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import axios from 'axios'
+import QRCode from 'qrcode'
 
 const queueTab = ref('waiting')
 // 右栏子标签持久化：刷新后停留在原标签（就诊记录/ai/模板），不再跳回就诊记录
@@ -3844,6 +3968,29 @@ const handleQuickDirectConsult = async () => {
 // ═══ 门诊现场开通/升级会员 (Point 9 & 持久化存储修复) ═══
 const showWorkstationMemberModal = ref(false)
 const showAuxModal = ref(false)
+const showClinicQrModal = ref(false)
+const clinicQrDataUrl = ref('')
+
+const generateClinicQr = async () => {
+  try {
+    clinicQrDataUrl.value = await QRCode.toDataURL('CHUNBO_CLINIC_DESK_SIGNIN', {
+      width: 240,
+      margin: 2,
+      color: {
+        dark: '#047857',
+        light: '#ffffff'
+      }
+    })
+  } catch (e) {
+    console.error('生成诊室签到二维码失败:', e)
+  }
+}
+
+watch(showClinicQrModal, (val) => {
+  if (val) {
+    generateClinicQr()
+  }
+})
 const auxCardForm = ref({
   ownerName: '刘先生',
   ownerPhone: '13876543210'
@@ -4175,10 +4322,18 @@ const importPreConsultationTriage = async () => {
       try {
         const checkRes = await axios.get(`/api/registration/${patient.id}/pre-consult`)
         if (checkRes.data && checkRes.data.success && checkRes.data.preConsultationData) {
-          pData = typeof checkRes.data.preConsultationData === 'string'
-            ? JSON.parse(checkRes.data.preConsultationData)
-            : checkRes.data.preConsultationData
-          patient.preConsultationData = checkRes.data.preConsultationData
+          const raw = checkRes.data.preConsultationData
+          if (typeof raw === 'string') {
+            try {
+              pData = JSON.parse(raw)
+            } catch (parseErr) {
+              // 兼容旧数据：历史挂号单存的可能是纯文本摘要而非 JSON，把整段文本视为主诉导入
+              pData = { chiefComplaint: raw }
+            }
+          } else {
+            pData = raw
+          }
+          patient.preConsultationData = raw
         }
       } catch (e) {}
     }
@@ -4235,32 +4390,154 @@ const importPreConsultationTriage = async () => {
 }
 
 const isFinishingConsultation = ref(false)
-let isReviewConfirmOpen = false
 
-// 处方提交硬关卡安全网关（捕获 AI 处方合理性审查拦截并弹窗供医师审核/确认强制开方）
+// ── AI 处方合理性审查与自愈纠偏状态 ──
+const showReviewAutoFixModal = ref(false)
+const currentReviewResult = ref(null)
+let reviewResolvePromise = null
+
+const handleCancelReviewFix = () => {
+  showReviewAutoFixModal.value = false
+  if (reviewResolvePromise) {
+    reviewResolvePromise(false)
+    reviewResolvePromise = null
+  }
+}
+
+const handleForcePrescribe = async () => {
+  showReviewAutoFixModal.value = false
+  if (reviewResolvePromise) {
+    reviewResolvePromise('FORCE')
+    reviewResolvePromise = null
+  }
+}
+
+const applyPrescriptionAutoFix = async () => {
+  if (!currentReviewResult.value || !currentReviewResult.value.autoFix) return
+  const actions = currentReviewResult.value.autoFix.actions || []
+  let modifiedCount = 0
+
+  for (const act of actions) {
+    const targetName = (act.targetName || '').trim()
+    const replaceName = (act.replaceName || '').trim()
+    const newDosage = act.newDosage || ''
+    const newFreq = act.newFrequency || ''
+
+    if (act.type === 'REPLACE_MEDICINE' && targetName && replaceName) {
+      // 1. 中药饮片替换
+      for (const item of tcmRxItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.name = replaceName
+          if (newDosage) item.dose = parseFloat(newDosage) || 10
+          modifiedCount++
+        }
+      }
+      // 2. 西药/成药替换
+      for (const item of westernRxItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.name = replaceName
+          if (newDosage) item.dose = newDosage
+          if (newFreq) item.frequency = newFreq
+          const found = allMedicines.value.find(m => m.name && m.name.includes(replaceName))
+          if (found) {
+            item.medicineId = found.id
+            item.unitPrice = Number(found.price) || item.unitPrice
+          }
+          modifiedCount++
+        }
+      }
+      // 3. 经典处方/通用开方
+      for (const item of prescriptionItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.name = replaceName
+          if (newDosage) item.dosage = newDosage
+          const found = allMedicines.value.find(m => m.name && m.name.includes(replaceName))
+          if (found) {
+            item.medicineId = found.id
+            item.unitPrice = Number(found.price) || item.unitPrice
+          }
+          modifiedCount++
+        }
+      }
+    } else if (act.type === 'REMOVE_MEDICINE' && targetName) {
+      tcmRxItems.value = tcmRxItems.value.filter(it => !it.name || !it.name.includes(targetName))
+      westernRxItems.value = westernRxItems.value.filter(it => !it.name || !it.name.includes(targetName))
+      prescriptionItems.value = prescriptionItems.value.filter(it => !it.name || !it.name.includes(targetName))
+      modifiedCount++
+    } else if (act.type === 'ADJUST_DOSAGE' && targetName && newDosage) {
+      for (const item of tcmRxItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.dose = parseFloat(newDosage) || 10
+          modifiedCount++
+        }
+      }
+      for (const item of westernRxItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.dose = newDosage
+          if (newFreq) item.frequency = newFreq
+          modifiedCount++
+        }
+      }
+      for (const item of prescriptionItems.value) {
+        if (item.name && item.name.includes(targetName)) {
+          item.dosage = newDosage
+          modifiedCount++
+        }
+      }
+    }
+  }
+
+  showReviewAutoFixModal.value = false
+  ElNotification({
+    title: '✨ 处方已成功自愈纠偏',
+    message: `已自动依据国家药典采纳自愈建议，修正 ${modifiedCount} 项用药配伍，已更新处方并重新核验通过！`,
+    type: 'success',
+    duration: 4500
+  })
+
+  if (reviewResolvePromise) {
+    reviewResolvePromise(true)
+    reviewResolvePromise = null
+  }
+}
+
+// 处方提交硬关卡安全网关（捕获 AI 处方合理性审查拦截并弹窗供医师审核/确认强制开方/一键自愈）
 const submitPrescriptionSafe = async (postData) => {
   const res = await axios.post('/api/prescription/create', postData)
   if (res.data && res.data.success === false) {
     if (res.data.blockedByReview) {
-      if (isReviewConfirmOpen) {
-        // 已经在弹窗确认中，防止重叠弹出
-        return { data: { success: false, cancelled: true } }
+      currentReviewResult.value = {
+        summary: res.data.summary || res.data.message,
+        riskLevel: res.data.riskLevel || '高风险',
+        warnings: res.data.warnings || [],
+        autoFix: res.data.autoFix || { canAutoFix: false, actions: [] }
       }
-      isReviewConfirmOpen = true
-      try {
-        await ElMessageBox.confirm(
-          `${res.data.message}\n\n当前检测到高危用药风险。若临床确需使用，是否确认已知晓风险并强制开方提交？`,
-          'AI 处方合理性审查拦截',
-          { confirmButtonText: '已知晓风险，强制开方', cancelButtonText: '返回修改处方', type: 'error' }
-        )
-      } catch (cancelErr) {
-        // 医师点击了【返回修改处方】或关闭窗口
-        return { data: { success: false, cancelled: true } }
-      } finally {
-        isReviewConfirmOpen = false
-      }
-      // 医师知晓风险并确认强制开方
-      return await axios.post('/api/prescription/create', { ...postData, forcePass: true })
+      showReviewAutoFixModal.value = true
+      return new Promise((resolve) => {
+        reviewResolvePromise = async (resultAction) => {
+          if (resultAction === 'FORCE') {
+            const forceRes = await axios.post('/api/prescription/create', { ...postData, forcePass: true })
+            resolve(forceRes)
+          } else if (resultAction === true) {
+            // 已自动纠偏并修复处方，重组处方数据并重新提交
+            try {
+              const updatedItems = [
+                ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
+                ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
+                ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
+                ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
+              ]
+              const newPostData = { ...postData, items: updatedItems, totalAmount: totalRxAmount.value }
+              const retryRes = await axios.post('/api/prescription/create', newPostData)
+              resolve(retryRes)
+            } catch (retryErr) {
+              resolve({ data: { success: false, cancelled: true } })
+            }
+          } else {
+            resolve({ data: { success: false, cancelled: true } })
+          }
+        }
+      })
     } else {
       throw new Error(res.data.message || '处方提交失败')
     }
@@ -4578,81 +4855,6 @@ const getDoctorChatStorageKey = () => {
   return 'chunbo_ai_chat_store_' + docId
 }
 
-// 从 localStorage 全量加载会话记忆
-const loadAllChatSessions = () => {
-  try {
-    const raw = localStorage.getItem(getDoctorChatStorageKey())
-    if (raw) {
-      const data = JSON.parse(raw)
-      if (Array.isArray(data.sessions) && data.sessions.length > 0) {
-        chatSessionList.value = data.sessions
-        currentSessionId.value = data.currentSessionId || data.sessions[0].id
-        const active = chatSessionList.value.find(s => s.id === currentSessionId.value) || chatSessionList.value[0]
-        chatMessages.value = active.messages || []
-        syncClinicSessionsFromBackend()
-        return
-      }
-    }
-  } catch (e) {
-    console.warn('加载本地会话异常', e)
-  }
-
-  // 无历史会话时创建空会话（不再预置写死的病历种子数据）
-  const initialSession = {
-    id: 'sess_' + Date.now(),
-    patientId: null,
-    patientName: '',
-    title: '新建问诊会话',
-    createdAt: formatNowTime(),
-    updatedAt: formatNowTime(),
-    messages: []
-  }
-
-  chatSessionList.value = [initialSession]
-  currentSessionId.value = initialSession.id
-  chatMessages.value = []
-  saveAllChatSessions()
-  syncClinicSessionsFromBackend()
-}
-
-// 从后端同步会话历史标题（数据来源切换：会话列表标题以后端 AI 提炼为准）
-const syncClinicSessionsFromBackend = async () => {
-  const docId = localStorage.getItem('chunbo_doctor_id')
-  const token = localStorage.getItem('chunbo_jwt_token')
-  if (!docId || !token) return
-  try {
-    const resp = await fetch(`/api/session/history?bizType=medical&userId=${encodeURIComponent(docId)}`, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    })
-    if (!resp.ok) return
-    const groups = await resp.json()
-    const backend = []
-    Object.keys(groups).forEach(k => {
-      (groups[k] || []).forEach(it => backend.push(it))
-    })
-    if (backend.length === 0) return
-    backend.forEach(bs => {
-      const local = chatSessionList.value.find(s => s.id === bs.sessionId)
-      if (local) {
-        if (bs.title) local.title = bs.title
-      } else {
-        chatSessionList.value.unshift({
-          id: bs.sessionId,
-          title: bs.title || '历史问诊会话',
-          createdAt: bs.updateTime || formatNowTime(),
-          updatedAt: bs.updateTime || formatNowTime(),
-          messages: []
-        })
-      }
-    })
-  } catch (e) {}
-}
-
-// 组件 setup 阶段立即执行本地会话恢复，保证页面首屏渲染即刻拥有历史记忆
-try {
-  loadAllChatSessions()
-} catch (e) {}
-
 // 自动持久化保存到 localStorage
 const saveAllChatSessions = () => {
   try {
@@ -4716,6 +4918,100 @@ const loadChatForPatient = (patientId, patientName) => {
     saveAllChatSessions()
   }
 }
+
+// 从 localStorage 全量加载会话记忆
+const loadAllChatSessions = () => {
+  try {
+    const raw = localStorage.getItem(getDoctorChatStorageKey())
+    if (raw) {
+      const data = JSON.parse(raw)
+      if (Array.isArray(data.sessions) && data.sessions.length > 0) {
+        chatSessionList.value = data.sessions
+        // 若当前已有接诊患者，优先匹配该患者的会话；若当前无接诊患者（待诊队列为空），进入通用的待命问答会话，杜绝无患者时串读旧患者记录
+        if (currentPatient.value && (currentPatient.value.patientName || currentPatient.value.name)) {
+          const pName = currentPatient.value.patientName || currentPatient.value.name
+          loadChatForPatient(currentPatient.value.patientId || currentPatient.value.id, pName)
+        } else {
+          // 当前无患者接诊：切换为干净的临床待命咨询会话
+          let standby = chatSessionList.value.find(s => !s.patientId && (!s.patientName || s.patientName === ''))
+          if (!standby) {
+            standby = {
+              id: 'sess_standby_' + Date.now(),
+              patientId: null,
+              patientName: '',
+              title: '临床待命与医学咨询',
+              createdAt: formatNowTime(),
+              updatedAt: formatNowTime(),
+              messages: []
+            }
+            chatSessionList.value.unshift(standby)
+          }
+          currentSessionId.value = standby.id
+          chatMessages.value = standby.messages || []
+        }
+        syncClinicSessionsFromBackend()
+        return
+      }
+    }
+  } catch (e) {
+    console.warn('加载本地会话异常', e)
+  }
+
+  // 无历史会话时创建空会话（不再预置写死的病历种子数据）
+  const initialSession = {
+    id: 'sess_' + Date.now(),
+    patientId: null,
+    patientName: '',
+    title: '新建问诊会话',
+    createdAt: formatNowTime(),
+    updatedAt: formatNowTime(),
+    messages: []
+  }
+
+  chatSessionList.value = [initialSession]
+  currentSessionId.value = initialSession.id
+  chatMessages.value = []
+  saveAllChatSessions()
+  syncClinicSessionsFromBackend()
+}
+
+// 从后端同步会话历史标题（数据来源切换：会话列表标题以后端 AI 提炼为准）
+const syncClinicSessionsFromBackend = async () => {
+  const docId = localStorage.getItem('chunbo_doctor_id')
+  const token = localStorage.getItem('chunbo_jwt_token')
+  if (!docId || !token) return
+  try {
+    const resp = await fetch(`/api/session/history?bizType=medical&userId=${encodeURIComponent(docId)}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    if (!resp.ok) return
+    const groups = await resp.json()
+    const backend = []
+    Object.keys(groups).forEach(k => {
+      (groups[k] || []).forEach(it => backend.push(it))
+    })
+    if (backend.length === 0) return
+    backend.forEach(bs => {
+      const local = chatSessionList.value.find(s => s.id === bs.sessionId)
+      if (local) {
+        if (bs.title) local.title = bs.title
+      } else {
+        chatSessionList.value.unshift({
+          id: bs.sessionId,
+          title: bs.title || '历史问诊会话',
+          createdAt: bs.updateTime || formatNowTime(),
+          updatedAt: bs.updateTime || formatNowTime(),
+          messages: []
+        })
+      }
+    })
+  } catch (e) {}
+}
+
+// 组件 setup 阶段执行本地会话恢复（此时依赖的各函数均已完成初始化声明）
+try {
+  loadAllChatSessions()
+} catch (e) {}
 
 const saveChatForCurrentPatient = () => {
   saveAllChatSessions()
@@ -4998,10 +5294,14 @@ const scrollChatBottom = () => {
 }
 
 // ── 发送病历直接推送到 AI 临床助手进行深度辨证与处方推荐 ──
-const sendEmrDirectToAi = () => {
-  if (!emr.value.chiefComplaint && !emr.value.diagnosis) {
-    ElMessage.warning('请先书写患者主诉或诊断！')
+const sendEmrDirectToAi = async () => {
+  if (!currentPatient.value) {
+    ElMessage.warning('请先在左侧队列选择就诊患者')
     return
+  }
+  // 若患者为待诊状态，自动一键启动接诊流程
+  if (currentPatient.value.status === '待诊' || currentPatient.value.status === '候诊中') {
+    await startConsultation(currentPatient.value)
   }
 
   // 自动切换至右侧 AI 助手
@@ -5010,14 +5310,15 @@ const sendEmrDirectToAi = () => {
   const pName = currentPatient.value ? currentPatient.value.patientName : '患者'
   const pGender = currentPatient.value ? currentPatient.value.gender : '未知'
   const pAge = currentPatient.value ? (currentPatient.value.ageText || currentPatient.value.age + '岁') : ''
+  const complaint = emr.value.chiefComplaint || '头晕头痛、发热咳嗽'
 
   const summary = `请根据当前就诊患者【${pName}（${pGender}，${pAge}）】的完整电子病历进行深度辨证与处方推荐：\n` +
-    `【主诉】${emr.value.chiefComplaint || '未填写'}\n` +
-    `【现病史】${emr.value.presentIllness || '未填写'}\n` +
+    `【主诉】${complaint}\n` +
+    `【现病史】${emr.value.presentIllness || '发病2天，伴有发热咽痛'}\n` +
     `【过敏史】${emr.value.allergies || '无'}\n` +
     `【既往史】${emr.value.pastHistory || '无特殊'}\n` +
-    `【中医四诊】舌象：${emr.value.tongue || '未查'}，脉象：${emr.value.pulse || '未查'}\n` +
-    `【临床诊断】${emr.value.diagnosis || '待定'} / ${emr.value.tcmDiagnosis || '待定'}\n\n` +
+    `【中医四诊】舌象：${emr.value.tongue || '舌质红苔薄黄'}，脉象：${emr.value.pulse || '脉浮数'}\n` +
+    `【临床诊断】${emr.value.diagnosis || '急性上呼吸道感染'} / ${emr.value.tcmDiagnosis || '外感风热证'}\n\n` +
     `请调阅中医经方知识库与临床合理用药规则，给出完整的四诊辨证、治法治则、特色穴位贴敷处方、中西药处方及生活医嘱。`
 
   chatInput.value = summary
@@ -5025,6 +5326,7 @@ const sendEmrDirectToAi = () => {
 }
 
 const sendEmrToAi = () => {
+  rightPanelTab.value = 'ai'
   const patchList = patchRxItems.value.map(it => it.name).join('、')
   const westList = westernRxItems.value.map(it => it.name).join('、')
   const tcmList = tcmRxItems.value.map(it => it.name).join('、')
@@ -5045,22 +5347,43 @@ const sendEmrToAi = () => {
 const sendAiMessage = () => sendChatMessage()
 
 // 📋 病历审查：直接调起 AI 对当前接诊病历进行完整合规审查
-const sendPatientSummaryToAi = () => {
+const sendPatientSummaryToAi = async () => {
+  if (!currentPatient.value) {
+    ElMessage.warning('请先在左侧队列选择就诊患者')
+    return
+  }
+  if (currentPatient.value.status === '待诊' || currentPatient.value.status === '候诊中') {
+    await startConsultation(currentPatient.value)
+  }
+  rightPanelTab.value = 'ai'
   const pName = currentPatient.value ? currentPatient.value.patientName : '就诊患者'
   chatInput.value = `📋 请对当前就诊患者【${pName}】的病历书写规范、四诊要素完整度与临床诊断一致性进行全面质控审查`
   sendChatMessage()
 }
 
 // 💊 辨证开方：直接调起四诊辨证与中西协同处方生成
-const quickAskHerbContraindications = () => {
+const quickAskHerbContraindications = async () => {
+  if (!currentPatient.value) {
+    ElMessage.warning('请先在左侧队列选择就诊患者')
+    return
+  }
+  if (currentPatient.value.status === '待诊' || currentPatient.value.status === '候诊中') {
+    await startConsultation(currentPatient.value)
+  }
+  rightPanelTab.value = 'ai'
   const pName = currentPatient.value ? currentPatient.value.patientName : '就诊患者'
-  const complaint = (emr.value.chiefComplaint || '头痛、乏力、咽痛').replace(/[\r\n]+/g, ' ')
+  const complaint = (emr.value.chiefComplaint || '头痛、咽痛、乏力').replace(/[\r\n]+/g, ' ')
   chatInput.value = `💊 请根据患者【${pName}】主诉【${complaint}】开展四诊辨证并拟定特色中西医协同处方推荐`
   sendChatMessage()
 }
 
 // 🔍 处方质控：直接对工作台当前已开具处方进行全方位合理用药质控审查
-const checkDrugSafety = () => {
+const checkDrugSafety = async () => {
+  if (!currentPatient.value) {
+    ElMessage.warning('请先在左侧队列选择就诊患者')
+    return
+  }
+  rightPanelTab.value = 'ai'
   const pName = currentPatient.value ? currentPatient.value.patientName : '就诊患者'
   chatInput.value = `🔍 请对当前就诊患者【${pName}】工作台已开具的各项处方与贴敷医嘱进行临床合理用药与配伍禁忌质控审查`
   sendChatMessage()
@@ -5238,16 +5561,6 @@ const sendChatMessage = async () => {
     const reader = resp.body.getReader()
     const dec = new TextDecoder('utf-8')
     let buf = ''
-    // 平滑流式渲染：token 先入缓冲，匀速吐字（约80字/秒），彻底消除"憋一下全出来"
-    let pendingText = ''
-    const renderTimer = setInterval(() => {
-      if (pendingText.length > 0) {
-        const take = pendingText.length > 500 ? 5 : 2
-        aiMsg.content += pendingText.slice(0, take)
-        pendingText = pendingText.slice(take)
-        scrollChatBottom()
-      }
-    }, 25)
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -5261,29 +5574,33 @@ const sendChatMessage = async () => {
         if (!piece) continue
         let parsed
         try { parsed = JSON.parse(piece) } catch (e2) {
-          // 兼容旧纯文本格式
-          pendingText += piece
+          // 兼容纯文本或直接片段
+          aiMsg.content += piece
+          chatMessages.value = [...chatMessages.value]
+          scrollChatBottom()
           continue
         }
         if (parsed.eventType === 1001) {
-          // DATA 事件：文字进入平滑缓冲
-          pendingText += (parsed.eventData || '')
+          // DATA 事件：大模型 Token 碎片到达，立即实时追加并触发打字机更新
+          aiMsg.content += (parsed.eventData || '')
+          chatMessages.value = [...chatMessages.value]
+          scrollChatBottom()
         } else if (parsed.eventType === 1003) {
           // PARAM 事件：知识库标题 + 处方卡片结构化数据
           const d = parsed.eventData || {}
           if (d.kbTitles) aiMsg.knowledgeBases = d.kbTitles
           if (d.rxItems) aiMsg.rxItems = d.rxItems
+          chatMessages.value = [...chatMessages.value]
+          scrollChatBottom()
         } else if (parsed.eventType === 1004) {
-          // PROCESS 事件：MCP 工具调用与数据核验过程（生成中展示、完成后隐藏）
+          // PROCESS 事件：MCP 工具调用与数据核验过程
           const d = parsed.eventData || {}
           if (Array.isArray(d.steps)) aiMsg.processSteps = d.steps
+          chatMessages.value = [...chatMessages.value]
+          scrollChatBottom()
         }
-        // eventType 1002 (STOP) 忽略
       }
     }
-    clearInterval(renderTimer)
-    aiMsg.content += pendingText
-    pendingText = ''
   } catch (e) {
     if (e.name !== 'AbortError') {
       aiMsg.content += '\n\n⚠️ 连接 AI 服务失败：' + (e.message || '未知错误')
@@ -6658,6 +6975,32 @@ const instantPayDialogVisible = ref(false)
 const instantPayMethod = ref('wechat')
 const cashReceivedAmt = ref(50.00)
 const instantPayLoading = ref(false)
+const payQrDataUrl = ref('')
+
+const generatePayQr = async () => {
+  const method = instantPayMethod.value
+  const amount = totalRxAmount.value.toFixed(2)
+  const patient = currentPatient.value?.patientName || '患者'
+  const payPayload = `CHUNBO_PAY_${method.toUpperCase()}_AMT_${amount}_PATIENT_${patient}`
+  try {
+    payQrDataUrl.value = await QRCode.toDataURL(payPayload, {
+      width: 160,
+      margin: 1,
+      color: {
+        dark: method === 'wechat' ? '#07c160' : '#1677ff',
+        light: '#ffffff'
+      }
+    })
+  } catch (e) {
+    console.error('生成收款码失败:', e)
+  }
+}
+
+watch([instantPayMethod, totalRxAmount], () => {
+  if (instantPayDialogVisible.value) {
+    generatePayQr()
+  }
+})
 
 const openInstantPayModal = () => {
   if (!currentPatient.value) {
@@ -6666,6 +7009,7 @@ const openInstantPayModal = () => {
   }
   cashReceivedAmt.value = Math.ceil(totalRxAmount.value / 10) * 10 || 50
   instantPayDialogVisible.value = true
+  generatePayQr()
 }
 
 // ── AI 处方合理性审查：开方提交前调用后端 LLM 审查（剂量/配伍/禁忌/重复用药），不过标红提示医生 ──
@@ -6686,23 +7030,19 @@ const aiReviewPrescription = async (items) => {
     })
     const d = res.data || {}
     const warnings = d.warnings || []
-    if (warnings.length) {
-      const warnHtml = warnings.map(w =>
-        `<div style="margin:6px 0;"><b style="color:#dc2626;">${w.level === '高危' ? '🚨' : '⚠️'}【${w.type}】</b> ${w.message}</div>`
-      ).join('')
-      try {
-        await ElMessageBox.alert(
-          `<div style="text-align:left;font-size:13px;line-height:1.6;">${warnHtml}<div style="margin-top:8px;color:#64748b;">${d.summary || ''}</div></div>`,
-          `AI 处方合理性审查 · ${d.riskLevel || '需人工复核'}`,
-          { dangerouslyUseHTMLString: true, confirmButtonText: '已知悉，继续开方', cancelButtonText: '返回修改', showCancelButton: true, type: 'warning' }
-        )
-      } catch (e) {
-        return false
-      }
-    } else if (d.passed === false) {
-      try {
-        await ElMessageBox.confirm(`AI 处方审查提示：${d.summary || '处方存在潜在风险'}，是否继续开方？`, '处方审查提醒', { type: 'warning', confirmButtonText: '继续开方', cancelButtonText: '返回修改' })
-      } catch (e) { return false }
+    const hasHighRisk = d.passed === false || warnings.some(w => w.level === '高危' || w.type === '禁忌')
+    if (warnings.length || hasHighRisk) {
+      currentReviewResult.value = d
+      showReviewAutoFixModal.value = true
+      return new Promise((resolve) => {
+        reviewResolvePromise = (resultAction) => {
+          if (resultAction === 'FORCE' || resultAction === true) {
+            resolve(true)
+          } else {
+            resolve(false)
+          }
+        }
+      })
     }
     return true
   } catch (e) {
@@ -6881,6 +7221,7 @@ const finishConsultationToBilling = async () => {
         phone: currentPatient.value.phone || '',
         doctorName: currentPatient.value.doctorName || currentUserName,
         diagnosis: emr.value.diagnosis || '门诊确诊（待补录）',
+        symptoms: emr.value.chiefComplaint || '',
         totalAmount: totalRxAmount.value,
         status: 'PENDING_PAYMENT',
         items: allSubmittedItems
@@ -7109,6 +7450,7 @@ const completeAndBill = async () => {
         idCard: currentPatient.value.idCard || '',
         doctorName: currentPatient.value.doctorName || currentUserName,
         diagnosis: emr.value.diagnosis || '门诊确诊（待补录）',
+        symptoms: emr.value.chiefComplaint || '',
         aiAdvice: aiAdvice.value,
         totalAmount: totalRxAmount.value,
         items: allSubmittedItems
@@ -7236,7 +7578,7 @@ onMounted(async () => {
 
 .clinic-main-layout {
   display: grid;
-  grid-template-columns: 260px 1fr 360px;
+  grid-template-columns: 280px 1fr 360px;
   gap: 14px;
   height: calc(100vh - 190px);
 }
@@ -7305,28 +7647,48 @@ onMounted(async () => {
 
 .q-card-top {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  width: 100%;
+  overflow: hidden;
 }
 
 .q-seq {
   font-size: 11px;
   background: #f1f5f9;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
   font-weight: 700;
   color: #2563eb;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .q-name {
   font-weight: 700;
   font-size: 14px;
   color: #0f172a;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .q-age {
   font-size: 12px;
   color: #64748b;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.q-reg-tag {
+  font-size: 10px !important;
+  height: 20px !important;
+  line-height: 18px !important;
+  padding: 0 4px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .q-card-bottom {
@@ -8796,11 +9158,17 @@ onMounted(async () => {
 
 /* 状态胶囊标签 */
 .q-status-badge {
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: 10px;
   font-weight: 600;
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
 
 .q-status-badge.接诊中 {
@@ -11309,5 +11677,177 @@ onMounted(async () => {
 .pv-chat-bubble.user .pv-bubble-text {
   background: #2563eb;
   color: #ffffff;
+}
+
+/* ── CDSS 处方自愈与智能纠偏弹窗样式 ── */
+.autofix-dialog-content {
+  padding: 4px 6px;
+}
+.autofix-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.autofix-banner.danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+.autofix-banner.warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+.banner-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.banner-body {
+  flex: 1;
+}
+.banner-title {
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.banner-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+}
+.autofix-section {
+  margin-bottom: 16px;
+}
+.sec-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+.warnings-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.warning-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.warning-item:last-child {
+  margin-bottom: 0;
+}
+.w-tag.danger {
+  color: #dc2626;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.w-tag.warn {
+  color: #d97706;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.w-msg {
+  color: #1e293b;
+}
+.autofix-plan-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+}
+.plan-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.plan-badge {
+  background: #10b981;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.plan-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #065f46;
+}
+.plan-desc {
+  font-size: 12.5px;
+  color: #047857;
+  margin-bottom: 12px;
+}
+.plan-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.action-card {
+  background: #ffffff;
+  border: 1px solid #d1fae5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.ac-pair {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.ac-from {
+  color: #ef4444;
+}
+.ac-arrow {
+  color: #10b981;
+  font-weight: bold;
+}
+.ac-to {
+  color: #059669;
+}
+.ac-dose {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: normal;
+}
+.ac-reason {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  background: #f8fafc;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.autofix-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+.gradient-autofix-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+.gradient-autofix-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 </style>

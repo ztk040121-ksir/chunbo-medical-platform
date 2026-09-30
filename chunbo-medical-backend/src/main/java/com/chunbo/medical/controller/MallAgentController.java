@@ -34,14 +34,33 @@ public class MallAgentController {
     @Autowired
     private MallGeneralAgent mallGeneralAgent;
 
+    @Autowired
+    private com.chunbo.medical.mapper.MallUserMapper mallUserMapper;
+
+    @Autowired
+    private com.chunbo.medical.service.OaAssistantService oaAssistantService;
+
     @GetMapping("/products")
     public List<MallProduct> getProducts() {
         return agentService.getProducts();
     }
 
     @GetMapping("/orders")
-    public List<MallOrder> getOrders(HttpServletRequest request) {
+    public List<MallOrder> getOrders(
+            @RequestParam(value = "username", required = false) String paramUsername,
+            @RequestParam(value = "phone", required = false) String paramPhone,
+            HttpServletRequest request) {
         String username = (String) request.getAttribute("username");
+        if (username == null || username.isBlank()) {
+            username = paramUsername;
+        }
+        if ((username == null || username.isBlank()) && paramPhone != null && !paramPhone.isBlank() && mallUserMapper != null) {
+            com.chunbo.medical.entity.MallUser mu = mallUserMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
+                            .eq(com.chunbo.medical.entity.MallUser::getPhone, paramPhone.trim())
+            );
+            if (mu != null) username = mu.getUsername();
+        }
         return agentService.getOrdersForUser(username);
     }
 
@@ -66,7 +85,13 @@ public class MallAgentController {
             @RequestParam(value = "sessionId", required = false, defaultValue = "SESSION_MALL_001") String sessionId,
             @RequestParam(value = "phone", required = false, defaultValue = "") String phone,
             @RequestParam(value = "userName", required = false, defaultValue = "") String userName,
-            @RequestParam(value = "attachmentId", required = false) String attachmentId) {
+            @RequestParam(value = "attachmentId", required = false) String attachmentId,
+            jakarta.servlet.http.HttpServletResponse response) {
+        if (response != null) {
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Connection", "keep-alive");
+        }
 
         String effectiveUserId = (phone != null && !phone.isEmpty()) ? phone
                 : (userName != null && !userName.isEmpty() ? userName : sessionId);
@@ -91,9 +116,41 @@ public class MallAgentController {
     public MallOrder createOrder(@RequestBody Map<String, Object> req, HttpServletRequest request) {
         // 从 token 解析当前登录用户名，用于订单落 user_id 精确隔离
         String username = (String) request.getAttribute("username");
+        if ((username == null || username.isBlank()) && req.containsKey("username") && req.get("username") != null) {
+            username = String.valueOf(req.get("username")).trim();
+        }
+        if ((username == null || username.isBlank()) && req.containsKey("buyerPhone") && req.get("buyerPhone") != null) {
+            String bPhone = String.valueOf(req.get("buyerPhone")).trim();
+            if (!bPhone.isBlank() && mallUserMapper != null) {
+                com.chunbo.medical.entity.MallUser mu = mallUserMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
+                                .eq(com.chunbo.medical.entity.MallUser::getPhone, bPhone)
+                );
+                if (mu != null) username = mu.getUsername();
+            }
+        }
         if (username != null && !username.isBlank()) {
             req.put("_username", username);
         }
         return agentService.createOrderFromBargain(req);
+    }
+
+    /**
+     * 患者端确认送达（居民签收）——C 端可访问接口（/api/mall 白名单放行）。
+     * 状态流转：已发货 → 已送达，与 PC 端 /api/admin/mall/order/deliver 共用同一份确定性逻辑。
+     * POST /api/mall/order/deliver  body: {"orderNo": "B2C..."}
+     */
+    @PostMapping("/order/deliver")
+    public Map<String, Object> confirmDelivered(@RequestBody Map<String, Object> body) {
+        String orderNo = body.getOrDefault("orderNo", "").toString().trim();
+        Map<String, Object> res = new HashMap<>();
+        if (orderNo.isEmpty()) {
+            res.put("success", false);
+            res.put("message", "订单号不能为空");
+            return res;
+        }
+        Map<String, Object> r = oaAssistantService.confirmOrderDelivered(orderNo);
+        res.putAll(r);
+        return res;
     }
 }

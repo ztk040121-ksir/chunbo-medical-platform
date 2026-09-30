@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.chunbo</groupId>
     <artifactId>chunbo-medical-backend</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>5.0.0</version>
     <name>chunbo-medical-backend</name>
     <description>春播云诊所 - 基于 Spring AI 的医疗问诊智能体平台</description>
 

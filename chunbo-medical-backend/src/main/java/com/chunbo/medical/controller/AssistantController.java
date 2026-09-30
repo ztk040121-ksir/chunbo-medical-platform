@@ -116,8 +116,14 @@ public class AssistantController {
             @RequestParam(value = "userName", required = false) String userName,
             @RequestParam(value = "sessionId", required = false) String sessionId,
             @RequestParam(value = "attachmentId", required = false) String attachmentId,
-            @RequestParam(value = "fileName", required = false) String fileName
+            @RequestParam(value = "fileName", required = false) String fileName,
+            jakarta.servlet.http.HttpServletResponse response
     ) {
+        if (response != null) {
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Connection", "keep-alive");
+        }
         String effectiveName = (userName != null && !userName.isEmpty()) ? userName : "系统用户";
         String effectiveSession = (sessionId != null && !sessionId.isEmpty()) ? sessionId : ("OA_" + UUID.randomUUID());
         String effectiveUserId = (userId != null && !userId.isEmpty()) ? userId : effectiveName;
@@ -429,7 +435,7 @@ public class AssistantController {
     private Flux<ChatEventVO> streamLlmDispatch(String msg, String userName, String userRole) {
         String system = buildDispatchPrompt(userName, userRole, msg);
         try {
-            return ChatClient.builder(chatModel).defaultTools(webFetchTools).build()
+            return ChatClient.builder(chatModel).build()
                     .prompt()
                     .system(system)
                     .user(msg)

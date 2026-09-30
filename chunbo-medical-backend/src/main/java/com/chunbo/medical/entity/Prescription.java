@@ -17,6 +17,7 @@ public class Prescription {
     private String patientName;
     private String doctorName;
     private String diagnosis;
+    private String symptoms;
     private String type;
     private BigDecimal totalAmount;
     private String status;
@@ -44,6 +45,9 @@ public class Prescription {
 
     public String getDiagnosis() { return diagnosis; }
     public void setDiagnosis(String diagnosis) { this.diagnosis = diagnosis; }
+
+    public String getSymptoms() { return symptoms; }
+    public void setSymptoms(String symptoms) { this.symptoms = symptoms; }
 
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }

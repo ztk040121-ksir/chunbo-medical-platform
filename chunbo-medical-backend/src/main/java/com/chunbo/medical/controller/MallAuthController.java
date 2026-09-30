@@ -77,10 +77,14 @@ public class MallAuthController {
         String displayName = !realName.isEmpty() ? realName : (!nickname.isEmpty() ? nickname : "健康居民");
         String finalPhone = !phone.isEmpty() ? phone : username;
 
+        String avatar = body.getOrDefault("avatar", "avatar_resident_1").trim();
+        if (avatar.isEmpty()) avatar = "avatar_resident_1";
+
         MallUser user = new MallUser();
         user.setUsername(username);
         user.setPassword(PasswordUtil.encode(password)); // BCrypt 强哈希加密
         user.setNickname(displayName);
+        user.setAvatar(avatar);
         user.setPhone(finalPhone);
         user.setAddress(address); // 收货地址由用户自行填写，注册时未填则留空（下单结算时再补），不写死默认地址
         user.setStatus("ENABLE");
@@ -96,6 +100,7 @@ public class MallAuthController {
         userData.put("username", user.getUsername());
         userData.put("nickname", user.getNickname());
         userData.put("realName", user.getNickname());
+        userData.put("avatar", user.getAvatar());
         userData.put("phone", user.getPhone());
         userData.put("address", user.getAddress());
         userData.put("balance", user.getBalance());
@@ -156,6 +161,7 @@ public class MallAuthController {
         userData.put("username", user.getUsername());
         userData.put("nickname", user.getNickname());
         userData.put("realName", user.getNickname());
+        userData.put("avatar", user.getAvatar() != null && !user.getAvatar().isEmpty() ? user.getAvatar() : "avatar_resident_1");
         userData.put("phone", user.getPhone());
         userData.put("address", user.getAddress());
         userData.put("balance", user.getBalance());
@@ -186,6 +192,7 @@ public class MallAuthController {
                     userData.put("username", user.getUsername());
                     userData.put("nickname", user.getNickname());
                     userData.put("realName", user.getNickname());
+                    userData.put("avatar", user.getAvatar() != null && !user.getAvatar().isEmpty() ? user.getAvatar() : "avatar_resident_1");
                     userData.put("phone", user.getPhone());
                     userData.put("address", user.getAddress());
                     userData.put("balance", user.getBalance());
@@ -199,5 +206,201 @@ public class MallAuthController {
         res.put("code", 401);
         res.put("message", "登录已过期");
         return ResponseEntity.status(401).body(res);
+    }
+
+    /**
+     * 更新用户个人资料（昵称、手机号、收货地址、头像）
+     */
+    @PostMapping("/profile")
+    public ResponseEntity<Map<String, Object>> updateProfile(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String currentUsername = null;
+        if (auth != null && auth.startsWith("Bearer ")) {
+            currentUsername = jwtUtil.validateToken(auth.substring(7));
+        }
+        if (currentUsername == null) {
+            currentUsername = body.getOrDefault("username", "").trim();
+        }
+
+        if (currentUsername == null || currentUsername.isEmpty()) {
+            res.put("success", false);
+            res.put("code", 401);
+            res.put("message", "请先登录后再修改个人信息");
+            return ResponseEntity.status(401).body(res);
+        }
+
+        MallUser user = mallUserMapper.selectOne(
+                new LambdaQueryWrapper<MallUser>().eq(MallUser::getUsername, currentUsername)
+        );
+        if (user == null) {
+            res.put("success", false);
+            res.put("code", 404);
+            res.put("message", "用户档案未找到");
+            return ResponseEntity.status(404).body(res);
+        }
+
+        if (body.containsKey("nickname") && !body.get("nickname").trim().isEmpty()) {
+            user.setNickname(body.get("nickname").trim());
+        }
+        if (body.containsKey("phone") && !body.get("phone").trim().isEmpty()) {
+            user.setPhone(body.get("phone").trim());
+        }
+        if (body.containsKey("address")) {
+            user.setAddress(body.get("address").trim());
+        }
+        if (body.containsKey("avatar") && !body.get("avatar").trim().isEmpty()) {
+            user.setAvatar(body.get("avatar").trim());
+        }
+
+        mallUserMapper.updateById(user);
+
+        Map<String, Object> userData = new HashMap<>();
+        userData.put("id", user.getId());
+        userData.put("username", user.getUsername());
+        userData.put("nickname", user.getNickname());
+        userData.put("realName", user.getNickname());
+        userData.put("avatar", user.getAvatar() != null ? user.getAvatar() : "avatar_resident_1");
+        userData.put("phone", user.getPhone());
+        userData.put("address", user.getAddress());
+        userData.put("balance", user.getBalance());
+        userData.put("points", user.getPoints());
+
+        res.put("success", true);
+        res.put("code", 200);
+        res.put("user", userData);
+        res.put("message", "个人资料更新成功！");
+        return ResponseEntity.ok(res);
+    }
+
+    /**
+     * 快捷更新收货地址
+     */
+    @PostMapping("/update-address")
+    public ResponseEntity<Map<String, Object>> updateAddress(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String currentUsername = null;
+        if (auth != null && auth.startsWith("Bearer ")) {
+            currentUsername = jwtUtil.validateToken(auth.substring(7));
+        }
+        if (currentUsername == null) {
+            currentUsername = body.getOrDefault("username", "").trim();
+        }
+
+        String newAddress = body.getOrDefault("address", "").trim();
+        if (newAddress.isEmpty()) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "收货地址不能为空");
+            return ResponseEntity.badRequest().body(res);
+        }
+
+        MallUser user = mallUserMapper.selectOne(
+                new LambdaQueryWrapper<MallUser>().eq(MallUser::getUsername, currentUsername)
+        );
+        if (user != null) {
+            user.setAddress(newAddress);
+            mallUserMapper.updateById(user);
+        }
+
+        res.put("success", true);
+        res.put("code", 200);
+        res.put("address", newAddress);
+        res.put("message", "收货地址已成功保存");
+        return ResponseEntity.ok(res);
+    }
+
+    /**
+     * 快捷更新用户头像
+     */
+    @PostMapping("/avatar")
+    public ResponseEntity<Map<String, Object>> updateAvatar(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String currentUsername = null;
+        if (auth != null && auth.startsWith("Bearer ")) {
+            currentUsername = jwtUtil.validateToken(auth.substring(7));
+        }
+        if (currentUsername == null) {
+            currentUsername = body.getOrDefault("username", "").trim();
+        }
+
+        String avatar = body.getOrDefault("avatar", "").trim();
+        if (avatar.isEmpty()) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "头像标识或URL不能为空");
+            return ResponseEntity.badRequest().body(res);
+        }
+
+        MallUser user = mallUserMapper.selectOne(
+                new LambdaQueryWrapper<MallUser>().eq(MallUser::getUsername, currentUsername)
+        );
+        if (user != null) {
+            user.setAvatar(avatar);
+            mallUserMapper.updateById(user);
+        }
+
+        res.put("success", true);
+        res.put("code", 200);
+        res.put("avatar", avatar);
+        res.put("message", "用户头像已成功更新");
+        return ResponseEntity.ok(res);
+    }
+
+    @Autowired
+    private com.chunbo.medical.service.FileUploadService fileUploadService;
+
+    @PostMapping(value = "/upload-avatar", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadAvatar(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam(value = "username", required = false) String paramUsername,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        Map<String, Object> res = new HashMap<>();
+        String currentUsername = null;
+        if (auth != null && auth.startsWith("Bearer ")) {
+            currentUsername = jwtUtil.validateToken(auth.substring(7));
+        }
+        if (currentUsername == null || currentUsername.isBlank()) {
+            currentUsername = paramUsername;
+        }
+
+        if (file == null || file.isEmpty()) {
+            res.put("success", false);
+            res.put("code", 400);
+            res.put("message", "请选择要上传的照片");
+            return ResponseEntity.badRequest().body(res);
+        }
+
+        Map<String, Object> uploadRes = fileUploadService.upload(file);
+        if (!Boolean.TRUE.equals(uploadRes.get("success"))) {
+            res.put("success", false);
+            res.put("code", 500);
+            res.put("message", uploadRes.getOrDefault("message", "头像文件上传失败"));
+            return ResponseEntity.status(500).body(res);
+        }
+
+        String url = (String) uploadRes.get("url");
+
+        if (currentUsername != null && !currentUsername.isBlank()) {
+            MallUser user = mallUserMapper.selectOne(
+                    new LambdaQueryWrapper<MallUser>().eq(MallUser::getUsername, currentUsername)
+            );
+            if (user != null) {
+                user.setAvatar(url);
+                mallUserMapper.updateById(user);
+            }
+        }
+
+        res.put("success", true);
+        res.put("code", 200);
+        res.put("url", url);
+        res.put("avatar", url);
+        res.put("message", "头像上传并保存成功");
+        return ResponseEntity.ok(res);
     }
 }

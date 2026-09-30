@@ -55,6 +55,9 @@ public class B2bMultiAgentService {
     @Autowired(required = false)
     private RagKnowledgeService ragKnowledgeService;
 
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.DoctorAccountMapper doctorAccountMapper;
+
     @Value("${chunbo.ai.llm-enabled:true}")
     private boolean llmEnabled;
 
@@ -86,7 +89,10 @@ public class B2bMultiAgentService {
         wrapper.and(w -> {
             w.eq(MallOrder::getUserId, uid);
             if (!nickname.isEmpty()) w.or().like(MallOrder::getBuyerName, nickname);
-            if (!phone.isEmpty()) w.or().like(MallOrder::getBuyerName, phone);
+            if (!phone.isEmpty()) {
+                w.or().like(MallOrder::getBuyerName, phone)
+                 .or().like(MallOrder::getBargainNotes, phone);
+            }
         });
         return orderMapper.selectList(wrapper);
     }
@@ -316,6 +322,7 @@ public class B2bMultiAgentService {
                 map.put("specification", p.getSpecification());
                 map.put("price", p.getRetailGuidePrice());
                 map.put("category", p.getCategory());
+                map.put("imageUrl", p.getImageUrl() != null ? p.getImageUrl() : "");
                 recommendations.add(map);
             }
 
@@ -361,6 +368,7 @@ public class B2bMultiAgentService {
                 map.put("price", p.getRetailGuidePrice());
                 map.put("category", p.getCategory());
                 map.put("csPitch", p.getCsPitch());
+                map.put("imageUrl", p.getImageUrl() != null ? p.getImageUrl() : "");
                 recommendations.add(map);
             }
 
@@ -457,6 +465,25 @@ public class B2bMultiAgentService {
             recommendProductByName("海氏海诺医用无菌创口贴", recommendations);
         }
 
+        // ── 智能对症科室与坐诊医生推荐（耳鼻喉/骨科/中医/儿科等不同层级专家及挂号费） ──
+        List<Map<String, Object>> matchedDoctors = matchDoctorsBySymptoms(msg);
+        if (!matchedDoctors.isEmpty()) {
+            StringBuilder docSb = new StringBuilder();
+            docSb.append("\n\n### 🏥 【春播便民门诊 · 智能对症分诊与坐诊医生推荐】\n");
+            String targetDept = matchedDoctors.get(0).get("department").toString();
+            docSb.append("根据您所描述的症状，建议挂号就诊科室：**【").append(targetDept).append("】**。门诊在席专家与医生：\n\n");
+            for (Map<String, Object> doc : matchedDoctors) {
+                docSb.append("• **").append(doc.get("doctorName")).append(" ").append(doc.get("title")).append("**（")
+                     .append(doc.get("level")).append(" · 挂号费：**¥").append(doc.get("consultationFee")).append("**）\n");
+                if (doc.get("specialty") != null && !doc.get("specialty").toString().isBlank()) {
+                    docSb.append("  - 擅长：").append(doc.get("specialty")).append("\n");
+                }
+            }
+            docSb.append("\n💡 您可在客户端首页「便民挂号」中直接选择该医生预约挂号，并获取签到二维码。\n");
+            reply = reply + docSb.toString();
+            result.put("recommendedDoctors", matchedDoctors);
+        }
+
         result.put("targetAgent", "RECOMMEND_AGENT");
         result.put("content", reply);
         result.put("stateFlow", stateFlow);
@@ -464,6 +491,53 @@ public class B2bMultiAgentService {
         result.put("agentName", "春播便民健康小药师");
         result.put("recommendations", recommendations);
         return result;
+    }
+
+    public List<Map<String, Object>> matchDoctorsBySymptoms(String message) {
+        if (doctorAccountMapper == null || message == null || message.isBlank()) return Collections.emptyList();
+        String msg = message.toLowerCase();
+        List<com.chunbo.medical.entity.DoctorAccount> all = doctorAccountMapper.selectList(
+                new LambdaQueryWrapper<com.chunbo.medical.entity.DoctorAccount>().eq(com.chunbo.medical.entity.DoctorAccount::getStatus, "ENABLE")
+        );
+        String targetDept = null;
+        if (msg.contains("耳") || msg.contains("鼻") || msg.contains("咽") || msg.contains("喉") || msg.contains("听力") || msg.contains("声带") || msg.contains("扁桃体") || msg.contains("腺样体") || msg.contains("耳鸣")) {
+            targetDept = "耳鼻喉科";
+        } else if (msg.contains("骨") || msg.contains("膝") || msg.contains("腰") || msg.contains("颈") || msg.contains("关节") || msg.contains("扭伤") || msg.contains("椎") || msg.contains("摔") || msg.contains("肌肉") || msg.contains("骨折") || msg.contains("骨科")) {
+            targetDept = "骨伤科";
+        } else if (msg.contains("儿") || msg.contains("宝宝") || msg.contains("小孩") || msg.contains("婴儿") || msg.contains("抽动")) {
+            targetDept = "儿科";
+        } else if (msg.contains("中药") || msg.contains("贴敷") || msg.contains("胃") || msg.contains("失眠") || msg.contains("虚") || msg.contains("调理") || msg.contains("气血") || msg.contains("中医")) {
+            targetDept = "中医内科";
+        }
+
+        if (targetDept == null && !msg.contains("挂号") && !msg.contains("医生") && !msg.contains("门诊") && !msg.contains("科室")) {
+            return Collections.emptyList();
+        }
+        if (targetDept == null) {
+            targetDept = "全科门诊";
+        }
+
+        List<Map<String, Object>> res = new ArrayList<>();
+        for (com.chunbo.medical.entity.DoctorAccount doc : all) {
+            if (doc.getDepartment() != null && doc.getDepartment().contains(targetDept)) {
+                Map<String, Object> dm = new HashMap<>();
+                dm.put("id", doc.getId());
+                dm.put("doctorName", doc.getDoctorName());
+                dm.put("department", doc.getDepartment());
+                dm.put("title", doc.getTitle());
+                dm.put("level", doc.getLevel() != null ? doc.getLevel() : "普通门诊");
+                dm.put("consultationFee", doc.getConsultationFee() != null ? doc.getConsultationFee() : new BigDecimal("15.00"));
+                dm.put("specialty", doc.getSpecialty());
+                res.add(dm);
+            }
+        }
+        // 按挂号费倒序排列（专家门诊在前，普通门诊在后）
+        res.sort((a, b) -> {
+            BigDecimal feeA = (BigDecimal) a.getOrDefault("consultationFee", BigDecimal.ZERO);
+            BigDecimal feeB = (BigDecimal) b.getOrDefault("consultationFee", BigDecimal.ZERO);
+            return feeB.compareTo(feeA);
+        });
+        return res;
     }
 
     /**
@@ -579,6 +653,7 @@ public class B2bMultiAgentService {
             map.put("price", p.getRetailGuidePrice());
             map.put("category", p.getCategory());
             map.put("csPitch", p.getCsPitch());
+            map.put("imageUrl", p.getImageUrl() != null ? p.getImageUrl() : "");
             list.add(map);
         }
     }
@@ -937,6 +1012,7 @@ public class B2bMultiAgentService {
                     map.put("price", p.getRetailGuidePrice());
                     map.put("category", p.getCategory());
                     map.put("csPitch", p.getCsPitch());
+                    map.put("imageUrl", p.getImageUrl() != null ? p.getImageUrl() : "");
                     recommendations.add(map);
                     if (recommendations.size() >= 3) break;
                 }

@@ -2,8 +2,10 @@ package com.chunbo.medical.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chunbo.medical.entity.ClinicRegistration;
+import com.chunbo.medical.entity.MallUser;
 import com.chunbo.medical.entity.Patient;
 import com.chunbo.medical.mapper.ClinicRegistrationMapper;
+import com.chunbo.medical.mapper.MallUserMapper;
 import com.chunbo.medical.mapper.PatientMapper;
 import com.chunbo.medical.service.CurrentUserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,9 @@ public class RegistrationController {
     @Autowired(required = false)
     private PatientMapper patientMapper;
 
+    @Autowired(required = false)
+    private MallUserMapper mallUserMapper;
+
     @Autowired
     private CurrentUserService currentUserService;
 
@@ -41,11 +46,18 @@ public class RegistrationController {
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "department", required = false) String department,
             @RequestParam(value = "doctorName", required = false) String doctorName,
+            @RequestParam(value = "userPhone", required = false) String userPhone,
+            @RequestParam(value = "patientPhone", required = false) String patientPhone,
             @RequestParam(value = "date", required = false) String date) {
         
         LambdaQueryWrapper<ClinicRegistration> qw = new LambdaQueryWrapper<>();
         if (date != null && !date.trim().isEmpty()) {
             qw.apply("DATE(create_time) = {0}", date);
+        }
+        String targetPhone = (userPhone != null && !userPhone.isBlank()) ? userPhone.trim() :
+                (patientPhone != null && !patientPhone.isBlank() ? patientPhone.trim() : null);
+        if (targetPhone != null) {
+            qw.eq(ClinicRegistration::getPhone, targetPhone);
         }
         if (status != null && !status.trim().isEmpty() && !"all".equalsIgnoreCase(status)) {
             if ("待就诊".equals(status) || "待诊".equals(status)) {
@@ -106,6 +118,10 @@ public class RegistrationController {
         BigDecimal fee = new BigDecimal(feeStr);
         reg.setRegFee(fee);
         reg.setFee(fee);
+
+        // 支付方式落库（微信支付/支付宝/到院支付/体验金抵扣），体验金抵扣时记录扣款会员账号供退号回补
+        String payMethod = req.getOrDefault("payMethod", "").toString();
+        reg.setPayMethod(payMethod);
 
         // 挂号后统一进入【待签到】：必须到店签到才转入待诊队列（医生工作台当面快速挂号显式传"待诊"的豁免）
         String st = req.getOrDefault("status", "待签到").toString();
@@ -218,6 +234,28 @@ public class RegistrationController {
             reg.setPatientId(null);
         }
 
+        // 挂号费体验金抵扣：useBalance=true 时用登录会员账号余额抵扣挂号费（余额不足则挂号失败）
+        boolean useBalance = Boolean.parseBoolean(req.getOrDefault("useBalance", "false").toString());
+        if (useBalance && mallUserMapper != null) {
+            String username = req.getOrDefault("username", "").toString().trim();
+            if (!username.isEmpty()) {
+                MallUser mallUser = mallUserMapper.selectOne(
+                        new LambdaQueryWrapper<MallUser>().eq(MallUser::getUsername, username).last("LIMIT 1"));
+                if (mallUser != null) {
+                    BigDecimal bal = mallUser.getBalance() == null ? BigDecimal.ZERO : mallUser.getBalance();
+                    if (bal.compareTo(fee) >= 0) {
+                        mallUser.setBalance(bal.subtract(fee));
+                        mallUserMapper.updateById(mallUser);
+                        // 记录扣款会员账号，退号时据此等额回补
+                        reg.setPayUsername(username);
+                    } else {
+                        throw new RuntimeException("健康体验金余额不足（当前 ¥" + bal.toPlainString()
+                                + "），请改用微信/支付宝或到院支付");
+                    }
+                }
+            }
+        }
+
         registrationMapper.insert(reg);
         return reg;
     }
@@ -282,6 +320,43 @@ public class RegistrationController {
         return reg;
     }
 
+    /** 手机端修改挂号单：主诉/联系电话/地址/预问诊数据。仅【待签到】【待诊】允许修改，就诊中及之后禁止 */
+    @PostMapping("/update")
+    public Map<String, Object> updateRegistration(@RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        Long id = Long.valueOf(body.get("id").toString());
+        ClinicRegistration reg = registrationMapper.selectById(id);
+        if (reg == null) {
+            res.put("success", false);
+            res.put("message", "挂号记录不存在");
+            return res;
+        }
+        String status = reg.getStatus();
+        if (!"待签到".equals(status) && !"待诊".equals(status)) {
+            res.put("success", false);
+            res.put("message", "当前状态【" + status + "】不允许修改，请联系接诊医生");
+            return res;
+        }
+        if (body.containsKey("symptoms")) {
+            reg.setSymptoms(String.valueOf(body.getOrDefault("symptoms", "")).trim());
+        }
+        if (body.containsKey("phone")) {
+            String phone = String.valueOf(body.getOrDefault("phone", "")).trim();
+            if (!phone.isEmpty()) reg.setPhone(phone);
+        }
+        if (body.containsKey("address")) {
+            reg.setAddress(String.valueOf(body.getOrDefault("address", "")).trim());
+        }
+        if (body.containsKey("preConsultationData")) {
+            reg.setPreConsultationData(String.valueOf(body.getOrDefault("preConsultationData", "")));
+        }
+        registrationMapper.updateById(reg);
+        res.put("success", true);
+        res.put("message", "挂号信息已更新");
+        res.put("registration", reg);
+        return res;
+    }
+
     @PostMapping("/start-consult/{id}")
     public ClinicRegistration startConsultation(@PathVariable("id") Long id) {
         ClinicRegistration reg = registrationMapper.selectById(id);
@@ -318,6 +393,24 @@ public class RegistrationController {
     public ClinicRegistration cancelRegistration(@PathVariable("id") Long id) {
         ClinicRegistration reg = registrationMapper.selectById(id);
         if (reg != null) {
+            // 退号回补体验金：挂号时用健康体验金抵扣的，退号时等额回补到原扣款会员账户
+            if ("体验金抵扣".equals(reg.getPayMethod()) && reg.getPayUsername() != null
+                    && !reg.getPayUsername().isBlank() && mallUserMapper != null) {
+                try {
+                    MallUser mallUser = mallUserMapper.selectOne(
+                            new LambdaQueryWrapper<MallUser>()
+                                    .eq(MallUser::getUsername, reg.getPayUsername().trim())
+                                    .last("LIMIT 1"));
+                    if (mallUser != null) {
+                        BigDecimal fee = reg.getRegFee() == null ? BigDecimal.ZERO : reg.getRegFee();
+                        BigDecimal bal = mallUser.getBalance() == null ? BigDecimal.ZERO : mallUser.getBalance();
+                        mallUser.setBalance(bal.add(fee));
+                        mallUserMapper.updateById(mallUser);
+                    }
+                } catch (Exception ignored) {
+                    // 回补失败不影响退号主流程
+                }
+            }
             reg.setStatus("已退");
             registrationMapper.updateById(reg);
         }

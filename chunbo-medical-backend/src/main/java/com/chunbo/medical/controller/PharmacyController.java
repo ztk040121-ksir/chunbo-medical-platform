@@ -449,4 +449,79 @@ public class PharmacyController {
         res.put("message", "选项已删除！");
         return res;
     }
+
+    /**
+     * 药房缺药时的在库药理等效替代推荐（严格只查本院药房在库库存 stock > 0，杜绝跨库与无货虚报）
+     */
+    @GetMapping("/substitutes")
+    public Map<String, Object> getDrugSubstitutes(
+            @RequestParam(value = "medicineId", required = false) Long medicineId,
+            @RequestParam(value = "medicineName", required = false) String medicineName) {
+        Map<String, Object> res = new HashMap<>();
+        Medicine target = null;
+        if (medicineId != null) {
+            target = medicineMapper.selectById(medicineId);
+        }
+        if (target == null && medicineName != null && !medicineName.trim().isEmpty()) {
+            target = medicineMapper.selectOne(new LambdaQueryWrapper<Medicine>()
+                    .like(Medicine::getName, medicineName.trim())
+                    .last("LIMIT 1"));
+        }
+
+        if (target == null) {
+            res.put("hasSubstitutes", false);
+            res.put("message", "未找到指定药品信息");
+            res.put("substitutes", Collections.emptyList());
+            return res;
+        }
+
+        res.put("targetMedicine", target);
+        String category = target.getCategory() != null ? target.getCategory().trim() : "";
+        String primaryCat = target.getPrimaryCategory() != null ? target.getPrimaryCategory().trim() : "";
+
+        // 查询本院在库且库存充足 (stock > 0) 的同类药品
+        LambdaQueryWrapper<Medicine> qw = new LambdaQueryWrapper<>();
+        qw.ne(Medicine::getId, target.getId())
+          .gt(Medicine::getStock, 0);
+
+        if (!category.isEmpty()) {
+            qw.eq(Medicine::getCategory, category);
+        } else if (!primaryCat.isEmpty()) {
+            qw.eq(Medicine::getPrimaryCategory, primaryCat);
+        }
+
+        qw.orderByDesc(Medicine::getStock).last("LIMIT 6");
+        List<Medicine> subs = medicineMapper.selectList(qw);
+
+        // 如果同细分类没有，退化为同大类
+        if (subs.isEmpty() && !primaryCat.isEmpty() && !primaryCat.equals(category)) {
+            LambdaQueryWrapper<Medicine> fallbackQw = new LambdaQueryWrapper<>();
+            fallbackQw.ne(Medicine::getId, target.getId())
+                      .gt(Medicine::getStock, 0)
+                      .eq(Medicine::getPrimaryCategory, primaryCat)
+                      .orderByDesc(Medicine::getStock)
+                      .last("LIMIT 6");
+            subs = medicineMapper.selectList(fallbackQw);
+        }
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Medicine m : subs) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", m.getId());
+            item.put("name", m.getName());
+            item.put("specification", m.getSpecification());
+            item.put("price", m.getPrice());
+            item.put("unit", m.getUnit());
+            item.put("stock", m.getStock());
+            item.put("defaultDosage", m.getDefaultDosage());
+            item.put("category", m.getCategory());
+            item.put("matchReason", "同属【" + (m.getCategory() != null ? m.getCategory() : primaryCat) + "】等效药理类别，院内现货 " + m.getStock() + (m.getUnit() != null ? m.getUnit() : "盒"));
+            list.add(item);
+        }
+
+        res.put("hasSubstitutes", !list.isEmpty());
+        res.put("substitutes", list);
+        res.put("summary", list.isEmpty() ? "本院药房暂无同类在库现货，建议请药房紧急补货或调整治疗方案。" : "已为您匹配到 " + list.size() + " 种院内在库等效现货药品。");
+        return res;
+    }
 }

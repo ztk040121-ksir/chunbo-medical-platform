@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 精致现代手电筒矢量图标 (Modern Sleek Flashlight Torch) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,2h10c0.55,0 1,0.45 1,1v3c0,0.55 -0.45,1 -1,1h-0.28l-1.44,2.88C15.11,10.22 15,10.6 15,11v10c0,0.55 -0.45,1 -1,1h-4c-0.55,0 -1,-0.45 -1,-1V11c0,-0.4 -0.11,-0.78 -0.28,-1.12L7.28,7H7C6.45,7 6,6.55 6,6V3c0,-0.55 0.45,-1 1,-1zM8,4v1h8V4H8zM10.72,8.88C10.9,9.24 11,9.61 11,10v2h2v-2c0,-0.39 0.1,-0.76 0.28,-1.12L14.44,7H9.56l1.16,1.88zM11,14v2h2v-2h-2z" />
+</vector>

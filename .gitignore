@@ -34,6 +34,16 @@ uploads/
 简历-代码匹配度评估.md
 BUG_RECORDS.md
 *bug*清单*
+AI交接提示词.md
+asr_debug/
+
+# ============ Android / 移动端编译产物 ============
+.gradle/
+**/.gradle/
+**/build/
+**/local.properties
+*.apk
+*.aab
 
 # ============ 工作目录与临时配置 ============
 .workbuddy/

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 真实相机硬件实时取景 SurfaceView -->
+    <SurfaceView
+        android:id="@+id/camera_surface_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 遮罩与取景框 -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 顶部操作栏 -->
+        <LinearLayout
+            android:id="@+id/layout_scan_top_bar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="#99000000"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+
+            <ImageView
+                android:id="@+id/btn_back_scan"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="返回"
+                android:padding="4dp"
+                android:src="@drawable/ic_close"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/tv_scan_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="门诊现场扫码签到"
+                android:textColor="@color/text_on_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/btn_toggle_flash"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="手电筒"
+                android:padding="4dp"
+                android:src="@drawable/ic_flashlight"
+                app:tint="#FFFFFF" />
+        </LinearLayout>
+
+        <!-- 扫描准星方框 -->
+        <FrameLayout
+            android:id="@+id/view_finder_box"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_centerInParent="true"
+            android:background="@drawable/bg_scan_reticle">
+
+            <!-- 扫描绿线 -->
+            <View
+                android:id="@+id/scan_laser_line"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_gravity="top"
+                android:background="@color/primary_light" />
+        </FrameLayout>
+
+        <!-- 扫描提示文本 -->
+        <TextView
+            android:id="@+id/tv_scan_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/view_finder_box"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="24dp"
+            android:background="#80000000"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="将摄像头对准电脑工作台屏幕【签到二维码】"
+            android:textColor="@color/text_on_primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_scan_patient_info"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/tv_scan_hint"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="8dp"
+            android:text="当前就诊人: 准备签到入队"
+            android:textColor="#34D399"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+
+
+    </RelativeLayout>
+</FrameLayout>

@@ -1,0 +1,730 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_refresh"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="85dp">
+
+                <!-- 1. 春播医疗绿色品牌顶栏与药丸搜索框 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_header_gradient"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="春播便民健康商城"
+                            android:textColor="@color/text_on_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:background="#33FFFFFF"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="1dp"
+                            android:text="国药准字 · 顺丰直发"
+                            android:textColor="@color/status_green_bg"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- 精致药丸搜索框（使用春播绿色矢量放大镜图标） -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:layout_marginTop="10dp"
+                        app:cardBackgroundColor="@color/surface_card"
+                        app:cardCornerRadius="21dp"
+                        app:cardElevation="2dp"
+                        app:strokeWidth="0dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="4dp">
+
+                            <!-- 精致矢量放大镜搜索图标 -->
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:contentDescription="搜索"
+                                android:src="@drawable/ic_search"
+                                app:tint="@color/primary" />
+
+                            <EditText
+                                android:id="@+id/et_mall_search"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_marginStart="8dp"
+                                android:layout_weight="1"
+                                android:background="@null"
+                                android:hint="搜索药品、症状（如布洛芬、阿胶、感冒）"
+                                android:imeOptions="actionSearch"
+                                android:inputType="text"
+                                android:maxLines="1"
+                                android:textColor="@color/text_primary"
+                                android:textColorHint="@color/text_muted"
+                                android:textSize="13sp" />
+
+                            <ImageView
+                                android:id="@+id/btn_clear_search"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:contentDescription="清除搜索"
+                                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                                android:tint="@color/text_muted"
+                                android:visibility="gone" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_do_search"
+                                android:layout_width="wrap_content"
+                                android:layout_height="34dp"
+                                android:backgroundTint="@color/primary"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                android:minWidth="0dp"
+                                android:paddingHorizontal="14dp"
+                                android:text="搜索"
+                                android:textColor="@color/text_on_primary"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                app:cornerRadius="17dp" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+                </LinearLayout>
+
+                <!-- 2. 电商金刚区（8格特色专区导航卡片） -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="10dp"
+                    android:layout_marginTop="10dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    app:cardBackgroundColor="@color/surface_card"
+                    app:cardCornerRadius="14dp"
+                    app:cardElevation="1dp"
+                    app:strokeWidth="0dp">
+
+                    <GridLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:columnCount="4"
+                        android:paddingTop="10dp"
+                        android:paddingBottom="16dp"
+                        android:rowCount="3">
+
+                        <!-- 1. 处方购药 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_prescription"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_prescription"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_emerald"
+                                android:gravity="center"
+                                android:text="🏥"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_prescription"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="处方购药"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 2. 特色贴敷 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_plaster"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_plaster"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_emerald"
+                                android:gravity="center"
+                                android:text="🌿"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_plaster"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="特色贴敷"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 3. 感冒发热 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_cold"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_cold"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_red"
+                                android:gravity="center"
+                                android:text="💊"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_cold"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="感冒发热"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 4. 儿科用药 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_child"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_child"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_amber"
+                                android:gravity="center"
+                                android:text="👶"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_child"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="儿科用药"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 5. 胃肠消化 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_stomach"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_stomach"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_amber"
+                                android:gravity="center"
+                                android:text="🥣"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_stomach"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="胃肠消化"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 6. 骨伤镇痛 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_pain"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_pain"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_blue"
+                                android:gravity="center"
+                                android:text="🦴"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_pain"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="骨伤镇痛"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 7. 慢病常备 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_chronic"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_chronic"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_emerald"
+                                android:gravity="center"
+                                android:text="🫀"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_chronic"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="慢病常备"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 8. 滋补养生 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_nourish"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_nourish"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_amber"
+                                android:gravity="center"
+                                android:text="🍵"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_nourish"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="滋补养生"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 9. 皮肤外用 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_skin"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_skin"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_emerald"
+                                android:gravity="center"
+                                android:text="🧴"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_skin"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="皮肤外用"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 10. 家庭常备 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_household"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_household"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_chip_green"
+                                android:gravity="center"
+                                android:text="🩹"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_household"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="家庭常备"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 11. 家用器械 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_device"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_device"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_blue"
+                                android:gravity="center"
+                                android:text="🩺"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_device"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="家用器械"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <!-- 12. 全部好药 -->
+                        <LinearLayout
+                            android:id="@+id/nav_king_all"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_columnWeight="1"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+
+                            <TextView
+                                android:id="@+id/icon_king_all"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_badge_red"
+                                android:gravity="center"
+                                android:text="🌟"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/tv_king_all"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="全部好药"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                    </GridLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- 3. 分类/专区浏览提示状态条 -->
+                <LinearLayout
+                    android:id="@+id/layout_category_indicator"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="14dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="2dp">
+
+                    <TextView
+                        android:id="@+id/tv_current_category_label"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="✨ 正在浏览：全部春播药品"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_reset_category"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_badge_emerald"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:text="查看全部"
+                        android:textColor="@color/primary"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- 4. 统计与说明行 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:id="@+id/tv_product_count"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="春播便民药品 (加载中...)"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tv_delivery_notice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚡ 闪电发货 · 执业药师双重核方"
+                        android:textColor="@color/primary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- 5. 双列瀑布流商品卡片网格 -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_mall_products"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:paddingHorizontal="5dp" />
+
+                <!-- 空状态提示 -->
+                <LinearLayout
+                    android:id="@+id/layout_empty_mall"
+                    android:layout_width="match_parent"
+                    android:layout_height="220dp"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/ic_search"
+                        app:tint="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/tv_empty_mall_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="未找到匹配的药品，换个词试试吧"
+                        android:textColor="@color/text_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- 6. 底部吸底购物车结算悬浮条 -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/layout_mall_cart_bar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="12dp"
+        app:cardBackgroundColor="@color/text_primary"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="8dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp">
+
+            <!-- 购物车图标与数量角标容器 -->
+            <FrameLayout
+                android:id="@+id/btn_open_cart"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_badge_emerald"
+                    android:gravity="center">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="购物车"
+                        android:src="@drawable/ic_cart"
+                        app:tint="@color/primary" />
+                </LinearLayout>
+
+                <!-- 浮动绿色角标 -->
+                <TextView
+                    android:id="@+id/tv_cart_badge"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="top|end"
+                    android:background="@drawable/bg_circle_badge"
+                    android:backgroundTint="#FFFFFF"
+                    android:gravity="center"
+                    android:text="0"
+                    android:textColor="@color/primary"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <!-- 金额与抵扣提示 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="合计: "
+                        android:textColor="@color/text_on_primary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tv_bar_total_amount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="¥ 0.00"
+                        android:textColor="#34D399"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_bar_discount_hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="可使用健康体验金全额抵扣"
+                    android:textColor="@color/text_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- 去结算大按钮（春播健康绿） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_bar_checkout"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:backgroundTint="@color/primary"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="16dp"
+                android:text="去结算 (0)"
+                android:textColor="@color/text_on_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                app:cornerRadius="20dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+</FrameLayout>

@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="4dp">
+
+    <!-- 助手消息 (左侧) -->
+    <LinearLayout
+        android:id="@+id/layout_assistant_msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="start"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="@drawable/bg_circle_badge"
+            android:gravity="center">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="预问诊护士"
+                android:src="@drawable/ic_ai"
+                app:tint="@color/primary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="40dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="春播全科预问诊护士"
+                android:textColor="@color/primary_dark"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_assistant_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:background="@drawable/bg_bubble_ai"
+                android:lineSpacingExtra="2.5dp"
+                android:lineSpacingMultiplier="1.12"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:text="您好，请告诉我您身体哪里不舒服？"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <!-- 快捷追问选项容器：随助手消息展示在对话流内，自适应换行，杜绝横向挤压变形 -->
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/layout_pre_quick_replies"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="6dp"
+                app:singleLine="false"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 用户消息 (右侧) -->
+    <LinearLayout
+        android:id="@+id/layout_user_msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="40dp"
+            android:layout_marginEnd="8dp"
+            android:gravity="end"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_user_label"
+                android:tag="tv_user_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="就诊人"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp" />
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/iv_user_image"
+                android:layout_width="170dp"
+                android:layout_height="170dp"
+                android:layout_marginTop="3dp"
+                android:adjustViewBounds="true"
+                android:contentDescription="患者上传的图片"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium"
+                app:strokeColor="@color/divider"
+                app:strokeWidth="1dp" />
+
+            <TextView
+                android:id="@+id/tv_user_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:background="@drawable/bg_bubble_user"
+                android:lineSpacingExtra="2.5dp"
+                android:lineSpacingMultiplier="1.12"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:text="发烧、咽痛一天"
+                android:textColor="@color/text_on_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="@drawable/bg_circle_badge"
+            android:gravity="center">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:contentDescription="就诊人"
+                android:src="@drawable/ic_patient"
+                app:tint="@color/text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

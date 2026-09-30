@@ -33,8 +33,21 @@ public class FileUploadService {
 
     private static final Logger log = LoggerFactory.getLogger(FileUploadService.class);
 
-    /** 附件落盘目录（绝对路径，基于进程工作目录，避免 Tomcat 临时目录导致的相对路径错乱） */
-    private static final Path UPLOAD_DIR = Paths.get(System.getProperty("user.dir", "."), "uploads", "attachments");
+    /** 附件落盘目录获取（优先使用已有 attachments 目录，支持根目录或子模块工作路径） */
+    private Path getUploadDir() {
+        List<Path> candidates = new ArrayList<>();
+        candidates.add(Paths.get(System.getProperty("user.dir", "."), "uploads", "attachments"));
+        candidates.add(Paths.get(System.getProperty("user.dir", "."), "chunbo-medical-backend", "uploads", "attachments"));
+        Path parent = Paths.get(System.getProperty("user.dir", ".")).getParent();
+        if (parent != null) {
+            candidates.add(parent.resolve("chunbo-medical-backend").resolve("uploads").resolve("attachments"));
+            candidates.add(parent.resolve("uploads").resolve("attachments"));
+        }
+        for (Path c : candidates) {
+            if (Files.isDirectory(c)) return c;
+        }
+        return candidates.get(0);
+    }
 
     /** 支持的图片扩展名 → MimeType */
     private static final Map<String, MimeType> IMAGE_TYPES = new LinkedHashMap<>();
@@ -61,7 +74,7 @@ public class FileUploadService {
             String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
             String ext = extOf(original);
             String fileId = UUID.randomUUID().toString().replace("-", "");
-            Path dir = UPLOAD_DIR;
+            Path dir = getUploadDir();
             Files.createDirectories(dir);
             Path target = dir.resolve(fileId + (ext.isEmpty() ? "" : "." + ext));
             file.transferTo(target.toFile());
@@ -77,7 +90,7 @@ public class FileUploadService {
             if ("excel".equals(classify(ext))) {
                 result.put("excelPreview", excelToMarkdown(fileId));
             }
-            log.info("[附件上传] fileId={} 文件名={} 类型={} 大小={}字节", fileId, original, classify(ext), file.getSize());
+            log.info("[附件上传] fileId={} 文件名={} 类型={} 大小={}字节 路径={}", fileId, original, classify(ext), file.getSize(), target);
         } catch (Exception e) {
             log.error("附件上传失败", e);
             result.put("success", false);
@@ -86,20 +99,28 @@ public class FileUploadService {
         return result;
     }
 
-    /** 按 fileId 找到落盘文件（容忍扩展名差异） */
+    /** 按 fileId 找到落盘文件（容忍扩展名差异，跨候选目录检索） */
     private Path resolveFile(String fileId) {
-        Path dir = UPLOAD_DIR;
-        if (!Files.isDirectory(dir)) return null;
-        try {
-            try (var stream = Files.list(dir)) {
-                return stream
-                        .filter(p -> p.getFileName().toString().startsWith(fileId + "."))
-                        .findFirst()
-                        .orElse(null);
-            }
-        } catch (IOException e) {
-            return null;
+        List<Path> dirs = new ArrayList<>();
+        dirs.add(getUploadDir());
+        dirs.add(Paths.get(System.getProperty("user.dir", "."), "uploads", "attachments"));
+        dirs.add(Paths.get(System.getProperty("user.dir", "."), "chunbo-medical-backend", "uploads", "attachments"));
+        Path parent = Paths.get(System.getProperty("user.dir", ".")).getParent();
+        if (parent != null) {
+            dirs.add(parent.resolve("chunbo-medical-backend").resolve("uploads").resolve("attachments"));
+            dirs.add(parent.resolve("uploads").resolve("attachments"));
         }
+
+        for (Path dir : dirs) {
+            if (!Files.isDirectory(dir)) continue;
+            try (var stream = Files.list(dir)) {
+                Optional<Path> found = stream
+                        .filter(p -> p.getFileName().toString().startsWith(fileId + "."))
+                        .findFirst();
+                if (found.isPresent()) return found.get();
+            } catch (IOException ignored) {}
+        }
+        return null;
     }
 
     /** 读取文件字节 */

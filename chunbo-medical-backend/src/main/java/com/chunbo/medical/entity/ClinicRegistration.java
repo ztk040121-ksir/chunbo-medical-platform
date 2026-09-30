@@ -46,6 +46,12 @@ public class ClinicRegistration {
     // 智能预问诊多轮对话与结构化病史数据 (JSON)
     private String preConsultationData;
 
+    // 挂号支付方式：微信支付/支付宝/到院支付/体验金抵扣（用于支付闭环追溯）
+    private String payMethod;
+
+    // 体验金抵扣时的会员账号（退号时据此等额回补余额）
+    private String payUsername;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 
@@ -98,6 +104,10 @@ public class ClinicRegistration {
     public void setSymptoms(String symptoms) { this.symptoms = symptoms; }
     public String getPreConsultationData() { return preConsultationData; }
     public void setPreConsultationData(String preConsultationData) { this.preConsultationData = preConsultationData; }
+    public String getPayMethod() { return payMethod; }
+    public void setPayMethod(String payMethod) { this.payMethod = payMethod; }
+    public String getPayUsername() { return payUsername; }
+    public void setPayUsername(String payUsername) { this.payUsername = payUsername; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 }

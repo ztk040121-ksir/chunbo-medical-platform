@@ -36,6 +36,9 @@ public class PrescriptionController {
     @Autowired
     private ClinicRegistrationMapper registrationMapper;
 
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.MallUserMapper mallUserMapper;
+
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
@@ -61,9 +64,70 @@ public class PrescriptionController {
     }
 
     @GetMapping("/list")
-    public List<Map<String, Object>> listPrescriptions() {
+    public List<Map<String, Object>> listPrescriptions(
+            @RequestParam(value = "phone", required = false) String phone,
+            @RequestParam(value = "patientName", required = false) String patientName,
+            jakarta.servlet.http.HttpServletRequest request) {
         LambdaQueryWrapper<Prescription> qw = new LambdaQueryWrapper<>();
         qw.orderByDesc(Prescription::getCreateTime);
+
+        // 患者角色（商城会员 USER）或便民手机端数据隔离：只能看到自己名下的就诊处方。
+        // 关联口径 = 会员账号 ∪ 会员昵称 ∪ 传入姓名/手机号 ∪ 该会员手机号历史挂号单的患者姓名 ∪ 这些挂号单关联的患者档案姓名
+        String role = (String) request.getAttribute("role");
+        String username = (String) request.getAttribute("username");
+
+        Set<String> myNames = new LinkedHashSet<>();
+        if (patientName != null && !patientName.isBlank()) {
+            myNames.add(patientName.trim());
+        }
+        if (username != null && !username.isBlank()) {
+            myNames.add(username.trim());
+        }
+
+        try {
+            String queryPhone = phone;
+            if (username != null && !username.isBlank() && mallUserMapper != null) {
+                MallUser mu = mallUserMapper.selectOne(new LambdaQueryWrapper<MallUser>()
+                        .eq(MallUser::getUsername, username).last("LIMIT 1"));
+                if (mu != null) {
+                    if (mu.getUsername() != null && !mu.getUsername().isBlank()) {
+                        myNames.add(mu.getUsername().trim());
+                    }
+                    if (mu.getNickname() != null && !mu.getNickname().isBlank()) {
+                        myNames.add(mu.getNickname().trim());
+                    }
+                    if (queryPhone == null || queryPhone.isBlank()) {
+                        queryPhone = mu.getPhone();
+                    }
+                }
+            }
+
+            if (queryPhone != null && !queryPhone.isBlank() && registrationMapper != null) {
+                List<ClinicRegistration> myRegs = registrationMapper.selectList(
+                        new LambdaQueryWrapper<ClinicRegistration>()
+                                .eq(ClinicRegistration::getPhone, queryPhone.trim()));
+                for (ClinicRegistration reg : myRegs) {
+                    if (reg.getPatientName() != null && !reg.getPatientName().isBlank()) {
+                        myNames.add(reg.getPatientName().trim());
+                    }
+                    if (reg.getPatientId() != null && patientMapper != null) {
+                        Patient pa = patientMapper.selectById(reg.getPatientId());
+                        if (pa != null && pa.getName() != null && !pa.getName().isBlank()) {
+                            myNames.add(pa.getName().trim());
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        if ("USER".equals(role) || (phone != null && !phone.isBlank())) {
+            if (myNames.isEmpty()) {
+                return new ArrayList<>();
+            }
+            qw.in(Prescription::getPatientName, myNames);
+        }
+
         List<Prescription> list = prescriptionMapper.selectList(qw);
 
         List<Map<String, Object>> res = new ArrayList<>();
@@ -191,7 +255,9 @@ public class PrescriptionController {
             visit.put("doctor", p.getDoctorName());
             visit.put("diagnosis", p.getDiagnosis());
             visit.put("tcmDiagnosis", "");
-            visit.put("symptoms", (p.getRemark() != null && !p.getRemark().isEmpty()) ? p.getRemark() : "历史就诊记录");
+            visit.put("symptoms", (p.getSymptoms() != null && !p.getSymptoms().isEmpty())
+                    ? p.getSymptoms()
+                    : ((p.getRemark() != null && !p.getRemark().isEmpty()) ? p.getRemark() : "历史就诊记录"));
             visit.put("treatments", treatments);
             visit.put("patchItems", patchItems);
             visit.put("westernItems", westernItems);
@@ -345,6 +411,7 @@ public class PrescriptionController {
                         res.put("riskLevel", riskLevel);
                         res.put("summary", reviewResult.get("summary"));
                         res.put("warnings", warnings);
+                        res.put("autoFix", reviewResult.get("autoFix"));
                         res.put("message", "【AI处方合理性审查高危拦截】" + reviewResult.getOrDefault("summary", "检测到严重用药安全风险！"));
                         return res;
                     }
@@ -375,6 +442,8 @@ public class PrescriptionController {
         p.setSignedAt(LocalDateTime.now());
         String reqDiag = req.getOrDefault("diagnosis", "").toString().trim();
         p.setDiagnosis(reqDiag.isEmpty() ? "门诊确诊（待补录）" : reqDiag);
+        // 问诊记录/主诉：医生开方时录入，手机端处方详情与历史就诊记录展示
+        p.setSymptoms(req.getOrDefault("symptoms", req.getOrDefault("chiefComplaint", "")).toString());
         p.setAiAdvice(req.getOrDefault("aiAdvice", "遵医嘱按时规律用药，清淡饮食").toString());
         p.setType(req.getOrDefault("type", "western").toString());
         p.setCraftNotes(req.getOrDefault("craftNotes", "").toString());

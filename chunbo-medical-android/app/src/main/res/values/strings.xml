@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">春播万象</string>
+    <string name="tab_patient">便民挂号</string>
+    <string name="tab_copilot">春播小药师</string>
+    <string name="tab_mall">春播商城</string>
+    <string name="tab_profile">我的账户</string>
+
+    <string name="patient_title">便民预约挂号</string>
+    <string name="copilot_title">春播小药师</string>
+    <string name="mall_title">春播健康商城</string>
+    <string name="profile_title">个人中心与订单</string>
+
+    <string name="action_settings">服务地址设置</string>
+    <string name="action_refresh">刷新</string>
+    <string name="btn_call_next">叫号就诊</string>
+    <string name="btn_finish_visit">完成本次就诊</string>
+    <string name="btn_quick_register">快速预约挂号</string>
+    <string name="btn_send">发送</string>
+    <string name="btn_buy_now">立即购买</string>
+    <string name="btn_confirm">确认</string>
+    <string name="btn_cancel">取消</string>
+</resources>

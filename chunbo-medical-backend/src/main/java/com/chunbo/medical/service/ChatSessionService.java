@@ -101,22 +101,21 @@ public class ChatSessionService {
             cs.setSessionId(sessionId);
             cs.setBizType(effectiveBiz);
             cs.setUserId(userId);
-            cs.setTitle(null); // 标题先留空，交给下方 AI 提炼
+            String initTitle = fallbackTitle(content);
+            if (initTitle == null || initTitle.isEmpty()) {
+                initTitle = "门诊问询 " + now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            }
+            cs.setTitle(initTitle);
             cs.setCreateTime(now);
             cs.setUpdateTime(now);
             chatSessionMapper.insert(cs);
             exist = cs;
         }
 
-        // 标题为空时才提炼（保留首次标题或用户手动改的标题）
-        if (exist.getTitle() == null || exist.getTitle().isEmpty()) {
-            String title = aiExtractTitle(content);
-            if (title == null || title.isEmpty()) {
-                title = fallbackTitle(content);
-            }
-            if (title != null && !title.isEmpty()) {
-                exist.setTitle(title.length() > 100 ? title.substring(0, 100) : title);
-            }
+        // 异步由 AI 独立提炼精炼标题（若成功则更新标题）
+        String aiTitle = aiExtractTitle(content);
+        if (aiTitle != null && !aiTitle.isEmpty()) {
+            exist.setTitle(aiTitle.length() > 100 ? aiTitle.substring(0, 100) : aiTitle);
         }
 
         exist.setUpdateTime(now);

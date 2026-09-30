@@ -374,7 +374,6 @@ public class AiModelConfigService {
                             new SimpleLoggerAdvisor(),
                             MessageChatMemoryAdvisor.builder(chatMemory).build()
                     )
-                    .defaultTools(clinicTools, webFetchTools)
                     .build();
         } catch (Exception e) {
             log.error("动态构建 ChatClient 失败", e);

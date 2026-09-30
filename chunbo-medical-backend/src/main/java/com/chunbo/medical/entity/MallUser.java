@@ -15,6 +15,7 @@ public class MallUser {
     private String username;
     private String password;
     private String nickname;
+    private String avatar;
     private String phone;
     private String address;
     private String status; // ENABLE, DISABLE

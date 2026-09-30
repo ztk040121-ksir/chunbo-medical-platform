@@ -19,10 +19,15 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private static final List<String> WHITE_LIST = List.of(
             "/api/auth/",
-            "/api/medical/chat/pre-consult", // 智能预问诊接口开放（支持患者端/自助端免密问答）
+            "/api/doctor/",                  // 社区坐诊医生库（支持便民挂号与智能导医查阅）
+            "/api/registration/",            // 便民预约挂号、扫码签到与排队状态
+            "/api/prescription/",            // 便民门诊就诊记录与处方药历
+            "/api/medical/chat/",            // 医疗智能问诊与预问诊全功能开放（多智能体SSE、预问诊、分诊等）
             "/api/session",                  // 会话历史接口开放（支持预问诊与各端调阅）
             "/api/mall/user/",
             "/api/mall/products",
+            "/api/mall/orders",
+            "/api/mall/order/",
             "/api/mall/chat",
             "/api/audio/",   // 语音接口开放给未登录的商城游客（TTS 朗读/ASR 录音）
             "/api/upload/",  // 多模态附件上传开放给商城游客（图片/Excel 识别）
@@ -47,11 +52,6 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         String authHeader = request.getHeader("Authorization");
         String username = null;
         String role = null;
@@ -63,6 +63,11 @@ public class JwtFilter extends OncePerRequestFilter {
                 request.setAttribute("username", username);
                 request.setAttribute("role", role);
             }
+        }
+
+        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
+            filterChain.doFilter(request, response);
+            return;
         }
 
         // 未登录统一 401
@@ -79,7 +84,12 @@ public class JwtFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        // 商城普通用户（USER，可自助注册）仅能访问商城域，隔离医疗/管理接口，堵住自注册越权
+        // 商城普通用户（USER，可自助注册）仅能访问商城域，隔离医疗/管理接口，堵住自注册越权。
+        // 例外：患者查自己的就诊处方记录（GET /api/prescription/list）——接口内部按会员昵称+其挂号手机号关联的患者姓名做数据隔离，只见自己的。
+        if ("USER".equals(role) && "/api/prescription/list".equals(path) && "GET".equalsIgnoreCase(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         if ("USER".equals(role) && !path.startsWith("/api/mall/")) {
             writeForbidden(response, "\u65E0\u6743\u9650\u8BBF\u95EE\u8BE5\u63A5\u53E3");
             return;

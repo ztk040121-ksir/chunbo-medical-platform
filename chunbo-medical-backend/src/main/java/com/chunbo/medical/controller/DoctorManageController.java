@@ -20,10 +20,14 @@ public class DoctorManageController {
     private DoctorAccountMapper doctorAccountMapper;
 
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> listDoctors() {
-        List<DoctorAccount> list = doctorAccountMapper.selectList(
-                new LambdaQueryWrapper<DoctorAccount>().orderByDesc(DoctorAccount::getId)
-        );
+    public ResponseEntity<Map<String, Object>> listDoctors(@RequestParam(value = "department", required = false) String department) {
+        LambdaQueryWrapper<DoctorAccount> qw = new LambdaQueryWrapper<DoctorAccount>()
+                .eq(DoctorAccount::getStatus, "ENABLE");
+        if (department != null && !department.isBlank()) {
+            qw.like(DoctorAccount::getDepartment, department.trim());
+        }
+        qw.orderByAsc(DoctorAccount::getId);
+        List<DoctorAccount> list = doctorAccountMapper.selectList(qw);
         list.forEach(item -> item.setPassword("******"));
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);

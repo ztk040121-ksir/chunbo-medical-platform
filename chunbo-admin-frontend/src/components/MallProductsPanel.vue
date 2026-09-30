@@ -6,6 +6,9 @@
         <span class="sub-desc">在此对便民商城商品进行上下架控制、价格修改及补货入库流水记录</span>
       </div>
       <div style="display: flex; gap: 8px;">
+        <el-button type="danger" size="small" plain @click="openAiDemandForecast">
+          🤖 节气疾病谱 AI 补货预测
+        </el-button>
         <el-button v-if="currentUserRole === 'ADMIN' || currentUserRole === 'HR'" type="primary" size="small" plain :loading="inventoryExportLoading" @click="exportInventoryExcel">
           ⬇ 导出台账
         </el-button>
@@ -109,7 +112,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="中台进销存与销售操作" width="220" fixed="right">
+        <el-table-column label="中台进销存与销售操作" width="260" fixed="right">
           <template #default="scope">
             <el-button 
               size="small" 
@@ -124,6 +127,9 @@
             </el-button>
             <el-button size="small" type="success" link @click="openInboundDialog(scope.row)">
               入库补货
+            </el-button>
+            <el-button size="small" type="warning" link @click="openEditDialog(scope.row)">
+              编辑
             </el-button>
           </template>
         </el-table-column>
@@ -175,14 +181,19 @@
         <el-form-item label="商品名称" required>
           <el-input v-model="newProductForm.productName" placeholder="如：连花清瘟胶囊" />
         </el-form-item>
-        <el-form-item label="商品分类">
-          <el-select v-model="newProductForm.category" style="width: 100%">
+        <el-form-item label="商品分类" required>
+          <el-select v-model="newProductForm.category" placeholder="请选择商品标准分类" style="width: 100%" filterable clearable>
+            <el-option label="处方购药" value="处方购药" />
+            <el-option label="特色贴敷" value="特色贴敷" />
             <el-option label="感冒发热" value="感冒发热" />
-            <el-option label="咳嗽咽痛" value="咳嗽咽痛" />
-            <el-option label="肠胃消化" value="肠胃消化" />
+            <el-option label="胃肠消化" value="胃肠消化" />
+            <el-option label="儿科用药" value="儿科用药" />
+            <el-option label="骨伤镇痛" value="骨伤镇痛" />
+            <el-option label="慢病常备" value="慢病常备" />
+            <el-option label="滋补养生" value="滋补养生" />
             <el-option label="皮肤外用" value="皮肤外用" />
             <el-option label="家庭常备" value="家庭常备" />
-            <el-option label="慢病用药" value="慢病用药" />
+            <el-option label="家用器械" value="家用器械" />
           </el-select>
         </el-form-item>
         <el-form-item label="规格">
@@ -222,6 +233,144 @@
       <template #footer>
         <el-button @click="showAddProductDialog = false">取消</el-button>
         <el-button type="primary" @click="submitAddProduct">保存商品档案</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑商品档案弹窗 -->
+    <el-dialog v-model="showEditDialog" title="✏️ 编辑商城商品档案" width="500px">
+      <el-form :model="editProductForm" label-width="100px">
+        <el-form-item label="商品名称" required>
+          <el-input v-model="editProductForm.productName" placeholder="如：连花清瘟胶囊" />
+        </el-form-item>
+        <el-form-item label="商品分类" required>
+          <el-select v-model="editProductForm.category" placeholder="请选择商品标准分类" style="width: 100%" filterable clearable>
+            <el-option label="处方购药" value="处方购药" />
+            <el-option label="特色贴敷" value="特色贴敷" />
+            <el-option label="感冒发热" value="感冒发热" />
+            <el-option label="胃肠消化" value="胃肠消化" />
+            <el-option label="儿科用药" value="儿科用药" />
+            <el-option label="骨伤镇痛" value="骨伤镇痛" />
+            <el-option label="慢病常备" value="慢病常备" />
+            <el-option label="滋补养生" value="滋补养生" />
+            <el-option label="皮肤外用" value="皮肤外用" />
+            <el-option label="家庭常备" value="家庭常备" />
+            <el-option label="家用器械" value="家用器械" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="规格">
+          <el-input v-model="editProductForm.specification" placeholder="如：0.35g*24粒/盒" />
+        </el-form-item>
+        <el-form-item label="生产厂家">
+          <el-input v-model="editProductForm.manufacturer" placeholder="如：北京同仁堂科技发展股份有限公司" />
+        </el-form-item>
+        <el-form-item label="零售单价" required>
+          <el-input-number v-model="editProductForm.retailGuidePrice" :precision="2" :step="1" :min="1" />
+        </el-form-item>
+        <el-form-item label="进货成本价">
+          <el-input-number v-model="editProductForm.wholesalePrice" :precision="2" :step="1" :min="0.5" />
+        </el-form-item>
+        <el-form-item label="商品图片">
+          <div class="upload-image-zone">
+            <el-upload
+              class="product-img-uploader"
+              :show-file-list="false"
+              accept="image/*"
+              :http-request="handleEditProductImageUpload"
+            >
+              <img v-if="editProductForm.imageUrl" :src="editProductForm.imageUrl" class="upload-preview-img" />
+              <el-icon v-else class="upload-placeholder-icon"><Plus /></el-icon>
+            </el-upload>
+            <div class="upload-tips">
+              <div class="tip-main">点击更换商品实拍图</div>
+              <div class="tip-sub">jpg/png/webp，不超过 5MB</div>
+              <el-button v-if="editProductForm.imageUrl" link type="danger" size="small" @click="editProductForm.imageUrl = ''">移除图片</el-button>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitEditProduct">保存修改</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 节气与疾病谱进销存预测弹窗 -->
+    <el-dialog
+      v-model="showForecastDialog"
+      title="📈 节气气候与基层疾病谱 · 商城进销存智能预测 Agent (Demand Forecasting)"
+      width="820px"
+      append-to-body
+      destroy-on-close
+    >
+      <div v-loading="forecastLoading" class="forecast-dialog-body">
+        <div v-if="forecastData" class="forecast-summary-box" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-weight:700; color:#0f172a; font-size:14.5px;">
+              🍂 当前节气因子：<span style="color:#d97706;">{{ forecastData.solarTerm }}</span>
+            </span>
+            <el-tag type="danger" effect="dark" size="small">
+              {{ forecastData.urgentCount }} 款紧缺预警
+            </el-tag>
+          </div>
+          <div style="font-size:12.5px; color:#475569; line-height:1.5; margin-bottom:6px;">
+            <b>气候因子：</b>{{ forecastData.climateFactor }}
+          </div>
+          <div style="font-size:12.5px; color:#059669; line-height:1.5;">
+            <b>研判结论：</b>{{ forecastData.summary }}
+          </div>
+        </div>
+
+        <el-table :data="forecastData?.forecastItems || []" stripe size="small" max-height="380" style="margin-top:12px;">
+          <el-table-column prop="productName" label="商城商品名称" min-width="140">
+            <template #default="scope">
+              <b>{{ scope.row.productName }}</b>
+            </template>
+          </el-table-column>
+          <el-table-column prop="currentStock" label="当前库存" width="90" align="center">
+            <template #default="scope">
+              <span :style="{ color: scope.row.currentStock <= 20 ? '#ef4444' : '#10b981', fontWeight: 'bold' }">
+                {{ scope.row.currentStock }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="estimatedDemand14Days" label="14天预估需求" width="105" align="center" />
+          <el-table-column prop="riskLevel" label="断供风险" width="100" align="center">
+            <template #default="scope">
+              <el-tag 
+                :type="scope.row.riskLevel === '极高风险' ? 'danger' : (scope.row.riskLevel === '中风险' ? 'warning' : 'success')" 
+                size="small"
+                effect="dark"
+              >
+                {{ scope.row.riskLevel }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="suggestedReplenishQty" label="建议补货量" width="100" align="center">
+            <template #default="scope">
+              <b v-if="scope.row.suggestedReplenishQty > 0" style="color:#d97706;">+{{ scope.row.suggestedReplenishQty }}</b>
+              <span v-else style="color:#94a3b8;">充沛</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="reason" label="研判依据" min-width="180" show-overflow-tooltip />
+          <el-table-column label="快捷入库" width="90" align="center">
+            <template #default="scope">
+              <el-button 
+                v-if="scope.row.suggestedReplenishQty > 0" 
+                size="small" 
+                type="primary" 
+                link 
+                @click="quickInboundForecast(scope.row)"
+              >
+                一键补货
+              </el-button>
+              <span v-else style="color:#94a3b8; font-size:12px;">正常</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="showForecastDialog = false">关闭</el-button>
+        <el-button type="primary" :loading="forecastLoading" @click="openAiDemandForecast">重新研判</el-button>
       </template>
     </el-dialog>
   </div>
@@ -270,6 +419,8 @@ const showInboundDialog = ref(false)
 const inboundProduct = ref({})
 const inboundQty = ref(100)
 const showAddProductDialog = ref(false)
+const showEditDialog = ref(false)
+const editProductForm = ref({})
 const newProductForm = ref({
   productName: '',
   category: '',
@@ -450,6 +601,81 @@ const submitAddProduct = async () => {
     }
     loadMallAdminProducts()
   } catch (e) { ElMessage.error(e.response?.data?.message || '新增失败') }
+}
+
+const openEditDialog = (row) => {
+  editProductForm.value = {
+    id: row.id,
+    productName: row.productName,
+    genericName: row.genericName || row.productName,
+    category: row.category || '家庭常备',
+    specification: row.specification || '',
+    manufacturer: row.manufacturer || '',
+    retailGuidePrice: Number(row.retailGuidePrice) || null,
+    wholesalePrice: Number(row.wholesalePrice) || null,
+    imageUrl: row.imageUrl || ''
+  }
+  showEditDialog.value = true
+}
+
+const handleEditProductImageUpload = async (options) => {
+  const formData = new FormData()
+  formData.append('file', options.file)
+  try {
+    const res = await axios.post('/api/admin/mall/product/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    if (res.data?.success && res.data.url) {
+      editProductForm.value.imageUrl = res.data.url
+      ElMessage.success('商品图片已更新')
+    } else {
+      ElMessage.error(res.data?.message || '图片上传失败')
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '图片上传失败')
+  }
+}
+
+const submitEditProduct = async () => {
+  if (!editProductForm.value.productName?.trim()) {
+    ElMessage.warning('请输入商品名称')
+    return
+  }
+  try {
+    await axios.post('/api/admin/mall/product/save', editProductForm.value)
+    ElMessage.success('商品档案修改成功')
+    showEditDialog.value = false
+    loadMallAdminProducts()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '保存失败')
+  }
+}
+
+// ── 基于节气气候与基层疾病谱的商城智能进销存预测 ──
+const showForecastDialog = ref(false)
+const forecastLoading = ref(false)
+const forecastData = ref(null)
+
+const openAiDemandForecast = async () => {
+  forecastLoading.value = true
+  showForecastDialog.value = true
+  try {
+    const res = await axios.get('/api/admin/mall/ai-demand-forecast')
+    forecastData.value = res.data
+  } catch (e) {
+    ElMessage.error('预测引擎调用失败: ' + (e.message || '网络错误'))
+  } finally {
+    forecastLoading.value = false
+  }
+}
+
+const quickInboundForecast = (item) => {
+  inboundProduct.value = {
+    id: item.id,
+    productName: item.productName
+  }
+  inboundQty.value = item.suggestedReplenishQty || 100
+  showInboundDialog.value = true
 }
 
 onMounted(() => {

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -17,6 +18,10 @@ public class DoctorAccount {
     private String doctorId;
     private String department;
     private String title;
+    private String specialty;
+    private BigDecimal consultationFee;
+    private String level;
+    private String introduction;
     private String qualificationNo;
     private String phone;
     private String status;

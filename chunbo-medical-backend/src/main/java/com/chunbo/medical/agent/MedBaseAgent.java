@@ -97,12 +97,15 @@ public abstract class MedBaseAgent extends AbstractAgent {
             }
             String role = context != null && context.get(AgentConstant.ROLE) != null
                     ? String.valueOf(context.get(AgentConstant.ROLE)) : "DOCTOR";
-            String sys = medicalChatService.buildFunctionCallingPrompt(question, pid, emr);
+            // 真流式改造：患者档案/药房库存/临床指南全部在 prompt 组装阶段同步预取（buildPrefetchedPrompt），
+            // LLM 生成阶段不挂任何工具 → spec.stream().content() 纯流式逐字下发。
+            // （原 function-calling 模式 LLM 串行调 3 个工具等待数秒 + 中转站 stream+tools 降级聚合，表现为憋住一次性输出）
+            String sys = medicalChatService.buildPrefetchedPrompt(question, pid, emr);
             // 流末尾由独立 LLM 提取结构化处方卡片写入 ToolResultHolder（与用药知识路径一致），
             // 由 AbstractAgent.wrapWithToolResult 统一下发 PARAM，前端才能渲染"开方卡片"
             String requestId = AbstractAgent.currentRequestId();
             StringBuffer ans = new StringBuffer();
-            return functionCallingFlux(question, sessionId, userId, role, sys, clinicTools)
+            return functionCallingFlux(question, sessionId, userId, role, sys)
                     .doOnNext(ev -> {
                         if (ev != null && ev.getEventType() == ChatEventTypeEnum.DATA.getValue()
                                 && ev.getEventData() instanceof String s) {

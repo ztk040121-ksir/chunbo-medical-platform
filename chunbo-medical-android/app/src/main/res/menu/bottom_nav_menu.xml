@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_patient"
+        android:icon="@drawable/selector_nav_patient"
+        android:title="@string/tab_patient" />
+
+    <item
+        android:id="@+id/nav_copilot"
+        android:icon="@drawable/selector_nav_ai"
+        android:title="@string/tab_copilot" />
+
+    <item
+        android:id="@+id/nav_mall"
+        android:icon="@drawable/selector_nav_mall"
+        android:title="@string/tab_mall" />
+
+    <item
+        android:id="@+id/nav_profile"
+        android:icon="@drawable/selector_nav_profile"
+        android:title="@string/tab_profile" />
+</menu>

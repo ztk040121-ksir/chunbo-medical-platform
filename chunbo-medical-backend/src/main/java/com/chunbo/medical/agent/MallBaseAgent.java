@@ -63,7 +63,9 @@ public abstract class MallBaseAgent extends AbstractAgent {
             }
         }
 
-        // 若大模型可用，发起真正的流式 function-calling（自主检索商城药品并触发推荐卡片）
+        // 若大模型可用，发起真正的流式生成：
+        // 推荐/咨询类 → 在售商品清单同步预取进 prompt，不挂工具，纯流式逐字输出；
+        // 订单/物流/运费类 → 需要动态参数（手机号/单号），保留 function-calling 挂工具。
         if (aiModelConfigService != null && aiModelConfigService.getBareChatClient() != null && !aiModelConfigService.isMockEnabled() && mallProductTools != null) {
             String userPhone = context != null ? String.valueOf(context.getOrDefault("phone", "")) : "";
             String userName = context != null ? String.valueOf(context.getOrDefault("userName", "")) : "";
@@ -81,18 +83,53 @@ public abstract class MallBaseAgent extends AbstractAgent {
             } else {
                 sysBuilder.append("\n【当前顾客状态】游客或未登录。当顾客询问个人订单时，礼貌引导其提供下单时预留的手机号或订单号，然后调用 queryMallOrderTracking 精准核验。\n");
             }
+
+            boolean needsTools = question.matches(".*(订单|物流|快递|到哪了|到哪|运费|包邮|配送|发货|退换).*");
+
+            if (needsTools) {
+                if (question.contains("运费") || question.contains("包邮") || question.contains("配送") || question.contains("发货") || question.contains("几天到")) {
+                    try {
+                        sysBuilder.append("\n【春播商城配送与免邮政策（系统已预取）】\n")
+                                .append(mallProductTools.queryShippingPolicy()).append("\n");
+                    } catch (Exception ignored) {}
+                }
+                if (question.contains("订单") || question.contains("物流") || question.contains("快递") || question.contains("到哪")) {
+                    try {
+                        String queryKey = (userPhone != null && !userPhone.isBlank()) ? userPhone : question;
+                        sysBuilder.append("\n【顾客订单物流追踪信息（系统已实时核查）】\n")
+                                .append(mallProductTools.queryMallOrderTracking(queryKey, null)).append("\n");
+                    } catch (Exception ignored) {}
+                }
+                if (question.contains("禁忌") || question.contains("配伍") || question.contains("一起吃") || question.contains("退换")) {
+                    try {
+                        sysBuilder.append("\n【用药安全与配伍禁忌知识（系统已预取）】\n")
+                                .append(mallProductTools.queryDrugSafetyWarning(question)).append("\n");
+                    } catch (Exception ignored) {}
+                }
+                String catalog = buildProductCatalogText();
+                sysBuilder.append("\n【春播商城在售商品清单（真实库存，系统已预取）】\n").append(catalog).append("\n");
+                sysBuilder.append("""
+                        【本回复无需调用任何工具】
+                        系统已把所需政策、订单状态与在售库存预取在上方上下文中。
+                        请基于上述真实信息，条理清晰、亲切温和地解答顾客的问题，使用标准 Markdown 格式排版输出。
+                        """);
+                return functionCallingFlux(question, sessionId, userId, "CONSUMER", sysBuilder.toString());
+            }
+
+            // 推荐/咨询类：在售商品清单同步预取进上下文，不挂工具 → 纯流式逐字输出（消除 stream+tools 聚合等待）
+            String catalog = buildProductCatalogText();
+            sysBuilder.append("\n【春播商城在售商品清单（真实库存，系统已预取）】\n").append(catalog).append("\n");
             sysBuilder.append("""
-                    【核心准则】
-                    1. 当用户咨询症状或选购药品时，务必调用 searchMallProduct 工具查询春播商城真实在售商品与库存；
-                    2. 当用户查询个人订单或物流进度时，调用 queryMallOrderTracking 工具精准核验；
-                    3. 当用户询问运费、满多少包邮、送货时效时，调用 queryShippingPolicy 工具获取官方政策；
-                    4. 当用户询问配伍禁忌（如头孢配酒、布洛芬与感冒灵重叠）时，调用 queryDrugSafetyWarning 工具给出严谨医学警告；
-                    5. 保持条理清晰、亲切温和，使用标准 Markdown 格式排版输出。
+                    【本回复无需调用任何工具】
+                    1. 推荐/选品直接从上方清单中挑选，逐项列明「药名（规格）· ¥单价」，并给出对症用法用量建议；
+                    2. 清单中确实没有的对症药品，如实说明「商城暂缺，建议线下药店选购」，绝不编造清单外的商品与价格；
+                    3. 涉及配伍禁忌（如头孢配酒、布洛芬与感冒灵重叠）直接给出严谨医学警告；
+                    4. 保持条理清晰、亲切温和，推荐清单用编号列表逐项输出，严禁使用 Markdown 表格。
                     """);
-            return functionCallingFlux(question, sessionId, userId, "CONSUMER", sysBuilder.toString(), mallProductTools);
+            return functionCallingFlux(question, sessionId, userId, "CONSUMER", sysBuilder.toString());
         }
 
-        // 离线/降级模式：复用 B2bMultiAgentService 多智能体规则分流
+        // 离线/降级模式：大模型客户端不可用（未配置/网络受限/mocked）。规则兜底必须明示「非 AI 生成」，绝不伪装成 AI 流式回复
         Map<String, Object> result;
         try {
             result = b2bMultiAgentService.runMultiAgentWorkflow(question, "consumer", sessionId, userId, "", skillHint());
@@ -102,7 +139,13 @@ public abstract class MallBaseAgent extends AbstractAgent {
         String reply = String.valueOf(result.getOrDefault("reply", ""));
         Object recs = result.get("recommendations");
 
+        String notice = "【本地规则兜底 · 非 AI 生成】当前大模型服务未连接（AI 客户端不可用或网络受限），"
+                + "以下内容为本地规则匹配结果，不代表 AI 智能体的分析与建议：\n\n";
         List<ChatEventVO> events = new ArrayList<>();
+        events.add(ChatEventVO.builder()
+                .eventType(ChatEventTypeEnum.DATA.getValue())
+                .eventData(notice)
+                .build());
         int chunkSize = 6;
         for (int i = 0; i < reply.length(); i += chunkSize) {
             events.add(ChatEventVO.builder()
@@ -114,6 +157,29 @@ public abstract class MallBaseAgent extends AbstractAgent {
             ToolResultHolder.put(AbstractAgent.currentRequestId(), "recommendations", recs);
         }
         return Flux.fromIterable(events).delayElements(Duration.ofMillis(25));
+    }
+
+    /** 预取商城在售商品清单文本（真实库存），供推荐类请求直接选品、免工具纯流式生成 */
+    private String buildProductCatalogText() {
+        try {
+            List<com.chunbo.medical.entity.MallProduct> products = b2bMultiAgentService.getProducts();
+            if (products == null || products.isEmpty()) return "（暂无在售商品数据）";
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (com.chunbo.medical.entity.MallProduct p : products) {
+                Integer stock = p.getStock();
+                if (stock != null && stock <= 0) continue;
+                sb.append("- ").append(p.getProductName() == null ? "未命名商品" : p.getProductName())
+                  .append("（").append(p.getSpecification() == null || p.getSpecification().isBlank() ? "标准规格" : p.getSpecification())
+                  .append("）¥").append(p.getRetailGuidePrice() == null ? "0.00" : p.getRetailGuidePrice().toPlainString())
+                  .append("，库存 ").append(stock == null ? 0 : stock)
+                  .append("\n");
+                if (++count >= 40) break;
+            }
+            return sb.isEmpty() ? "（暂无在售商品数据）" : sb.toString();
+        } catch (Exception e) {
+            return "（商品清单加载失败，请如实告知顾客商品信息暂不可用）";
+        }
     }
 
     /** 药品图片识别：图片送入多模态大模型识别药名 → 自主调用 searchMallProduct 查询商城库存 → 生成下单卡片 */

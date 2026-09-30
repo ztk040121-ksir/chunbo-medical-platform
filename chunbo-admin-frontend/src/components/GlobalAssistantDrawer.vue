@@ -668,21 +668,6 @@ const handleSend = async () => {
     const reader = resp.body.getReader()
     const dec = new TextDecoder('utf-8')
     let buf = ''
-    let pendingText = ''
-
-    const renderTimer = setInterval(() => {
-      if (pendingText.length > 0) {
-        // 首批字符到达，解除 thinking 状态
-        if (chatMessages.value[assistantMsgIndex].thinking) {
-          chatMessages.value[assistantMsgIndex].thinking = false
-        }
-        const take = Math.max(2, Math.ceil(pendingText.length / 5))
-        chatMessages.value[assistantMsgIndex].content += pendingText.slice(0, take)
-        pendingText = pendingText.slice(take)
-        scrollChatToBottom()
-      }
-    }, 25)
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -696,20 +681,34 @@ const handleSend = async () => {
         if (!piece) continue
         let parsed
         try { parsed = JSON.parse(piece) } catch (e2) {
-          pendingText += piece
+          if (chatMessages.value[assistantMsgIndex].thinking) {
+            chatMessages.value[assistantMsgIndex].thinking = false
+          }
+          chatMessages.value[assistantMsgIndex].content += piece
+          chatMessages.value = [...chatMessages.value]
+          scrollChatToBottom()
           continue
         }
         if (parsed.eventType === 1001) {
-          pendingText += (parsed.eventData || '')
+          if (chatMessages.value[assistantMsgIndex].thinking) {
+            chatMessages.value[assistantMsgIndex].thinking = false
+          }
+          chatMessages.value[assistantMsgIndex].content += (parsed.eventData || '')
+          chatMessages.value = [...chatMessages.value]
+          scrollChatToBottom()
+        } else if (parsed.eventType === 1004) {
+          const curMsg = chatMessages.value[assistantMsgIndex]
+          if (curMsg) {
+            curMsg.thinking = true
+            curMsg.processStep = parsed.eventData || ''
+            if (!curMsg.processSteps) curMsg.processSteps = []
+            curMsg.processSteps.push(parsed.eventData)
+            chatMessages.value = [...chatMessages.value]
+            scrollChatToBottom()
+          }
         }
       }
     }
-    clearInterval(renderTimer)
-    if (chatMessages.value[assistantMsgIndex].thinking) {
-      chatMessages.value[assistantMsgIndex].thinking = false
-    }
-    chatMessages.value[assistantMsgIndex].content += pendingText
-    pendingText = ''
   } catch (e) {
     if (e.name !== 'AbortError') {
       chatMessages.value[assistantMsgIndex].thinking = false
@@ -851,12 +850,12 @@ onUnmounted(() => {
             👥 注册用户名单
           </button>
 
-          <!-- 🚨 药房基药与营收专区 -->
-          <button class="pill-chip danger" @click="handleQuickAsk('智慧药房低库存预警台账')" title="穿透底层 MySQL 调阅低库存紧缺药品">
-            🚨 药房低库存预警
+          <!-- 🏷️ 商城商品与进销存专区（严格红线：中台管理商城商品，绝不涉及门诊处方药房） -->
+          <button class="pill-chip warning" @click="handleQuickAsk('商城商品库存预警')" title="穿透 MySQL 调阅春播商城在售商品库存与缺货预警">
+            🏷️ 商城低库存预警
           </button>
-          <button class="pill-chip danger" @click="handleQuickAsk('智慧药房智能补货与临期药品预警研判')" title="根据消耗速度与安全阈值测算补货量">
-            💊 智能补货研判
+          <button class="pill-chip warning" @click="handleQuickAsk('商城商品补货与调价研判')" title="根据商城进销存流水研判商品补货与售价调整">
+            📦 商城调价与补货
           </button>
           <button class="pill-chip info" @click="handleQuickAsk('门诊运营大盘真实诊断')" title="综合研判接诊、流水与特色理疗创收">
             📊 门诊营收诊断
@@ -892,9 +891,10 @@ onUnmounted(() => {
               <img :src="msg.image" alt="附件图片" />
             </div>
 
-            <!-- 正文或思考中动画（单气泡严谨渲染） -->
+            <!-- 思考中动态状态（只在思考时显示当前执行步骤；最终思考完毕后只保留纯净回答内容） -->
             <div v-if="msg.thinking && !msg.content" class="bubble-content thinking-pulse">
-              <span class="dot-spin"></span> AI 指挥官正在穿透中台微服务执行调度…
+              <span class="dot-spin"></span>
+              <span class="thinking-step-text">{{ msg.processStep || 'AI 指挥官正在穿透中台微服务执行链式调度…' }}</span>
             </div>
             <div v-else class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
 

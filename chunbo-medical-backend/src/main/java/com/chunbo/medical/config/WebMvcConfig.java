@@ -15,8 +15,28 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String uploadPath = Paths.get(System.getProperty("user.dir"), "uploads").toUri().toString();
+        java.util.List<String> locations = new java.util.ArrayList<>();
+        
+        java.nio.file.Path p1 = Paths.get(System.getProperty("user.dir"), "uploads").toAbsolutePath().normalize();
+        locations.add(toTrailingSlashUri(p1));
+
+        java.nio.file.Path p2 = Paths.get(System.getProperty("user.dir"), "chunbo-medical-backend", "uploads").toAbsolutePath().normalize();
+        locations.add(toTrailingSlashUri(p2));
+
+        java.nio.file.Path parent = Paths.get(System.getProperty("user.dir")).getParent();
+        if (parent != null) {
+            java.nio.file.Path p3 = parent.resolve("uploads").toAbsolutePath().normalize();
+            locations.add(toTrailingSlashUri(p3));
+            java.nio.file.Path p4 = parent.resolve("chunbo-medical-backend").resolve("uploads").toAbsolutePath().normalize();
+            locations.add(toTrailingSlashUri(p4));
+        }
+
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(uploadPath);
+                .addResourceLocations(locations.toArray(new String[0]));
+    }
+
+    private String toTrailingSlashUri(java.nio.file.Path p) {
+        String uri = p.toUri().toString();
+        return uri.endsWith("/") ? uri : uri + "/";
     }
 }

@@ -15,6 +15,9 @@
       </div>
 
       <div class="nav-right">
+        <el-button type="success" size="default" @click="showQrCheckinDeskModal = true" class="gradient-btn-green" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: #fff; font-weight: bold;">
+          📲 现场扫码签到屏
+        </el-button>
         <el-button type="warning" size="default" @click="handleQuickTempReg" class="gradient-btn-amber">
           快速临时挂号
         </el-button>
@@ -157,6 +160,16 @@
               到店签到
             </el-button>
             <el-button 
+              v-if="item.status === '待签到'" 
+              type="success" 
+              size="small" 
+              plain
+              @click="openPatientCheckinQr(item)"
+              title="出示手机扫一扫签到二维码"
+            >
+              📲 签到码
+            </el-button>
+            <el-button 
               size="small" 
               type="warning" 
               text 
@@ -240,9 +253,11 @@
         <el-table-column prop="phone" label="联系电话" width="140" />
         <el-table-column prop="department" label="挂号科室" width="130" />
         <el-table-column prop="doctorName" label="主诊医生" width="110" />
-        <el-table-column prop="regType" label="类型" width="110">
+        <el-table-column prop="regType" label="挂号渠道" width="130">
           <template #default="scope">
-            <el-tag type="info" size="small">{{ scope.row.regType || '现场挂号' }}</el-tag>
+            <el-tag :type="scope.row.regType && scope.row.regType.includes('手机') ? 'success' : 'info'" size="small">
+              {{ scope.row.regType && scope.row.regType.includes('手机') ? '📱 手机在线预约' : '🏥 现场挂号' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="fee" label="诊金" width="90">
@@ -256,9 +271,10 @@
         <el-table-column prop="createTime" label="挂号时间" min-width="160">
           <template #default="scope">{{ formatTime(scope.row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="scope">
             <el-button v-if="scope.row.status === '待签到'" size="small" type="success" @click="handleSign(scope.row)">签到</el-button>
+            <el-button v-if="scope.row.status === '待签到'" size="small" type="success" plain @click="openPatientCheckinQr(scope.row)" title="出示手机扫一扫签到二维码">扫码</el-button>
             <el-button 
               v-if="scope.row.status !== '已诊' && scope.row.status !== '已结诊' && scope.row.status !== '已退' && scope.row.status !== '已收费' && scope.row.status !== '待签到'" 
               size="small" 
@@ -993,7 +1009,7 @@
                   </div>
                 </div>
 
-                <div class="card-actions" @click.stop>
+                <div class="session-card-actions" @click.stop>
                   <el-popconfirm
                     title="确定删除该条预问诊会话记录吗？"
                     confirm-button-text="确定"
@@ -1100,6 +1116,93 @@
       </div>
     </el-dialog>
 
+    <!-- 门诊现场大厅扫码签到大屏弹窗 (供手机端摄像头对准扫描) -->
+    <el-dialog
+      v-model="showQrCheckinDeskModal"
+      title="📲 春播万象便民医疗 · 门诊现场扫码签到大屏"
+      width="640px"
+      destroy-on-close
+    >
+      <div style="text-align: center; padding: 12px 16px;">
+        <div style="font-size: 16px; font-weight: bold; color: #065f46; margin-bottom: 4px;">
+          🏥 社区门诊接诊台 · 现场扫码报到处
+        </div>
+        <div style="font-size: 13px; color: #64748b; margin-bottom: 16px;">
+          请就诊居民打开【春播万象便民医疗】手机 App，点击首页顶部「📷 扫一扫现场签到」，开启摄像头对准下方二维码完成签到入队
+        </div>
+
+        <!-- 显眼高对比度真实二维码 -->
+        <div style="display: inline-block; background: #ffffff; padding: 16px; border-radius: 16px; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15); border: 2px dashed #10b981;">
+          <img v-if="deskQrDataUrl" :src="deskQrDataUrl" width="220" height="220" style="display: block; border-radius: 8px;" alt="门诊现场签到二维码" />
+          <div v-else style="width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+            正在生成签到二维码...
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; font-size: 12px; color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px;">
+          🔔 <b>现场叫号联动提示：</b>手机扫码成功后，系统即刻将挂号单由「待签到」转入对应医生「待诊」队列，电脑端医生工作台将同步收到叫号提醒。
+        </div>
+
+        <!-- 现场待签到患者列表与快捷辅助打卡 -->
+        <div style="margin-top: 16px; text-align: left;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: bold; font-size: 13px; color: #1e293b;">📋 当前等待到院签到患者 ({{ pendingSignPatients.length }} 人)</span>
+            <el-button size="small" type="primary" link @click="loadRegistrations">🔄 刷新</el-button>
+          </div>
+          <div v-if="pendingSignPatients.length === 0" style="text-align: center; color: #94a3b8; padding: 16px; font-size: 12px; border: 1px dashed #e2e8f0; border-radius: 8px;">
+            暂无待签到挂号患者，所有到院患者均已完成报到入队
+          </div>
+          <div v-else style="max-height: 140px; overflow-y: auto;">
+            <div
+              v-for="p in pendingSignPatients"
+              :key="p.id"
+              style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f1f5f9; border-radius: 6px; margin-bottom: 6px; font-size: 12px;"
+            >
+              <div>
+                <b>{{ p.patientName }}</b>
+                <span style="color: #64748b; margin-left: 6px;">{{ p.department }} · {{ p.doctorName }}</span>
+                <span style="color: #94a3b8; margin-left: 6px;">排号: {{ p.queueNumber || p.queueNo }}</span>
+              </div>
+              <el-button size="small" type="success" @click="handleSign(p)">
+                一键签到入队
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showQrCheckinDeskModal = false">关闭窗口</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 单个患者专属签到二维码弹窗 -->
+    <el-dialog
+      v-model="showSinglePatientQrModal"
+      title="📲 患者到院现场签到二维码"
+      width="440px"
+      destroy-on-close
+    >
+      <div v-if="currentQrPatient" style="text-align: center; padding: 12px;">
+        <div style="font-size: 16px; font-weight: bold; color: #1e293b;">
+          {{ currentQrPatient.patientName }}（{{ currentQrPatient.department }} · {{ currentQrPatient.doctorName }}）
+        </div>
+        <div style="font-size: 13px; color: #64748b; margin: 4px 0 16px 0;">
+          挂号单号: {{ currentQrPatient.regNo }} · 排队号: {{ currentQrPatient.queueNumber || currentQrPatient.queueNo }}
+        </div>
+        <div style="display: inline-block; background: #fff; padding: 14px; border-radius: 12px; border: 2px dashed #10b981;">
+          <img v-if="singlePatientQrDataUrl" :src="singlePatientQrDataUrl" width="180" height="180" style="display: block; border-radius: 6px;" alt="患者专属签到二维码" />
+          <div v-else style="width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+            正在生成专属二维码...
+          </div>
+        </div>
+        <div style="margin-top: 14px;">
+          <el-button type="success" size="default" @click="handleSign(currentQrPatient); showSinglePatientQrModal = false;">
+            ⚡ 现场确认签到入队
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -1107,6 +1210,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import axios from 'axios'
+import QRCode from 'qrcode'
 
 const activeSubTab = ref('register')
 const currentStatus = ref('all')
@@ -1165,6 +1269,55 @@ const statusFilters = [
 
 const registrations = ref([])
 const schedules = ref([])
+
+// ==================== 现场扫码签到屏状态与方法 ====================
+const showQrCheckinDeskModal = ref(false)
+const showSinglePatientQrModal = ref(false)
+const currentQrPatient = ref(null)
+const deskQrDataUrl = ref('')
+const singlePatientQrDataUrl = ref('')
+
+const generateDeskQr = async () => {
+  try {
+    deskQrDataUrl.value = await QRCode.toDataURL('CHUNBO_CLINIC_DESK_SIGNIN', {
+      width: 240,
+      margin: 2,
+      color: {
+        dark: '#059669',
+        light: '#ffffff'
+      }
+    })
+  } catch (e) {
+    console.error('生成门诊大屏签到二维码失败:', e)
+  }
+}
+
+watch(showQrCheckinDeskModal, (val) => {
+  if (val) {
+    generateDeskQr()
+  }
+})
+
+const pendingSignPatients = computed(() => {
+  return (registrations.value || []).filter(r => r.status === '待签到')
+})
+
+const openPatientCheckinQr = async (item) => {
+  currentQrPatient.value = item
+  showSinglePatientQrModal.value = true
+  try {
+    singlePatientQrDataUrl.value = await QRCode.toDataURL(`CHUNBO_SIGN:${item.id}`, {
+      width: 220,
+      margin: 2,
+      color: {
+        dark: '#059669',
+        light: '#ffffff'
+      }
+    })
+  } catch (e) {
+    console.error('生成患者专属签到二维码失败:', e)
+  }
+}
 
 // 加载挂号列表
 const loadRegistrations = async () => {
@@ -3143,6 +3296,7 @@ const formatTime = (timeStr) => {
 
 .card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   border-top: 1px dashed #f1f5f9;
@@ -4023,7 +4177,7 @@ const formatTime = (timeStr) => {
   font-size: 11px;
   color: #94a3b8;
 }
-.card-actions {
+.session-card-actions {
   margin-left: 8px;
   flex-shrink: 0;
 }

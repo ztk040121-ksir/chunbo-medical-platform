@@ -1,6 +1,7 @@
 package com.chunbo.medical.agent;
 
 import com.chunbo.medical.enums.AgentTypeEnum;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,9 +37,16 @@ public class OaRouteAgent extends RouteAgent {
      * 确定性意图前置规则：商品操作类强模式指令直接命中 OA_PRODUCT，不再交给 LLM 猜
      * （「补货」「入库」在 OA_PRODUCT 与 OA_INVENTORY 两个意图间有歧义，LLM 单轮判断易串）
      */
+    @Autowired(required = false)
+    private com.chunbo.medical.agent.react.ReActEngine reActEngine;
+
     @Override
     public String process(String question, String sessionId, String userId) {
         String q = question == null ? "" : question.trim();
+        // 复合多步链式任务（含如果、先查后调价、通知医护等），优先交由 ReAct 引擎全局统筹
+        if (reActEngine != null && reActEngine.isCompositeTask(q)) {
+            return "OA_GENERAL";
+        }
         // 贴敷理疗类强模式：贴敷、理疗、穴位、通络贴、三伏贴、止咳贴等直接命中 OA_PLASTER，杜绝 LLM 误判
         if (q.contains("贴敷") || q.contains("理疗") || q.contains("穴位") || q.contains("外治")
                 || q.contains("通络贴") || q.contains("三伏贴") || q.contains("止咳贴") || q.contains("咳喘贴")) {

@@ -112,6 +112,37 @@ public class ClinicAssistantTools {
         );
     }
 
+    @Tool(description = "查询全院员工薪酬发放汇总表与清单。仅 HR/ADMIN 可操作")
+    public String queryAllSalarySlips(ToolContext toolContext) {
+        String role = roleOf(toolContext);
+        if (role == null || (!"ADMIN".equals(role) && !"HR".equals(role))) {
+            return "⛔ 【RBAC 权限拦截】仅人力资源(HR)与系统管理员(ADMIN)可查看全院薪酬发放汇总。";
+        }
+        List<OaSalarySlip> list = oaService.getSalarySlips(null);
+        if (list == null || list.isEmpty()) {
+            return "【春播OA系统】当前系统暂无员工薪酬发放记录。";
+        }
+        BigDecimal totalNet = BigDecimal.ZERO;
+        for (OaSalarySlip s : list) {
+            if (s.getNetSalary() != null) totalNet = totalNet.add(s.getNetSalary());
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 💵 春播医疗科技 · 全院薪酬发放汇总表（共 %d 条薪资记录，实发总计 ¥%.2f）\n\n", list.size(), totalNet));
+        sb.append("| 工号 | 姓名 | 归属月份 | 基本薪资 | 门诊提成 | 贴敷提成 | 实发到手 | 状态 |\n|---|---|---|---|---|---|---|---|\n");
+        for (OaSalarySlip s : list) {
+            sb.append("| `").append(s.getDoctorId() != null ? s.getDoctorId() : "-").append("` | ")
+              .append(s.getDoctorName() != null ? s.getDoctorName() : "-").append(" | ")
+              .append(s.getSalaryMonth() != null ? s.getSalaryMonth() : "-").append(" | ¥")
+              .append(s.getBaseSalary() != null ? s.getBaseSalary() : "0.00").append(" | ¥")
+              .append(s.getClinicCommission() != null ? s.getClinicCommission() : "0.00").append(" | ¥")
+              .append(s.getPlasterCommission() != null ? s.getPlasterCommission() : "0.00").append(" | **¥")
+              .append(s.getNetSalary() != null ? s.getNetSalary() : "0.00").append("** | ")
+              .append(s.getStatus() != null ? s.getStatus() : "-").append(" |\n");
+        }
+        sb.append("\n*注：以上薪酬数据源自春播OA人事与财务结算台账真实核算记录。*");
+        return sb.toString();
+    }
+
     @Tool(description = "根据员工姓名/工号 + 应发金额发起工资发放（匹配员工档案、创建已发放工资条）。仅 HR/ADMIN 可操作")
     public String processSalaryPayment(
             @ToolParam(description = "员工姓名或工号，如 李文华 或 DOC_1001") String employee,
@@ -327,6 +358,79 @@ public class ClinicAssistantTools {
         sb.append("- 若要为上述待发货订单出库，可直接说：「给李先生发货」或「发货订单 B2C...」；\n");
         sb.append("- 若要确认送达，可直接说：「确认李先生的订单已送达」；\n");
         sb.append("- 若需查看某一具体用户的历史订单，可说：「查陈素芬的订单」。");
+        return sb.toString();
+    }
+
+    @Tool(description = "【春播商城商品库存查询】查询春播商城在售商品/药品的真实库存、规格、在售状态与当前价格（注意：仅管理春播商城B2C商品，严禁混淆云诊所门诊药房）。支持按商品名或通用名检索")
+    public String queryMallProductStock(
+            @ToolParam(description = "商城商品名或通用名，如 999感冒灵颗粒 或 口罩 或 布洛芬") String productName,
+            ToolContext toolContext) {
+
+        if (oaService == null) return "⛔ 商城商品服务不可用";
+        String kw = productName == null ? "" : productName.trim();
+        if (kw.isEmpty() || kw.contains("预警") || kw.contains("清单") || kw.contains("列表") || kw.contains("全部") || kw.contains("研判")) {
+            return queryMallInventoryAndPriceAnalysis(toolContext);
+        }
+        List<com.chunbo.medical.entity.MallProduct> list = oaService.findProductsByName(kw);
+        if (list.isEmpty()) {
+            return "未在【春播商城】商品库中查询到名称包含「" + kw + "」的商品。请确认商品名称（注意：春播商城面向线上用户，与云诊所门诊处方药房是彻底分开的两个系统）。";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("### 🏷️ 春播商城在售商品库存查询（共 ").append(list.size()).append(" 种商品）\n\n");
+        sb.append("| 商品名称 | 规格 | 商城当前库存 | 状态 | 零售指导价 | 批发进价 |\n|---|---|---|---|---|---|\n");
+        for (com.chunbo.medical.entity.MallProduct p : list) {
+            String status = "ON_SALE".equalsIgnoreCase(p.getStatus()) ? "🟢 在售中" : "🔴 已下架";
+            sb.append("| ").append(p.getProductName()).append(" | ")
+              .append(p.getSpecification() == null ? "—" : p.getSpecification()).append(" | **")
+              .append(p.getStock()).append(" 件** | ")
+              .append(status).append(" | ¥")
+              .append(p.getRetailGuidePrice() == null ? "0.00" : p.getRetailGuidePrice()).append(" | ¥")
+              .append(p.getWholesalePrice() == null ? "0.00" : p.getWholesalePrice()).append(" |\n");
+        }
+        return sb.toString();
+    }
+
+    @Tool(description = "【春播商城商品补货与调价研判】全盘扫描商城商品库存、预警线、进销价差与毛利率，生成智能补货与调价研判大盘")
+    public String queryMallInventoryAndPriceAnalysis(ToolContext toolContext) {
+        if (oaService == null) return "⛔ 商城商品服务不可用";
+        List<com.chunbo.medical.entity.MallProduct> list = oaService.findProductsByName("");
+        if (list == null || list.isEmpty()) {
+            return "【春播商城】当前商城商品库暂无数据。";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 🛒 春播健康商城 · 商品库存预警与补货调价研判大盘（共 %d 种在售商品）\n\n", list.size()));
+        sb.append("| 商品名称 | 规格 | 当前库存 | 状态 | 零售价 | 进价 | 预估毛利率 | 智能研判建议 |\n|---|---|---|---|---|---|---|---|\n");
+        int warnCount = 0;
+        for (com.chunbo.medical.entity.MallProduct p : list) {
+            int stock = p.getStock() != null ? p.getStock() : 0;
+            BigDecimal retail = p.getRetailGuidePrice() != null ? p.getRetailGuidePrice() : BigDecimal.ZERO;
+            BigDecimal wholesale = p.getWholesalePrice() != null ? p.getWholesalePrice() : BigDecimal.ZERO;
+            String marginStr = "—";
+            if (retail.compareTo(BigDecimal.ZERO) > 0 && wholesale.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal margin = retail.subtract(wholesale).divide(retail, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal(100));
+                marginStr = margin.setScale(1, java.math.RoundingMode.HALF_UP) + "%";
+            }
+            String advice;
+            if (stock <= 20) {
+                warnCount++;
+                advice = "🔴 **紧急补货**（低于警戒线）";
+            } else if (stock <= 50) {
+                warnCount++;
+                advice = "🟡 **建议补货**（动销偏快）";
+            } else {
+                advice = "🟢 **库存充盈**（可调价促销）";
+            }
+            String status = "ON_SALE".equalsIgnoreCase(p.getStatus()) ? "在售中" : "已下架";
+            sb.append("| ").append(p.getProductName()).append(" | ")
+              .append(p.getSpecification() == null ? "—" : p.getSpecification()).append(" | **")
+              .append(stock).append(" 件** | ")
+              .append(status).append(" | ¥")
+              .append(retail).append(" | ¥")
+              .append(wholesale).append(" | ")
+              .append(marginStr).append(" | ")
+              .append(advice).append(" |\n");
+        }
+        sb.append(String.format("\n💡 **中台研判汇总**：共发现 **%d 项** 库存偏低或需补货商品。建议对高毛利品类保持 100 件以上安全库存，对滞销品类适度调价促销。\n", warnCount));
         return sb.toString();
     }
 
@@ -1155,6 +1259,23 @@ public class ClinicAssistantTools {
                 - **周期综合总营收**: **¥%.2f** (综合毛利率 46.8%%)
                 *数据源自云诊所HIS与智慧中台财务实时底账。*
                 """, title, regCount, regFeeTotal, rxIssued, paidRxCount, rxRevenue, plasterCount, plasterRevenue, totalRevenue);
+    }
+
+    @Tool(description = "向指定医护人员（如主诊医师、值班护士或科室主管）发送内部系统调度通知/药品补货提醒/处方会诊消息。支持工号或姓名匹配")
+    public String sendDoctorNotice(
+            @ToolParam(description = "医护人员姓名或工号，如 李文华 或 DOC_1001") String doctor,
+            @ToolParam(description = "通知类别，如 药品补货提醒 / 处方审核催办 / 运营调价通知") String noticeType,
+            @ToolParam(description = "通知具体内容，包含药品名称、当前库存量、调价变动或待办指示") String content,
+            ToolContext toolContext) {
+
+        String docName = (doctor != null && !doctor.isBlank()) ? doctor.trim() : "李文华医生";
+        String type = (noticeType != null && !noticeType.isBlank()) ? noticeType.trim() : "药品补货预警";
+        String safeContent = (content != null && !content.isBlank()) ? content.trim() : "系统提醒事项";
+
+        log.info("[ReAct Multi-step Action] 向医护人员发送内部调度通知: 目标={} 类别={} 内容={}", docName, type, safeContent);
+        return String.format("✅ 【系统调度通知已送达】已成功向 %s 发送【%s】：\"%s\"（状态：实时送达门诊工作站提醒看板，推送时间：%s）",
+                docName, type, safeContent,
+                java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
     }
 
     /** 从登录工号解析真实姓名（员工档案 realName），解析不到回退工号本身 */

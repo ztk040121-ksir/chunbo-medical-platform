@@ -41,6 +41,9 @@ public class MedicalChatController {
     @Autowired(required = false)
     private org.springframework.ai.chat.memory.ChatMemory chatMemory;
 
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.ChatSessionMapper chatSessionMapper;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MedicalChatController.class);
 
     /**
@@ -159,17 +162,19 @@ public class MedicalChatController {
         String idCard = body.getOrDefault("idCard", "").toString().trim();
         String sessionId = body.getOrDefault("sessionId", "").toString().trim();
         String userReply = body.getOrDefault("userReply", "").toString().trim();
+        String userId = body.getOrDefault("userId", "").toString().trim();
+        String attachmentId = body.getOrDefault("attachmentId", "").toString().trim();
         java.util.List<java.util.Map<String, String>> history = 
                 (java.util.List<java.util.Map<String, String>>) body.getOrDefault("history", new java.util.ArrayList<>());
 
         log.info("==================== [预问诊Controller-收到请求] ====================");
-        log.info(">>> 患者档案: 【{}】(性别: {}, 年龄: {}, 身份证: {})", patientName, gender, age, idCard.isEmpty() ? "未填写" : idCard);
+        log.info(">>> 患者档案: 【{}】(性别: {}, 年龄: {}, 身份证: {}, userId: {})", patientName, gender, age, idCard.isEmpty() ? "未填写" : idCard, userId);
         log.info(">>> 会话ID: {}, 用户输入: \"{}\", 已有历史轮数: {}", sessionId, userReply, history.size());
         if (!history.isEmpty()) {
             log.info(">>> 上轮会话: {}", history.get(history.size() - 1));
         }
 
-        java.util.Map<String, Object> result = medicalChatService.preConsultDialogue(patientName, gender, age, idCard, sessionId, history, userReply);
+        java.util.Map<String, Object> result = medicalChatService.preConsultDialogue(patientName, gender, age, idCard, sessionId, history, userReply, userId, attachmentId);
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("<<< [预问诊Controller-响应完毕] 耗时: {} ms, 成功: {}, AI回复: \"{}\"", 
                  elapsed, result.get("success"), result.get("reply"));
@@ -217,35 +222,58 @@ public class MedicalChatController {
     }
 
     /**
-     * 查询患者往期预问诊会话列表
+     * 查询患者往期预问诊会话列表（支持手机号、患者姓名、身份证号多维聚合与去重）
      * GET /api/medical/chat/pre-consult/sessions?userId=xxx
      */
     @GetMapping("/pre-consult/sessions")
     public java.util.Map<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> getPreConsultSessions(
-            @RequestParam("userId") String userId) {
+            @RequestParam("userId") String userId,
+            @RequestParam(value = "patientName", required = false) String patientName,
+            @RequestParam(value = "idCard", required = false) String idCard) {
         if (chatSessionService == null) return java.util.Collections.emptyMap();
-        java.util.Map<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> rawMap = chatSessionService.queryHistory("pre_consult", userId);
-        if (rawMap == null || rawMap.isEmpty()) return java.util.Collections.emptyMap();
 
-        // 仅保留真实建档的往期会话，排除旧版残留的空接待标题
-        java.util.Map<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> filtered = new java.util.LinkedHashMap<>();
-        for (java.util.Map.Entry<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> entry : rawMap.entrySet()) {
-            java.util.List<com.chunbo.medical.vo.ChatSessionVO> validList = new java.util.ArrayList<>();
-            for (com.chunbo.medical.vo.ChatSessionVO vo : entry.getValue()) {
-                if (vo.getSessionId() == null) continue;
-                String title = vo.getTitle() != null ? vo.getTitle() : "";
-                if (title.contains("何处不适") && title.startsWith("初次问询接待")) continue;
-                validList.add(vo);
-            }
-            if (!validList.isEmpty()) {
-                filtered.put(entry.getKey(), validList);
+        // 收集所有关联候选标识，打破因用户登录前后/就诊人切换导致的记录割裂
+        java.util.Set<String> candidateIds = new java.util.LinkedHashSet<>();
+        if (userId != null && !userId.isBlank()) candidateIds.add(userId.trim());
+        if (patientName != null && !patientName.isBlank()) candidateIds.add(patientName.trim());
+        if (idCard != null && !idCard.isBlank()) candidateIds.add(idCard.trim());
+        candidateIds.add("点击登录");
+        candidateIds.add("健康居民");
+        candidateIds.add("mobile_guest");
+        candidateIds.add("visitor");
+
+        java.util.Map<String, com.chunbo.medical.vo.ChatSessionVO> sessionMap = new java.util.LinkedHashMap<>();
+        for (String uid : candidateIds) {
+            java.util.Map<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> groupMap = chatSessionService.queryHistory("pre_consult", uid);
+            if (groupMap != null) {
+                for (java.util.List<com.chunbo.medical.vo.ChatSessionVO> list : groupMap.values()) {
+                    for (com.chunbo.medical.vo.ChatSessionVO vo : list) {
+                        if (vo.getSessionId() != null && !sessionMap.containsKey(vo.getSessionId())) {
+                            String title = vo.getTitle() != null ? vo.getTitle() : "";
+                            if (title.contains("何处不适") && title.startsWith("初次问询接待")) continue;
+                            sessionMap.put(vo.getSessionId(), vo);
+                        }
+                    }
+                }
             }
         }
+
+        if (sessionMap.isEmpty()) return java.util.Collections.emptyMap();
+
+        java.util.List<com.chunbo.medical.vo.ChatSessionVO> allList = new java.util.ArrayList<>(sessionMap.values());
+        allList.sort((a, b) -> {
+            if (a.getUpdateTime() == null) return 1;
+            if (b.getUpdateTime() == null) return -1;
+            return b.getUpdateTime().compareTo(a.getUpdateTime());
+        });
+
+        java.util.Map<String, java.util.List<com.chunbo.medical.vo.ChatSessionVO>> filtered = new java.util.LinkedHashMap<>();
+        filtered.put("往期预问诊会话", allList);
         return filtered;
     }
 
     /**
-     * 查询往期预问诊会话对话详情记录（从 ChatMemory 取回）
+     * 查询往期预问诊会话对话详情记录（优先从 ChatMemory 取回，兜底从 chat_session 数据库取回）
      * GET /api/medical/chat/pre-consult/session-messages?sessionId=xxx
      */
     @GetMapping("/pre-consult/session-messages")
@@ -255,13 +283,29 @@ public class MedicalChatController {
         if (chatMemory != null && sessionId != null && !sessionId.isBlank()) {
             try {
                 java.util.List<org.springframework.ai.chat.messages.Message> msgs = chatMemory.get(sessionId);
-                if (msgs != null) {
+                if (msgs != null && !msgs.isEmpty()) {
                     for (org.springframework.ai.chat.messages.Message m : msgs) {
                         String role = "user";
                         if (m.getMessageType() == org.springframework.ai.chat.messages.MessageType.ASSISTANT) role = "assistant";
                         String text = m.getText() != null ? m.getText() : "";
-                        res.add(java.util.Map.of("role", role, "content", text));
+                        if (!text.isBlank()) {
+                            res.add(java.util.Map.of("role", role, "content", text));
+                        }
                     }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 兜底方案：若内存因重启或超时为空，从 chat_session 数据库提取标题并构造引导上下文
+        if (res.isEmpty() && chatSessionMapper != null && sessionId != null && !sessionId.isBlank()) {
+            try {
+                com.chunbo.medical.entity.ChatSession cs = chatSessionMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.ChatSession>()
+                                .eq(com.chunbo.medical.entity.ChatSession::getSessionId, sessionId)
+                                .last("LIMIT 1"));
+                if (cs != null && cs.getTitle() != null && !cs.getTitle().isBlank()) {
+                    res.add(java.util.Map.of("role", "user", "content", "【往期主诉】" + cs.getTitle()));
+                    res.add(java.util.Map.of("role", "assistant", "content", "您好！已调取您此前关于「" + cs.getTitle() + "」的预问诊会话。请问当前症状是否有变化，或有新的不适需要补充？"));
                 }
             } catch (Exception ignored) {}
         }
@@ -324,6 +368,29 @@ public class MedicalChatController {
     }
 
     /**
+     * SSE 预问诊流式对话接口（手机端真流式问诊）
+     * GET /api/medical/chat/pre-consult/stream
+     */
+    @GetMapping(value = "/pre-consult/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ChatEventVO> preConsultStream(
+            @RequestParam(value = "patientName", required = false, defaultValue = "就诊患者") String patientName,
+            @RequestParam(value = "gender", required = false, defaultValue = "男") String gender,
+            @RequestParam(value = "age", required = false, defaultValue = "30") String age,
+            @RequestParam(value = "idCard", required = false) String idCard,
+            @RequestParam(value = "sessionId", required = false) String sessionId,
+            @RequestParam(value = "userReply", required = false, defaultValue = "") String userReply,
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "attachmentId", required = false) String attachmentId,
+            jakarta.servlet.http.HttpServletResponse response) {
+        if (response != null) {
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Connection", "keep-alive");
+        }
+        return medicalChatService.preConsultStream(patientName, gender, age, idCard, sessionId, userReply, userId, attachmentId);
+    }
+
+    /**
      * SSE 流式问诊接口
      * GET /api/medical/chat/stream?sessionId=1001&patientId=1&message=头晕血压高&doctorId=kzt
      */
@@ -333,7 +400,13 @@ public class MedicalChatController {
                                       @RequestParam("message") String message,
                                       @RequestParam(value = "doctorId", required = false) String doctorId,
                                       @RequestParam(value = "emr", required = false) String emrContext,
-                                      @RequestParam(value = "attachmentId", required = false) String attachmentId) {
+                                      @RequestParam(value = "attachmentId", required = false) String attachmentId,
+                                      jakarta.servlet.http.HttpServletResponse response) {
+        if (response != null) {
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Connection", "keep-alive");
+        }
         // 多智能体路由：MedRouteAgent 判意图 → 业务智能体 processStream（携带 patientId + 病历摘要 + 身份上下文）
         java.util.Map<String, Object> context = new java.util.HashMap<>();
         if (patientId != null) context.put(AgentConstant.PATIENT_ID, patientId);
@@ -349,7 +422,12 @@ public class MedicalChatController {
      * POST 方式流式问诊
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ChatEventVO> streamChatPost(@RequestBody ChatRequest request) {
+    public Flux<ChatEventVO> streamChatPost(@RequestBody ChatRequest request, jakarta.servlet.http.HttpServletResponse response) {
+        if (response != null) {
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            response.setHeader("Connection", "keep-alive");
+        }
         java.util.Map<String, Object> context = new java.util.HashMap<>();
         if (request.getPatientId() != null) context.put(AgentConstant.PATIENT_ID, request.getPatientId());
         if (request.getEmrContext() != null && !request.getEmrContext().isEmpty()) context.put(AgentConstant.EMR_CONTEXT, request.getEmrContext());

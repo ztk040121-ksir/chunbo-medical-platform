@@ -551,7 +551,7 @@ public class OaAssistantService {
                 com.chunbo.medical.entity.MallProduct p = new com.chunbo.medical.entity.MallProduct();
                 p.setProductName(name);
                 p.setGenericName(name);
-                p.setCategory(String.valueOf(row.getOrDefault("category", "综合分类")));
+                p.setCategory(String.valueOf(row.getOrDefault("category", "家庭常备")));
                 p.setSpecification(String.valueOf(row.getOrDefault("specification", "")));
                 p.setManufacturer(String.valueOf(row.getOrDefault("manufacturer", "")));
                 p.setWholesalePrice(wholesale);

@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <!-- 圆形薄荷湖水青底色 -->
+    <path
+        android:fillColor="#0D9488"
+        android:pathData="M36,0A36,36 0 1,0 36,72A36,36 0 1,0 36,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,16a12,12 0 1,1 0,24a12,12 0 0,1 0,-24z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,44c-12,0 -22,7 -24,18c3.2,4.6 7.4,8.5 12.4,11.3c3.5,-3.6 7.3,-5.3 11.6,-5.3s8.1,1.7 11.6,5.3c5,-2.8 9.2,-6.7 12.4,-11.3C62,51 48,44 36,44z" />
+</vector>

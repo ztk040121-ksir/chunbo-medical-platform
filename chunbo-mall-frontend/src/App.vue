@@ -6,7 +6,7 @@
         <div class="brand-zone">
           <div class="logo-box">🌿</div>
           <div>
-            <div class="brand-title">春播健康商城 · 便民网上药房</div>
+            <div class="brand-title">春播健康商城 · 便民网上药房 <span style="font-size: 11px; opacity: 0.75; font-weight: normal; margin-left: 6px; background: rgba(5, 150, 105, 0.1); color: #059669; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(5, 150, 105, 0.2);">v5.0.0</span></div>
             <div class="brand-sub">正品好药 · 顺丰即日达 · 24小时家庭药箱 · 专业药师指导</div>
           </div>
         </div>
@@ -67,16 +67,82 @@
     <!-- 分类与家庭药箱快捷标签栏 -->
     <nav class="category-nav-bar">
       <div class="category-container">
-        <div 
-          v-for="cat in categories" 
-          :key="cat.key" 
-          class="cat-item"
-          :class="{ active: currentCategory === cat.key }"
-          @click="currentCategory = cat.key"
+        <!-- 左侧微调滚动箭头 -->
+        <button 
+          v-show="canScrollLeft" 
+          class="cat-arrow-btn arrow-left" 
+          @click="scrollCategories(-240)" 
+          title="向左滚动"
         >
-          <span class="cat-icon">{{ cat.icon }}</span>
-          <span class="cat-label">{{ cat.label }}</span>
+          ‹
+        </button>
+
+        <!-- 分类横向列表 -->
+        <div 
+          class="cat-list-wrapper" 
+          ref="categoryScrollRef" 
+          @scroll="updateCategoryScrollState"
+          @wheel.passive="onCategoryWheel"
+        >
+          <div 
+            v-for="cat in categories" 
+            :key="cat.key" 
+            class="cat-item"
+            :class="{ active: currentCategory === cat.key }"
+            :title="cat.sub ? (cat.label + ' · ' + cat.sub) : cat.label"
+            @click="currentCategory = cat.key"
+          >
+            <span class="cat-icon">{{ cat.icon }}</span>
+            <span class="cat-label">{{ cat.label }}</span>
+          </div>
         </div>
+
+        <!-- 右侧微调滚动箭头 -->
+        <button 
+          v-show="canScrollRight" 
+          class="cat-arrow-btn arrow-right" 
+          @click="scrollCategories(240)" 
+          title="向右滚动"
+        >
+          ›
+        </button>
+
+        <!-- 全部分类快捷面板 (一键直达所有门诊与便民分类) -->
+        <el-popover 
+          placement="bottom-end" 
+          :width="360" 
+          trigger="hover" 
+          popper-class="all-cats-popover"
+        >
+          <template #reference>
+            <div class="all-cats-trigger">
+              <el-icon><Menu /></el-icon>
+              <span>全部分类</span>
+              <el-icon class="arrow-down-icon"><ArrowDown /></el-icon>
+            </div>
+          </template>
+          <div class="all-cats-popover-content">
+            <div class="pop-header">
+              <span class="pop-title">📦 全部门诊与便民分类 ({{ categories.length - 1 }})</span>
+              <span class="pop-hint">点击分类直达货架</span>
+            </div>
+            <div class="all-cats-grid">
+              <div 
+                v-for="cat in categories" 
+                :key="'pop_' + cat.key"
+                class="pop-cat-card"
+                :class="{ active: currentCategory === cat.key }"
+                @click="currentCategory = cat.key"
+              >
+                <span class="pop-cat-icon">{{ cat.icon }}</span>
+                <div class="pop-cat-meta">
+                  <div class="pop-cat-label">{{ cat.label }}</div>
+                  <div class="pop-cat-sub">{{ cat.sub || '便民好药' }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-popover>
       </div>
     </nav>
 
@@ -388,31 +454,61 @@
     </el-dialog>
 
     <!-- 弹窗：我的购药订单历史与顺丰追踪 -->
-    <el-dialog v-model="showOrderModal" title="📦 我的生活购药订单与物流追踪" width="720px">
+    <el-dialog v-model="showOrderModal" title="📦 我的生活购药订单与物流追踪" width="840px">
       <el-table :data="myOrders" stripe class="order-table-custom">
         <el-table-column prop="orderNo" label="订单号" width="160">
           <template #default="scope">
             <el-tag type="info" size="small">{{ scope.row.orderNo }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="clinicName" label="送达地址" min-width="180">
+        <el-table-column label="购药清单" min-width="170">
+          <template #default="scope">
+            <div v-for="(item, idx) in parseOrderItemsList(scope.row.itemsJson)" :key="idx" style="font-size:12px; margin-bottom:2px; line-height: 1.4;">
+              <span>💊 <b>{{ item.productName }}</b></span>
+              <span style="color:#64748b; margin-left:6px;">x{{ item.quantity || 1 }}盒</span>
+              <span v-if="item.price" style="color:#ef4444; margin-left:6px;">¥{{ item.price }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="clinicName" label="送达地址" min-width="170" show-overflow-tooltip>
           <template #default="scope">
             <span>{{ scope.row.clinicName }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="finalAmount" label="实付金额" width="100">
+        <el-table-column prop="finalAmount" label="实付金额" width="95" align="center">
           <template #default="scope">
             <span class="font-bold text-red">¥{{ scope.row.finalAmount }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="配送状态" width="120">
+        <el-table-column prop="status" label="配送状态" width="115" align="center">
           <template #default="scope">
-            <el-tag type="success">{{ scope.row.status || '—' }}</el-tag>
+            <el-tag :type="scope.row.status && scope.row.status.includes('已送达') ? 'success' : (scope.row.status && scope.row.status.includes('已发货') ? 'primary' : 'warning')" size="small">
+              {{ scope.row.status || '待发货' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="下单时间" width="160">
+        <el-table-column prop="createTime" label="下单时间" width="140">
           <template #default="scope">
             <span>{{ formatTime(scope.row.createTime) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="105" align="center" fixed="right">
+          <template #default="scope">
+            <el-button
+              v-if="scope.row.status && scope.row.status.includes('已发货') && !scope.row.status.includes('已送达')"
+              type="success"
+              size="small"
+              plain
+              @click="handleConfirmReceived(scope.row)"
+            >
+              确认签收
+            </el-button>
+            <span v-else-if="scope.row.status && scope.row.status.includes('已送达')" style="color:#059669; font-size:12px; font-weight:bold;">
+              已签收
+            </span>
+            <span v-else style="color:#94a3b8; font-size:12px;">
+              等待发货
+            </span>
           </template>
         </el-table-column>
       </el-table>
@@ -424,7 +520,7 @@
     <!-- 弹窗：商城用户登录与注册 -->
     <el-dialog 
       v-model="showAuthModal" 
-      :title="authMode === 'login' ? '🔑 登录春播健康商城' : '✨ 注册春播商城新用户'" 
+      :title="authMode === 'login' ? '🔑 登录春播健康商城 · v5.0.0' : '✨ 注册春播商城新用户 · v5.0.0'" 
       width="440px"
       destroy-on-close
       append-to-body
@@ -625,15 +721,69 @@ watch(currentCategory, (v) => {
 })
 
 const categories = [
-  { key: 'all', label: '全部家庭好药', icon: '🌟' },
-  { key: '感冒发热', label: '感冒发烧 / 止咳退热', icon: '🤧' },
-  { key: '胃肠消化', label: '胃肠消化 / 腹泻止吐', icon: '💊' },
-  { key: '跌打损伤', label: '跌打损伤 / 创可贴', icon: '🩹' },
-  { key: '皮肤外用', label: '皮肤外用 / 蚊虫止痒', icon: '🌿' },
-  { key: '滋补调理', label: '滋补调理 / 气血养生', icon: '🧘' },
-  { key: '儿科健康', label: '小儿健康 / 家庭常备', icon: '👶' },
-  { key: '家用器械', label: '家用器械 / 血压防护', icon: '🩺' }
+  { key: 'all', label: '全部好药', sub: '正品精选', icon: '🌟' },
+  { key: '处方购药', label: '处方购药', sub: '专科审核', icon: '🏥' },
+  { key: '特色贴敷', label: '特色贴敷', sub: '门诊理疗', icon: '🌿' },
+  { key: '感冒发热', label: '感冒发热', sub: '止咳退热', icon: '🤧' },
+  { key: '儿科用药', label: '儿科用药', sub: '小儿健康', icon: '👶' },
+  { key: '胃肠消化', label: '胃肠消化', sub: '腹泻止吐', icon: '💊' },
+  { key: '骨伤镇痛', label: '骨伤镇痛', sub: '跌打损伤', icon: '🩹' },
+  { key: '慢病常备', label: '慢病常备', sub: '三高管理', icon: '🫀' },
+  { key: '滋补养生', label: '滋补养生', sub: '气血调理', icon: '🍵' },
+  { key: '皮肤外用', label: '皮肤外用', sub: '蚊虫止痒', icon: '🧴' },
+  { key: '家庭常备', label: '家庭常备', sub: '应急药箱', icon: '🏠' },
+  { key: '家用器械', label: '家用器械', sub: '血压防护', icon: '🩺' }
 ]
+
+// 分类导航条横向平滑滚动与箭头状态控制
+const categoryScrollRef = ref(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
+
+const updateCategoryScrollState = () => {
+  const el = categoryScrollRef.value
+  if (!el) return
+  canScrollLeft.value = el.scrollLeft > 10
+  canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 10
+}
+
+const scrollCategories = (offset) => {
+  const el = categoryScrollRef.value
+  if (!el) return
+  el.scrollBy({ left: offset, behavior: 'smooth' })
+}
+
+const onCategoryWheel = (e) => {
+  const el = categoryScrollRef.value
+  if (!el) return
+  if (Math.abs(e.deltaX) > 0) return
+  el.scrollLeft += e.deltaY
+}
+
+// 分类别名智能匹配（彻底对齐三端：兼容历史数据与微小表述差异）
+const matchCategory = (prodCat, selectedKey) => {
+  if (!selectedKey || selectedKey === 'all') return true
+  if (!prodCat) return false
+  const cat = prodCat.trim()
+  if (cat === selectedKey) return true
+
+  const categoryAliases = {
+    '处方购药': ['处方', '处方购药', '处方药'],
+    '特色贴敷': ['特色贴敷', '贴敷', '膏药', '贴膏'],
+    '感冒发热': ['感冒发热', '感冒发烧', '感冒', '退热', '止咳', '发热', '咳嗽咽痛'],
+    '胃肠消化': ['胃肠消化', '肠胃消化', '胃肠', '肠胃', '消化', '腹泻'],
+    '儿科用药': ['儿科用药', '儿科健康', '儿科', '小儿健康', '小儿用药', '小儿'],
+    '骨伤镇痛': ['骨伤镇痛', '跌打损伤', '骨伤', '跌打', '镇痛', '外伤跌打'],
+    '慢病常备': ['慢病常备', '慢病用药', '慢病', '三高', '慢病专区'],
+    '滋补养生': ['滋补养生', '滋补调理', '滋补', '养生', '气血'],
+    '皮肤外用': ['皮肤外用', '皮肤用药', '皮肤', '外用'],
+    '家庭常备': ['家庭常备', '家庭常备药', '生活常备', '家庭药箱'],
+    '家用器械': ['家用器械', '医疗器械', '器械']
+  }
+
+  const aliases = categoryAliases[selectedKey] || [selectedKey]
+  return aliases.some(alias => cat.includes(alias) || alias.includes(cat))
+}
 
 // 用户收货地址
 const showAddressModal = ref(false)
@@ -665,14 +815,24 @@ const loadProducts = async () => {
 // 分类占位图标（无图商品兜底展示）
 const categoryIcon = (cat) => {
   const map = {
+    '处方购药': '🏥',
+    '特色贴敷': '🌿',
     '感冒发热': '🤧',
+    '儿科用药': '👶',
+    '儿科健康': '👶',
     '胃肠消化': '💊',
+    '肠胃消化': '💊',
+    '骨伤镇痛': '🩹',
     '跌打损伤': '🩹',
     '外伤跌打': '🩹',
-    '皮肤外用': '🌿',
-    '皮肤用药': '🌿',
-    '滋补调理': '🧘',
-    '儿科健康': '👶',
+    '慢病常备': '🫀',
+    '慢病用药': '🫀',
+    '滋补养生': '🍵',
+    '滋补调理': '🍵',
+    '皮肤外用': '🧴',
+    '皮肤用药': '🧴',
+    '家庭常备': '🏠',
+    '家庭常备药': '🏠',
     '家用器械': '🩺',
     '咳嗽咽痛': '🍯'
   }
@@ -685,7 +845,7 @@ const filteredProducts = computed(() => {
     if (p.status === 'OFF_SALE') {
       return false
     }
-    if (currentCategory.value !== 'all' && p.category !== currentCategory.value) {
+    if (!matchCategory(p.category, currentCategory.value)) {
       return false
     }
     if (searchKeyword.value) {
@@ -693,7 +853,8 @@ const filteredProducts = computed(() => {
       const matchName = p.productName && p.productName.toLowerCase().includes(kw)
       const matchGen = p.genericName && p.genericName.toLowerCase().includes(kw)
       const matchPitch = p.csPitch && p.csPitch.toLowerCase().includes(kw)
-      if (!matchName && !matchGen && !matchPitch) return false
+      const matchCat = p.category && p.category.toLowerCase().includes(kw)
+      if (!matchName && !matchGen && !matchPitch && !matchCat) return false
     }
     return true
   })
@@ -853,9 +1014,34 @@ const handleSubmitConsumerOrder = async () => {
     await refreshMallUser()
     await loadOrders()
   } catch (e) {
-    ElMessage.error('下单遇到错误，请重试')
+    ElMessage.error(e.response?.data?.message || e.message || '下单遇到错误，请重试')
   } finally {
     orderSubmitting.value = false
+  }
+}
+
+// 订单清单解析与居民确认签收
+const parseOrderItemsList = (jsonStr) => {
+  if (!jsonStr) return []
+  try {
+    const list = JSON.parse(jsonStr)
+    return Array.isArray(list) ? list : []
+  } catch (e) {
+    return []
+  }
+}
+
+const handleConfirmReceived = async (order) => {
+  try {
+    const res = await axios.post('/api/mall/order/deliver', { orderNo: order.orderNo })
+    if (res.data?.success) {
+      ElMessage.success('已确认签收，感谢使用春播便民药房！')
+      await loadOrders()
+    } else {
+      ElMessage.error(res.data?.message || '操作失败')
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '确认签收失败')
   }
 }
 
@@ -1205,17 +1391,20 @@ const handleSendQuestion = async () => {
         try { parsed = JSON.parse(piece) } catch (e2) {
           // 兼容旧纯文本格式
           msg.text += piece
+          chatMessages.value = [...chatMessages.value]
           scrollToBottom()
           continue
         }
         if (parsed.eventType === 1001) {
           // DATA 事件：文字流式追加
           msg.text += (parsed.eventData || '')
+          chatMessages.value = [...chatMessages.value]
           scrollToBottom()
         } else if (parsed.eventType === 1003) {
           // PARAM 事件：结构化推荐商品卡片
           if (parsed.eventData && parsed.eventData.recommendations) {
             msg.recommendations = parsed.eventData.recommendations
+            chatMessages.value = [...chatMessages.value]
           }
         }
         // eventType 1002 (STOP) 忽略
@@ -1596,10 +1785,13 @@ onMounted(async () => {
   loadSessions()
   // 刷新后恢复浏览位置：等商品渲染完再滚回上次位置
   nextTick(() => {
+    updateCategoryScrollState()
+    window.addEventListener('resize', updateCategoryScrollState)
     setTimeout(() => {
       const el = productScrollEl.value
       const saved = Number(localStorage.getItem('chunbo_mall_scroll') || 0)
       if (el && saved > 0) el.scrollTop = saved
+      updateCategoryScrollState()
     }, 400)
   })
 })
@@ -1755,34 +1947,184 @@ const onProductScroll = (e) => {
 .category-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 16px;
   display: flex;
   align-items: center;
+  position: relative;
   gap: 8px;
+}
+
+.cat-list-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   overflow-x: auto;
+  scrollbar-width: none; /* 彻底隐藏 Firefox 原生粗灰滚动条 */
+  -ms-overflow-style: none; /* 彻底隐藏 IE/Edge 原生滚动条 */
+  scroll-behavior: smooth;
+  padding: 2px 0;
+}
+
+.cat-list-wrapper::-webkit-scrollbar {
+  display: none; /* 彻底隐藏 Chrome/Safari 原生粗灰滚动条 */
 }
 
 .cat-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 16px;
-  font-size: 14px;
+  gap: 5px;
+  padding: 10px 12px;
+  font-size: 13.5px;
   font-weight: 600;
   color: #475569;
   cursor: pointer;
   border-bottom: 3px solid transparent;
-  transition: all 0.2s;
+  transition: all 0.18s;
   white-space: nowrap;
+  border-radius: 6px 6px 0 0;
 }
 
 .cat-item:hover {
   color: #059669;
+  background: #f0fdf4;
 }
 
 .cat-item.active {
   color: #059669;
   border-bottom-color: #059669;
+  background: #ecfdf5;
+  font-weight: 700;
+}
+
+/* 左右平滑滚动微控小箭头 */
+.cat-arrow-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 18px;
+  line-height: 22px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+.cat-arrow-btn:hover {
+  color: #059669;
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+  transform: scale(1.05);
+}
+
+/* 全部分类触发器与下拉面板 */
+.all-cats-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #047857;
+  background: #f0fdf4;
+  border: 1px solid #a7f3d0;
+  border-radius: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 6px;
+  transition: all 0.2s;
+}
+
+.all-cats-trigger:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.arrow-down-icon {
+  font-size: 11px;
+}
+
+.all-cats-popover-content {
+  padding: 4px;
+}
+
+.pop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.pop-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pop-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.all-cats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pop-cat-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.pop-cat-card:hover {
+  border-color: #10b981;
+  background: #f0fdf4;
+  transform: translateY(-1px);
+}
+
+.pop-cat-card.active {
+  border-color: #059669;
+  background: #ecfdf5;
+}
+
+.pop-cat-card.active .pop-cat-label {
+  color: #059669;
+  font-weight: 700;
+}
+
+.pop-cat-icon {
+  font-size: 18px;
+}
+
+.pop-cat-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.pop-cat-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 1px;
 }
 
 /* 主体布局：App 壳式 —— 顶部固定，左列智能体固定，右列药品独立滚动 */

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingVertical="10dp"
+    android:paddingHorizontal="14dp">
+
+    <!-- 勾选框 -->
+    <CheckBox
+        android:id="@+id/cb_cart_item_select"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:buttonTint="@color/primary"
+        android:checked="true" />
+
+    <!-- 药品缩略图 -->
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/iv_cart_item_img"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginStart="6dp"
+        android:scaleType="centerCrop"
+        android:src="@android:drawable/ic_menu_gallery"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Small" />
+
+    <!-- 商品信息 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_cart_item_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="连花清瘟胶囊"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_cart_item_spec"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="0.35g*24粒/盒"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp" />
+
+        <!-- 价格行与加减数量 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_cart_item_price"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="¥ 26.80"
+                android:textColor="@color/status_red"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <!-- 减号 -->
+            <TextView
+                android:id="@+id/btn_cart_item_minus"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:background="@color/surface_variant"
+                android:gravity="center"
+                android:text="-"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- 数量 -->
+            <TextView
+                android:id="@+id/tv_cart_item_qty"
+                android:layout_width="36dp"
+                android:layout_height="26dp"
+                android:background="@color/surface_card"
+                android:gravity="center"
+                android:text="1"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <!-- 加号 -->
+            <TextView
+                android:id="@+id/btn_cart_item_plus"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:background="@color/surface_variant"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- 删除单项图标 -->
+            <ImageView
+                android:id="@+id/btn_cart_item_delete"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
+                android:padding="3dp"
+                android:src="@drawable/ic_delete"
+                app:tint="@color/text_muted" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
