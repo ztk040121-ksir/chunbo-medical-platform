@@ -1,7 +1,9 @@
 package com.chunbo.medical.ui.mall
 
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -381,6 +383,8 @@ class MallFragment : Fragment() {
             RegionPickerHelper.showRegionPicker(requireContext(), selectedRegion) { newReg ->
                 selectedRegion = newReg
                 dBinding.tvCheckoutSelectedRegion.text = newReg
+                val curDetail = dBinding.etCheckoutDetailAddress.text?.toString()
+                dBinding.etCheckoutDetailAddress.setText(RegionPickerHelper.syncDetailAddress(newReg, curDetail))
             }
         }
 
@@ -516,10 +520,30 @@ class MallFragment : Fragment() {
                     // 余额以服务端为准，下单后统一 refreshBalanceFromServer 刷新，不做本地假扣
                     CartManager.clearSelected()
                     dialog.dismiss()
+                    refreshBalanceFromServer()
+
+                    if (payMethod == "alipay" && finalNow > 0) {
+                        try {
+                            val preRes = withContext(Dispatchers.IO) {
+                                ApiClient.service.alipayPrecreate(mapOf(
+                                    "orderNo" to (order.orderNo ?: ""),
+                                    "amount" to String.format("%.2f", finalNow),
+                                    "subject" to "春播商城移动端购药"
+                                ))
+                            }
+                            val qr = preRes["qrCode"]?.toString()
+                            if (!qr.isNullOrEmpty()) {
+                                showAlipayMobilePayDialog(order.orderNo ?: "", String.format("%.2f", finalNow), qr)
+                                return@launch
+                            }
+                        } catch (e: Exception) {
+                            // 预下单网络异常时回退到默认提示
+                        }
+                    }
 
                     val succMsg = when (payMethod) {
                         "wechat" -> "🎉 模拟微信支付成功！\n订单号: ${order.orderNo ?: "ORD"}\n实付金额: ¥${String.format("%.2f", finalNow)}（演示环境无需真实付款）"
-                        "alipay" -> "🎉 模拟支付宝支付成功！\n订单号: ${order.orderNo ?: "ORD"}\n实付金额: ¥${String.format("%.2f", finalNow)}（演示环境无需真实付款）"
+                        "alipay" -> "🎉 支付宝下单成功！\n订单号: ${order.orderNo ?: "ORD"}\n实付金额: ¥${String.format("%.2f", finalNow)}"
                         else -> if (discountNow > 0) {
                             "🎉 合并支付成功！\n订单号: ${order.orderNo ?: "ORD"}\n已使用健康体验金成功抵扣 ¥${String.format("%.2f", discountNow)}，剩余体验金: ¥${String.format("%.2f", balanceAfterNow)}"
                         } else {
@@ -527,7 +551,6 @@ class MallFragment : Fragment() {
                         }
                     }
                     Toast.makeText(requireContext(), succMsg, Toast.LENGTH_LONG).show()
-                    refreshBalanceFromServer()
                 } catch (e: Exception) {
                     Toast.makeText(requireContext(), "结算支付失败: ${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -535,6 +558,20 @@ class MallFragment : Fragment() {
         }
 
         dialog.show()
+    }
+
+    private fun showAlipayMobilePayDialog(orderNo: String, amount: String, qrCode: String) {
+        com.chunbo.medical.util.AlipayCashierHelper.showAlipayPayDialog(
+            context = requireContext(),
+            scope = viewLifecycleOwner.lifecycleScope,
+            orderNo = orderNo,
+            amount = amount,
+            qrCode = qrCode,
+            title = "🔵 支付宝收银台 · 当面付"
+        ) {
+            refreshBalanceFromServer()
+            Toast.makeText(requireContext(), "🎉 订单付款成功！顺丰特快揽收中", Toast.LENGTH_LONG).show()
+        }
     }
 
     /** 结算弹窗金额重算：体验金仅在 balance 模式下抵扣，微信/支付宝为全额现金（模拟支付） */
@@ -689,6 +726,8 @@ class MallFragment : Fragment() {
             RegionPickerHelper.showRegionPicker(requireContext(), selectedRegion) { newReg ->
                 selectedRegion = newReg
                 dialogBinding.dialogTvSelectedRegion.text = newReg
+                val curDetail = dialogBinding.dialogEditAddress.text?.toString()
+                dialogBinding.dialogEditAddress.setText(RegionPickerHelper.syncDetailAddress(newReg, curDetail))
             }
         }
 

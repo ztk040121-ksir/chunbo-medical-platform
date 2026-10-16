@@ -3,17 +3,27 @@ import { reactive, computed, watch } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-// 通用列表搜索/分页工厂（客户端分页，叠加在既有筛选之上）
+// 通用列表搜索/分页工厂（支持客户端切片及后端标准分页对象适配）
 export const makeListPager = (sourceRef, fields) => {
   const state = reactive({ search: '', page: 1, size: 10 })
   const searched = computed(() => {
     const key = state.search.trim().toLowerCase()
-    const list = sourceRef.value || []
+    const list = Array.isArray(sourceRef.value) ? sourceRef.value : (sourceRef.value?.list || sourceRef.value?.data || sourceRef.value?.records || [])
     if (!key) return list
     return list.filter(item => fields.some(f => String(item[f] ?? '').toLowerCase().includes(key)))
   })
-  const paged = computed(() => searched.value.slice((state.page - 1) * state.size, state.page * state.size))
-  const total = computed(() => searched.value.length)
+  const paged = computed(() => {
+    if (sourceRef.value && !Array.isArray(sourceRef.value) && (sourceRef.value.records || sourceRef.value.list)) {
+      return sourceRef.value.records || sourceRef.value.list || []
+    }
+    return searched.value.slice((state.page - 1) * state.size, state.page * state.size)
+  })
+  const total = computed(() => {
+    if (sourceRef.value && !Array.isArray(sourceRef.value) && sourceRef.value.total != null) {
+      return Number(sourceRef.value.total)
+    }
+    return searched.value.length
+  })
   watch(() => state.search, () => { state.page = 1 })
   return reactive({ state, searched, paged, total })
 }

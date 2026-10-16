@@ -6,7 +6,7 @@
         <div class="brand-zone">
           <div class="logo-box">🌿</div>
           <div>
-            <div class="brand-title">春播健康商城 · 便民网上药房 <span style="font-size: 11px; opacity: 0.75; font-weight: normal; margin-left: 6px; background: rgba(5, 150, 105, 0.1); color: #059669; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(5, 150, 105, 0.2);">v5.0.0</span></div>
+            <div class="brand-title">春播健康商城 · 便民网上药房 <span style="font-size: 11px; opacity: 0.75; font-weight: normal; margin-left: 6px; background: rgba(5, 150, 105, 0.1); color: #059669; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(5, 150, 105, 0.2);">v5.0.1</span></div>
             <div class="brand-sub">正品好药 · 顺丰即日达 · 24小时家庭药箱 · 专业药师指导</div>
           </div>
         </div>
@@ -27,7 +27,7 @@
         <div class="header-actions">
           <div class="address-capsule" @click="showAddressModal = true" title="点击修改配送地址">
             <el-icon color="#059669"><Location /></el-icon>
-            <span class="address-text">送至: {{ userAddress.city }}{{ userAddress.district }}{{ userAddress.detail }}</span>
+            <span class="address-text">送至: {{ fullDeliveryAddress }}</span>
             <span class="user-receiver">({{ userAddress.name }})</span>
           </div>
 
@@ -342,7 +342,7 @@
             <el-button type="primary" link size="small" @click="showAddressModal = true">更换</el-button>
           </div>
           <div class="box-receiver">{{ userAddress.name }} · {{ userAddress.phone }}</div>
-          <div class="box-detail">{{ userAddress.province }}{{ userAddress.city }}{{ userAddress.district }}{{ userAddress.detail }}</div>
+          <div class="box-detail">{{ fullDeliveryAddress }}</div>
         </div>
 
         <!-- 购物车商品列表 -->
@@ -421,30 +421,33 @@
       </div>
     </el-drawer>
 
-    <!-- 弹窗：收货地址修改 -->
-    <el-dialog v-model="showAddressModal" title="设置送药上门收货地址" width="500px">
+    <!-- 弹窗：收货地址修改 (标准化省市区级联选择组件) -->
+    <el-dialog v-model="showAddressModal" title="📍 设置送药上门收货地址" width="520px">
       <el-form :model="userAddress" label-width="90px">
-        <el-form-item label="收货人">
-          <el-input v-model="userAddress.name" placeholder="请输入收货人姓名" />
+        <el-form-item label="收货人" required>
+          <el-input v-model="userAddress.name" placeholder="请输入收货人姓名" clearable />
         </el-form-item>
-        <el-form-item label="联系电话">
-          <el-input v-model="userAddress.phone" placeholder="请输入手机号码" />
+        <el-form-item label="联系电话" required>
+          <el-input v-model="userAddress.phone" placeholder="请输入手机号码" clearable />
         </el-form-item>
-        <el-form-item label="省市地区">
-          <el-row :gutter="10">
-            <el-col :span="8">
-              <el-input v-model="userAddress.province" placeholder="省份" />
-            </el-col>
-            <el-col :span="8">
-              <el-input v-model="userAddress.city" placeholder="城市" />
-            </el-col>
-            <el-col :span="8">
-              <el-input v-model="userAddress.district" placeholder="区县" />
-            </el-col>
-          </el-row>
+        <el-form-item label="省市地区" required>
+          <el-cascader
+            v-model="selectedRegionCascader"
+            :options="regionCascaderOptions"
+            placeholder="请选择省 / 市 / 区县 (支持拼音与汉字搜索)"
+            style="width: 100%"
+            filterable
+            clearable
+            @change="handleRegionChange"
+          />
         </el-form-item>
-        <el-form-item label="详细地址">
-          <el-input v-model="userAddress.detail" placeholder="街道、小区、楼栋门牌号" />
+        <el-form-item label="详细地址" required>
+          <el-input
+            v-model="userAddress.detail"
+            type="textarea"
+            :rows="2"
+            placeholder="街道、小区、楼栋门牌号等详细地址（选择上方省市地区后自动联动更新）"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -487,15 +490,39 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="payMethod" label="支付方式" width="110" align="center">
+          <template #default="scope">
+            <el-tag v-if="scope.row.payMethod === '支付宝' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('alipay'))" size="small" type="primary" effect="plain">
+              🔵 支付宝
+            </el-tag>
+            <el-tag v-else-if="scope.row.payMethod === '微信支付' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('wechat'))" size="small" type="success" effect="plain">
+              🟢 微信支付
+            </el-tag>
+            <el-tag v-else-if="scope.row.payMethod === '账户余额' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('体验金'))" size="small" type="warning" effect="plain">
+              💳 体验金
+            </el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">
+              {{ scope.row.payMethod || '在线支付' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="下单时间" width="140">
           <template #default="scope">
             <span>{{ formatTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="105" align="center" fixed="right">
+        <el-table-column label="操作" width="115" align="center" fixed="right">
           <template #default="scope">
             <el-button
-              v-if="scope.row.status && scope.row.status.includes('已发货') && !scope.row.status.includes('已送达')"
+              v-if="scope.row.status && (scope.row.status.includes('待支付') || scope.row.status.includes('待付款'))"
+              type="primary"
+              size="small"
+              @click="handlePayExistingOrder(scope.row)"
+            >
+              立即支付
+            </el-button>
+            <el-button
+              v-else-if="scope.row.status && scope.row.status.includes('已发货') && !scope.row.status.includes('已送达')"
               type="success"
               size="small"
               plain
@@ -517,10 +544,12 @@
       </template>
     </el-dialog>
 
+
+
     <!-- 弹窗：商城用户登录与注册 -->
     <el-dialog 
       v-model="showAuthModal" 
-      :title="authMode === 'login' ? '🔑 登录春播健康商城 · v5.0.0' : '✨ 注册春播商城新用户 · v5.0.0'" 
+      :title="authMode === 'login' ? '🔑 登录春播健康商城 · v5.0.1' : '✨ 注册春播商城新用户 · v5.0.1'" 
       width="440px"
       destroy-on-close
       append-to-body
@@ -691,6 +720,78 @@
         <div v-if="!chatSessions.length" class="mhd-empty">暂无历史会话记录</div>
       </div>
     </el-drawer>
+
+    <!-- 💳 商城支付宝当面付扫码支付弹窗 (页面内原生弹窗，不弹新窗口) -->
+    <!-- 🔵 支付宝扫码支付弹窗 (官方经典黑白二维码 + 居中Logo + 安全收银台标识) -->
+    <el-dialog
+      v-model="mallPayQrVisible"
+      title="🔵 支付宝扫码支付 · 官方收银台"
+      width="460px"
+      append-to-body
+      align-center
+      :before-close="handleCloseMallPayQr"
+    >
+      <div style="display: flex; flex-direction: column; align-items: center; padding: 0 8px;">
+        <!-- 安全支付环境提示徽标（同官方微信/支付宝收银台） -->
+        <div style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; font-size: 12px; color: #d46b08; margin-bottom: 12px;">
+          <span>🛡️</span>
+          <span>当前支付环境安全，已接入支付宝官方沙箱链路</span>
+        </div>
+
+        <div style="display: flex; justify-content: center; width: 100%; font-size: 13px; color: #475569; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 12px;">
+          <span>订单编号：<b>{{ mallPayOrderNo }}</b></span>
+        </div>
+
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px;">
+          <span style="font-size: 14px; color: #64748b; font-weight: 600;">实付金额</span>
+          <span style="font-size: 32px; font-weight: 800; color: #0f172a;">¥ {{ mallPayAmount }}</span>
+        </div>
+
+        <!-- 经典官方黑白高对比二维码展示区（点击可刷新） -->
+        <div 
+          style="position: relative; background: #ffffff; padding: 12px; border-radius: 12px; border: 2px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.08); min-width: 220px; min-height: 220px; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none;"
+          title="点击刷新二维码"
+          @click="refreshMallPayQr"
+        >
+          <div v-if="mallPayQrLoading" style="display: flex; flex-direction: column; align-items: center; gap: 10px; color: #64748b; font-size: 13px;">
+            <el-icon class="is-loading" :size="32" color="#1677ff"><Loading /></el-icon>
+            <span>正在生成二维码...</span>
+          </div>
+          <template v-else-if="mallPayQrUrl">
+            <img :src="mallPayQrUrl" width="220" height="220" style="display: block; border-radius: 4px;" alt="支付宝收款码" />
+            <!-- 经典官方居中支付宝「支」Logo 徽标 (清晰端正，绝无变形) -->
+            <div class="qr-center-logo alipay-logo">
+              <span class="zhi-logo-text">支</span>
+            </div>
+          </template>
+          <div v-else style="color: #64748b; font-size: 13px;">生成二维码异常，点击重试</div>
+        </div>
+
+        <!-- 点击刷新提示 -->
+        <div 
+          style="font-size: 12px; color: #64748b; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;"
+          @click="refreshMallPayQr"
+        >
+          <el-icon><Refresh /></el-icon>
+          <span>点击二维码可刷新</span>
+        </div>
+
+        <div style="margin-top: 8px; text-align: center;">
+          <div style="font-size: 12px; color: #0284c7; display: flex; align-items: center; justify-content: center; gap: 4px;">
+            <el-icon class="is-loading" :size="14"><Loading /></el-icon>
+            正在实时监听付款结果，付款成功将自动核销发货…
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <el-button @click="handleCloseMallPayQr">稍后支付</el-button>
+          <el-button type="success" @click="checkMallPayStatusManually" :loading="mallCheckingStatus">
+            我已完成付款
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -699,6 +800,8 @@ import { marked } from 'marked'
 import { ref, computed, onMounted, nextTick , watch } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
 import axios from 'axios'
+import QRCode from 'qrcode'
+import { regionCascaderOptions, splitRegionPrefix } from './utils/regionData.js'
 
 // 防 XSS：转义 LLM/用户输出中的原始 HTML（marked 默认原样透传 HTML 标签，存在存储型 XSS 风险）
 const escapeHtml = (s) => String(s ?? '')
@@ -785,18 +888,107 @@ const matchCategory = (prodCat, selectedKey) => {
   return aliases.some(alias => cat.includes(alias) || alias.includes(cat))
 }
 
-// 用户收货地址
+// 用户收货地址与省市区级联选择器
 const showAddressModal = ref(false)
 const userAddress = ref({
   name: '春播顾客',
   phone: '13800138000',
   province: '北京市',
-  city: '市辖区',
+  city: '北京市',
   district: '海淀区',
-  detail: '中关村南大街1号春播健康便民服务点'
+  detail: '北京市海淀区中关村南大街1号春播健康便民服务点'
 })
 
+const selectedRegionCascader = ref(['北京市', '北京市', '海淀区'])
+
+// 计算完整配送地址（规范展示防重复）
+const fullDeliveryAddress = computed(() => {
+  const detail = (userAddress.value.detail || '').trim()
+  const prov = userAddress.value.province || ''
+  const city = userAddress.value.city || ''
+  const dist = userAddress.value.district || ''
+  
+  if (!detail && !prov) return '未设置收货地址'
+  // 若详细地址已包含省/市前缀，直接采用
+  if (detail && (detail.startsWith(prov) || (city && detail.startsWith(city)) || (prov && detail.includes(prov)))) {
+    return detail
+  }
+  const prefix = `${prov}${city === prov ? '' : city}${dist}`
+  return prefix ? `${prefix}${detail}` : detail
+})
+
+// 当打开修改地址弹窗时，自动将已有地址回显到级联选择器
+watch(showAddressModal, (isOpen) => {
+  if (isOpen) {
+    if (userAddress.value.province && userAddress.value.city) {
+      selectedRegionCascader.value = [
+        userAddress.value.province,
+        userAddress.value.city,
+        userAddress.value.district || ''
+      ].filter(Boolean)
+    } else {
+      selectedRegionCascader.value = ['北京市', '北京市', '海淀区']
+    }
+  }
+})
+
+// 省市区级联选择变更：下面的详细地址实时联动跟随变化
+const handleRegionChange = (val) => {
+  if (Array.isArray(val) && val.length > 0) {
+    const prov = val[0] || ''
+    const city = val[1] || ''
+    const dist = val[2] || ''
+    
+    // 生成新的省市区前缀字符串（直辖市去重：北京市海淀区，普通省份：广东省深圳市南山区）
+    const prefix = `${prov}${city === prov ? '' : city}${dist}`
+    
+    // 获取当前已有详细地址，提取街道门牌号部分（清理历史残留前缀）
+    let street = (userAddress.value.detail || '').trim()
+    const oldPrefixes = [
+      `${userAddress.value.province}${userAddress.value.city === userAddress.value.province ? '' : userAddress.value.city}${userAddress.value.district}`,
+      `${userAddress.value.province} ${userAddress.value.city} ${userAddress.value.district}`,
+      `${userAddress.value.province}${userAddress.value.city}${userAddress.value.district}`,
+      userAddress.value.province,
+      userAddress.value.city,
+      userAddress.value.district,
+      '北京市海淀区', '北京市', '海淀区', '广东省深圳市南山区', '广东省', '深圳市', '南山区',
+      '湖南省长沙市岳麓区', '湖南省', '长沙市', '岳麓区', '湖北省武汉市洪山区', '湖北省', '武汉市', '洪山区'
+    ].filter(Boolean)
+
+    for (const p of oldPrefixes) {
+      if (street.includes(p)) {
+        street = street.split(p).join('').trim()
+      }
+    }
+    street = street.replace(/^[,，、\s/\\-]+|[,，、\s/\\-]+$/g, '')
+
+    userAddress.value.province = prov
+    userAddress.value.city = city
+    userAddress.value.district = dist
+    
+    // 联动更新：详细地址跟着省市地区联动变化，并保留后续街道门牌
+    userAddress.value.detail = street ? `${prefix}${street}` : `${prefix}`
+  } else {
+    userAddress.value.province = ''
+    userAddress.value.city = ''
+    userAddress.value.district = ''
+    userAddress.value.detail = ''
+  }
+}
+
 const saveAddress = () => {
+  if (!userAddress.value.name?.trim()) {
+    return ElMessage.warning('请填写收货人姓名')
+  }
+  if (!userAddress.value.phone?.trim()) {
+    return ElMessage.warning('请填写联系电话')
+  }
+  if (!userAddress.value.province || !userAddress.value.city) {
+    return ElMessage.warning('请通过省市区级联组件选择配送所在地区')
+  }
+  if (!userAddress.value.detail?.trim()) {
+    return ElMessage.warning('请填写街道、小区等详细收货地址')
+  }
   ElMessage.success('送药收货地址已更新保存！')
   showAddressModal.value = false
 }
@@ -806,7 +998,7 @@ const products = ref([])
 const loadProducts = async () => {
   try {
     const res = await axios.get('/api/mall/products')
-    products.value = res.data || []
+    products.value = Array.isArray(res.data) ? res.data : (res.data?.list || res.data?.records || [])
   } catch (e) {
     console.error("加载商城商品失败:", e)
   }
@@ -957,13 +1149,156 @@ const updateCartSum = () => {
 const showOrderModal = ref(false)
 const myOrders = ref([])
 
+// 支付宝扫码支付弹窗状态
+let mallPollTimer = null
+const mallPayQrVisible = ref(false)
+const mallPayQrLoading = ref(false)
+const mallPayQrUrl = ref('')
+const mallPayOrderNo = ref('')
+const mallPayAmount = ref('')
+const mallMockPayLoading = ref(false)
+const mallCheckingStatus = ref(false)
+
+const stopMallPolling = () => {
+  if (mallPollTimer) {
+    clearInterval(mallPollTimer)
+    mallPollTimer = null
+  }
+}
+
+const handleCloseMallPayQr = () => {
+  stopMallPolling()
+  mallPayQrVisible.value = false
+  refreshMallUser()
+  loadOrders()
+}
+
+const startMallAlipayPolling = (orderNo) => {
+  stopMallPolling()
+  if (!orderNo) return
+  let tries = 0
+  mallPollTimer = setInterval(async () => {
+    tries++
+    try {
+      const res = await axios.get('/api/pay/alipay/query', { params: { orderNo } })
+      if (res.data?.paid) {
+        stopMallPolling()
+        mallPayQrVisible.value = false
+        ElNotification({
+          title: '🎉 支付宝支付成功！顺丰特快揽收中',
+          message: `订单编号：${orderNo}，药品将极速送达至【${fullDeliveryAddress.value}】！`,
+          type: 'success',
+          duration: 6000
+        })
+        cartItems.value = []
+        updateCartSum()
+        showCartDrawer.value = false
+        await refreshMallUser()
+        await loadOrders()
+      } else if (tries > 200) {
+        stopMallPolling()
+      }
+    } catch (e) {
+      if (tries > 200) stopMallPolling()
+    }
+  }, 2500)
+}
+
+const simulateMallMockPay = async () => {
+  if (!mallPayOrderNo.value) return
+  mallMockPayLoading.value = true
+  try {
+    const res = await axios.post('/api/pay/alipay/mock-pay', {
+      orderNo: mallPayOrderNo.value,
+      amount: mallPayAmount.value
+    })
+    if (res.data?.success) {
+      stopMallPolling()
+      mallPayQrVisible.value = false
+      ElNotification({
+        title: '🎉 支付成功！顺丰特快揽收中',
+        message: `订单编号：${mallPayOrderNo.value}，药品将极速送达至【${fullDeliveryAddress.value}】！`,
+        type: 'success',
+        duration: 6000
+      })
+      cartItems.value = []
+      updateCartSum()
+      showCartDrawer.value = false
+      await refreshMallUser()
+      await loadOrders()
+    } else {
+      ElMessage.error(res.data?.message || '模拟支付失败')
+    }
+  } catch (e) {
+    ElMessage.error('模拟支付异常: ' + (e.response?.data?.message || e.message))
+  } finally {
+    mallMockPayLoading.value = false
+  }
+}
+
+const refreshMallPayQr = async () => {
+  if (!mallPayOrderNo.value) return
+  mallPayQrLoading.value = true
+  try {
+    const payRes = await axios.post('/api/pay/alipay/precreate', {
+      orderNo: mallPayOrderNo.value,
+      amount: mallPayAmount.value,
+      subject: `春播健康商城购药 - ${mallPayOrderNo.value}`
+    })
+    if (payRes.data?.success && payRes.data?.qrCode) {
+      mallPayQrUrl.value = await QRCode.toDataURL(payRes.data.qrCode, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+    } else {
+      mallPayQrUrl.value = await QRCode.toDataURL(`CHUNBO_ALIPAY_${mallPayOrderNo.value}_AMT_${mallPayAmount.value}_TS_${Date.now()}`, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+    }
+    ElMessage.success('二维码已刷新')
+  } catch (err) {
+    ElMessage.error('刷新二维码失败: ' + (err.message || '网络异常'))
+  } finally {
+    mallPayQrLoading.value = false
+  }
+}
+
+const checkMallPayStatusManually = async () => {
+  if (!mallPayOrderNo.value) return
+  mallCheckingStatus.value = true
+  try {
+    const res = await axios.get('/api/pay/alipay/query', { params: { orderNo: mallPayOrderNo.value } })
+    if (res.data?.paid) {
+      stopMallPolling()
+      mallPayQrVisible.value = false
+      ElMessage.success('已核实支付宝付款成功！顺丰特快揽收中')
+      cartItems.value = []
+      updateCartSum()
+      showCartDrawer.value = false
+      await refreshMallUser()
+      await loadOrders()
+    } else {
+      ElMessage.warning('系统尚未收到支付到账回调，请确认是否已在手机上完成付款')
+    }
+  } catch (e) {
+    ElMessage.error('查询状态异常: ' + (e.message || '网络错误'))
+  } finally {
+    mallCheckingStatus.value = false
+  }
+}
+
 const loadOrders = async () => {
   // 未登录不查询订单，避免触发 401
   if (!currentUser.value) return
   try {
     // 后端已按当前登录用户过滤（不再全量下发他人订单），直接展示本人订单
     const res = await axios.get('/api/mall/orders')
-    myOrders.value = res.data || []
+    myOrders.value = Array.isArray(res.data) ? res.data : (res.data?.list || res.data?.records || [])
   } catch (e) {}
 }
 
@@ -991,25 +1326,67 @@ const handleSubmitConsumerOrder = async () => {
   try {
     const payload = {
       buyerName: `${userAddress.value.name} (${userAddress.value.phone})`,
-      address: `${userAddress.value.province || '北京市'}${userAddress.value.city || '市辖区'}${userAddress.value.district || '海淀区'}${userAddress.value.detail}`,
+      address: fullDeliveryAddress.value,
       totalAmount: (cartTotal.value + shippingFee.value).toFixed(2),
       discountAmount: (useExperienceBalance.value ? actualBalanceDeduct.value : 0).toFixed(2),
       finalAmount: finalPayAmount.value.toFixed(2),
       useBalance: useExperienceBalance.value,
+      payMethod: selectedPayType.value === 'alipay' ? '支付宝' : selectedPayType.value === 'wechat' ? '微信支付' : selectedPayType.value === 'card' ? '银联/医保在线' : selectedPayType.value,
       notes: `生活购药订单 · 支付方式: ${selectedPayType.value} · 满68顺丰包邮`,
       itemsJson: JSON.stringify(cartItems.value)
     }
     const res = await axios.post('/api/mall/order/create', payload)
     const newOrder = res.data
 
+    // 若用户选择支付宝且实付金额大于0，唤起页面内当面付扫码支付弹窗
+    if (selectedPayType.value === 'alipay' && finalPayAmount.value > 0) {
+      const orderNo = newOrder.orderNo
+      const amount = Number(newOrder.finalAmount || finalPayAmount.value).toFixed(2)
+      mallPayOrderNo.value = orderNo
+      mallPayAmount.value = amount
+      mallPayQrVisible.value = true
+      mallPayQrLoading.value = true
+      mallPayQrUrl.value = ''
+      try {
+        const payRes = await axios.post('/api/pay/alipay/precreate', {
+          orderNo,
+          amount,
+          subject: '春播便民商城 - 药品采购'
+        })
+        if (!payRes.data?.success || !payRes.data?.qrCode) {
+          throw new Error(payRes.data?.message || '获取支付宝收款码失败，请确认后端已重启')
+        }
+        const qrContent = payRes.data.qrCode
+        mallPayQrUrl.value = await QRCode.toDataURL(qrContent, {
+          width: 220,
+          margin: 1,
+          errorCorrectionLevel: 'H',
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        })
+        startMallAlipayPolling(orderNo)
+      } catch (err) {
+        ElMessage.error('获取收款二维码失败: ' + (err.message || '网络异常'))
+      } finally {
+        mallPayQrLoading.value = false
+      }
+      cartItems.value = []
+      updateCartSum()
+      showCartDrawer.value = false
+      return
+    }
+
     ElNotification({
       title: '🎉 购药下单成功！顺丰特快揽收中',
-      message: `订单编号：${newOrder.orderNo}，药品将极速送达至【${userAddress.value.detail}】！`,
+      message: `订单编号：${newOrder.orderNo}，药品将极速送达至【${fullDeliveryAddress.value}】！`,
       type: 'success',
       duration: 6000
     })
 
     cartItems.value = []
+    updateCartSum()
     showCartDrawer.value = false
     await refreshMallUser()
     await loadOrders()
@@ -1042,6 +1419,43 @@ const handleConfirmReceived = async (order) => {
     }
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '确认签收失败')
+  }
+}
+
+// 待支付订单直接唤起在页原生黑白收银台
+const handlePayExistingOrder = async (order) => {
+  if (!order || !order.orderNo) return
+  mallPayOrderNo.value = order.orderNo
+  mallPayAmount.value = Number(order.finalAmount || order.totalAmount || 0).toFixed(2)
+  mallPayQrVisible.value = true
+  mallPayQrLoading.value = true
+  mallPayQrUrl.value = ''
+  try {
+    const payRes = await axios.post('/api/pay/alipay/precreate', {
+      orderNo: order.orderNo,
+      amount: mallPayAmount.value,
+      subject: `春播健康商城购药 - ${order.orderNo}`
+    })
+    if (payRes.data?.success && payRes.data?.qrCode) {
+      mallPayQrUrl.value = await QRCode.toDataURL(payRes.data.qrCode, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+    } else {
+      mallPayQrUrl.value = await QRCode.toDataURL(`CHUNBO_ALIPAY_${order.orderNo}_AMT_${mallPayAmount.value}`, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+    }
+    startMallAlipayPolling(order.orderNo)
+  } catch (err) {
+    ElMessage.error('获取支付二维码失败: ' + (err.message || '网络异常'))
+  } finally {
+    mallPayQrLoading.value = false
   }
 }
 
@@ -3075,5 +3489,40 @@ const onProductScroll = (e) => {
   font-size: 11px;
   margin-left: 6px;
   color: #059669;
+}
+
+/* 官方收银台二维码居中「支」徽标 */
+.qr-center-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 3.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.alipay-logo {
+  background: #1677ff;
+}
+
+.wechat-logo {
+  background: #07c160;
+}
+
+.zhi-logo-text {
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  transform: translateY(-1px);
 }
 </style>

@@ -12,7 +12,7 @@
         android:id="@+id/tv_login_dialog_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="春播健康商城会员登录"
+        android:text="春播健康商城会员登录 · v5.0.1"
         android:textColor="@color/text_primary"
         android:textSize="18sp"
         android:textStyle="bold" />

@@ -113,7 +113,7 @@
       <!-- 看板模式 -->
       <div v-if="displayMode === 'kanban'" class="kanban-grid">
         <div 
-          v-for="item in filteredRegistrations" 
+          v-for="item in pagedRegistrations" 
           :key="item.id" 
           class="patient-reg-card"
         >
@@ -216,7 +216,7 @@
       </div>
 
       <!-- 表格模式 -->
-      <el-table v-else :data="filteredRegistrations" stripe class="data-table-glass">
+      <el-table v-else :data="pagedRegistrations" stripe class="data-table-glass">
         <el-table-column prop="queueNumber" label="就诊号" width="100">
           <template #default="scope">
             <el-tag type="primary" effect="dark" size="small">{{ scope.row.queueNumber || scope.row.queueNo || scope.row.id }}</el-tag>
@@ -297,6 +297,22 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 挂号就诊记录分页控制栏 -->
+      <div v-if="filteredRegistrations.length > 0" class="registration-pagination-bar" style="margin-top: 14px; display: flex; justify-content: flex-end; align-items: center; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(8px); padding: 10px 16px; border-radius: 8px; border: 1px solid rgba(226, 232, 240, 0.8);">
+        <span style="font-size: 13px; color: #64748b; margin-right: auto;">
+          共检索到 <b style="color: #0284c7;">{{ filteredRegistrations.length }}</b> 条就诊记录（当前第 {{ regPageNo }} / {{ Math.ceil(filteredRegistrations.length / regPageSize) || 1 }} 页）
+        </span>
+        <el-pagination
+          v-model:current-page="regPageNo"
+          v-model:page-size="regPageSize"
+          :page-sizes="[12, 24, 48, 96]"
+          :total="filteredRegistrations.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          size="small"
+          background
+        />
+      </div>
     </div>
 
     <!-- 2. 医生周历排班看板 -->
@@ -555,44 +571,25 @@
           </el-col>
         </el-row>
 
-        <!-- 省市区三级地址（全国主流省市区联动 + 拼音/汉字检索 + 身份证智能回填） -->
+        <!-- 省市区级联组件与详细地址联动 -->
         <el-form-item label="常住省市区">
-          <div class="address-grid-layout">
-            <el-select 
-              v-model="regForm.province" 
-              placeholder="选择省份" 
-              filterable
-              allow-create
-              default-first-option
-              class="address-select-item"
-              @change="onProvinceChange"
-            >
-              <el-option v-for="p in provinceOptions" :key="p" :label="p" :value="p" />
-            </el-select>
-
-            <el-select 
-              v-model="regForm.city" 
-              placeholder="选择城市" 
-              filterable
-              allow-create
-              default-first-option
-              class="address-select-item"
-              @change="onCityChange"
-            >
-              <el-option v-for="c in cityOptions" :key="c" :label="c" :value="c" />
-            </el-select>
-
-            <el-select 
-              v-model="regForm.district" 
-              placeholder="选择区县" 
-              filterable
-              allow-create
-              default-first-option
-              class="address-select-item"
-            >
-              <el-option v-for="d in districtOptions" :key="d" :label="d" :value="d" />
-            </el-select>
-          </div>
+          <el-cascader
+            v-model="regRegionCascader"
+            :options="regionCascaderOptions"
+            placeholder="请选择省 / 市 / 区县 (支持拼音与汉字搜索)"
+            style="width: 100%;"
+            filterable
+            clearable
+            @change="onRegRegionChange"
+          />
+        </el-form-item>
+        <el-form-item label="详细住址">
+          <el-input
+            v-model="regForm.detailAddress"
+            type="textarea"
+            :rows="2"
+            placeholder="街道、小区、楼栋门牌号等详细地址（上方选择地区后自动联动更新）"
+          />
         </el-form-item>
 
         <!-- 详细资料（选填）：接诊页患者档案将展示这些信息 -->
@@ -1211,6 +1208,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import axios from 'axios'
 import QRCode from 'qrcode'
+import { regionCascaderOptions, splitRegionPrefix } from '../utils/regionData.js'
 
 const activeSubTab = ref('register')
 const currentStatus = ref('all')
@@ -1473,6 +1471,20 @@ const filteredRegistrations = computed(() => {
   return baseRegistrations.value.filter(r => r.status === currentStatus.value)
 })
 
+// 挂号与就诊队列分页状态
+const regPageNo = ref(1)
+const regPageSize = ref(12)
+
+const pagedRegistrations = computed(() => {
+  if (!filteredRegistrations.value) return []
+  const start = (regPageNo.value - 1) * regPageSize.value
+  return filteredRegistrations.value.slice(start, start + regPageSize.value)
+})
+
+watch([selectedRegDate, filterDoctor, filterDept, searchKeyword, currentStatus], () => {
+  regPageNo.value = 1
+})
+
 // 7天周历计算
 const currentWeekOffset = ref(0)
 const weekDays = computed(() => {
@@ -1529,6 +1541,7 @@ const regForm = ref({
   province: '湖南省',
   city: '长沙市',
   district: '开福区',
+  detailAddress: '湖南省长沙市开福区',
   department: '全科门诊',
   doctorName: displayName || '系统用户',
   fee: 10.00,
@@ -1544,6 +1557,32 @@ const regForm = ref({
   accompany: '',
   accompanyPhone: ''
 })
+
+const regRegionCascader = ref(['湖南省', '长沙市', '开福区'])
+
+const onRegRegionChange = (val) => {
+  if (Array.isArray(val) && val.length > 0) {
+    const prov = val[0] || ''
+    const city = val[1] || ''
+    const dist = val[2] || ''
+    regForm.value.province = prov
+    regForm.value.city = city
+    regForm.value.district = dist
+    const prefix = `${prov}${city === prov ? '' : city}${dist}`
+    let street = (regForm.value.detailAddress || '').trim()
+    const oldTokens = ['北京市', '海淀区', '朝阳区', '广东省', '深圳市', '南山区', '广州市', '湖南省', '长沙市', '岳麓区', '开福区', '湖北省', '武汉市', '洪山区']
+    for (const t of oldTokens) {
+      street = street.replaceAll(t, '').trim()
+    }
+    street = street.replace(/^[,，、\s/\\-]+|[,，、\s/\\-]+$/g, '')
+    regForm.value.detailAddress = street ? `${prefix}${street}` : `${prefix}`
+  } else {
+    regForm.value.province = ''
+    regForm.value.city = ''
+    regForm.value.district = ''
+    regForm.value.detailAddress = ''
+  }
+}
 
 const scheduleForm = ref({
   id: null,
@@ -2635,6 +2674,8 @@ const parseIdCard = () => {
     if (regInfo.province) regForm.value.province = regInfo.province
     if (regInfo.city) regForm.value.city = regInfo.city
     if (regInfo.district) regForm.value.district = regInfo.district
+    regRegionCascader.value = [regForm.value.province, regForm.value.city, regForm.value.district].filter(Boolean)
+    onRegRegionChange(regRegionCascader.value)
   }
 
   ElMessage.success({
@@ -2739,7 +2780,7 @@ const submitNewRegistration = async () => {
     ageText: ageStr,
     phone: regForm.value.phone,
     idCard: regForm.value.idCard,
-    address: `${regForm.value.province}${regForm.value.city}${regForm.value.district}`,
+    address: regForm.value.detailAddress || `${regForm.value.province}${regForm.value.city}${regForm.value.district}`,
     marriage: regForm.value.marriage,
     height: regForm.value.height,
     weight: regForm.value.weight,

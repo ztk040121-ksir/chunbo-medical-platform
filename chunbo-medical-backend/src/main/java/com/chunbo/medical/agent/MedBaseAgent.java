@@ -153,27 +153,19 @@ public abstract class MedBaseAgent extends AbstractAgent {
         boolean canPrescribe = pid != null;
 
         StringBuilder sys = new StringBuilder();
-        sys.append("你是春播云诊所AI辅助诊断智能体。医生上传了患者发病部位/病灶的图片，请严格按以下五步处理并输出：\n")
-           .append("【第一步·图像识别】用3-6条要点客观描述图片病灶特征（部位/形态/颜色/分布/皮损类型），不要大段重复。\n")
-           .append("【第二步·知识库比对】【必须调用工具】调用 searchKnowledge 检索基层诊疗知识库（RAG），query 用图片病症特征描述；")
-           .append("命中方向后再调用 queryClinicalGuideline(疾病名) 获取该病的标准诊疗与用药规范。引用知识库条目标题作为比对依据。\n")
-           .append("【第三步·给出诊断】结合图像特征与知识库规范，明确给出最可能的诊断（按可能性排序1-2个），各写一句支持点与关键鉴别点。\n");
+        String visualPrompt = com.chunbo.medical.prompt.PromptConfig.get("med_visual_diagnosis");
+        if (visualPrompt.isBlank()) {
+            visualPrompt = "你是春播云诊所AI辅助诊断智能体。医生上传了患者发病部位/病灶图片，请按规范进行病灶识别、RAG比对、给出诊断与规范开方。";
+        }
+        sys.append(visualPrompt).append("\n");
         if (canPrescribe) {
             if (emr != null && !emr.isBlank()) {
                 sys.append("【病历依据】本次门诊病历记录（真实有效，严禁凭空编造）：").append(emr).append("。\n");
             }
-            sys.append("【第四步·按规范开方】当前接诊患者ID：").append(pid)
-               .append("。先调用 queryPatientProfile(").append(pid)
-               .append(") 核对过敏史（青霉素过敏严禁阿莫西林，头孢过敏严禁头孢类），再调用 queryMedicineStock(药品名) 核实真实库存与价格；")
-               .append("然后按知识库规范输出【推荐处方药品】：只开规范推荐且药房有库存的药，每行格式「药品名 | 规格 | 用法用量 | ¥单价」。\n");
+            sys.append("【当前接诊患者ID】：").append(pid).append("。开方前必须调用 queryPatientProfile(").append(pid).append(") 核对过敏史。\n");
         } else {
-            sys.append("【第四步·按规范开方】当前未接诊患者：仍必须开具处方！直接按知识库规范给出该病的标准治疗方案，")
-               .append("调用 queryMedicineStock(药品名) 核实真实库存与价格，只开规范推荐且药房有库存的药，每行格式「药品名 | 规格 | 用法用量 | ¥单价」；")
-               .append("并在处方前加一行提示：「⚠️ 未接诊患者，尚未核对过敏史，采纳处方前请医生当面核对患者过敏信息」。\n");
+            sys.append("【当前未接诊患者】：处方前加一行提示：「⚠️ 未接诊患者，尚未核对过敏史，采纳处方前请医生当面核对患者过敏信息」。\n");
         }
-        sys.append("【第五步·就诊建议】面诊/检查建议与转诊指征，附免责声明（最终诊断须执业医师面诊确认）。\n")
-           .append("【格式要求】回答末尾必须单独一节，标题为「推荐处方药品」，其下每行一条：「- 药品名 | 规格 | 用法用量 | ¥单价」，系统将据此生成结构化处方卡片。\n")
-           .append("【红线】图片仅供辅助参考；接诊患者时处方前必须核对过敏史；严禁编造药房没有的药品或价格。");
 
         String requestId = AbstractAgent.currentRequestId();
         StringBuffer ans = new StringBuffer();

@@ -2,7 +2,10 @@ package com.chunbo.medical.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.chunbo.medical.dto.DispenseResultDto;
+import com.chunbo.medical.dto.PageParam;
+import com.chunbo.medical.vo.PageResult;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
 import com.chunbo.medical.service.CurrentUserService;
@@ -46,8 +49,11 @@ public class PharmacyController {
      * 1. 获取处方清单 (待发药 / 已发药 / 待收费)，支持按开方日期筛选（如 2026-09-20 只看当天）
      */
     @GetMapping("/prescriptions")
-    public List<Map<String, Object>> getPrescriptions(@RequestParam(value = "status", required = false) String status,
-                                                      @RequestParam(value = "date", required = false) String date) {
+    public Object getPrescriptions(@RequestParam(value = "status", required = false) String status,
+                                   @RequestParam(value = "date", required = false) String date,
+                                   @RequestParam(value = "pageNo", required = false) Integer pageNo,
+                                   @RequestParam(value = "pageSize", required = false) Integer pageSize,
+                                   PageParam pageParam) {
         LambdaQueryWrapper<Prescription> qw = new LambdaQueryWrapper<>();
         if (status != null && !status.isEmpty() && !status.equalsIgnoreCase("all")) {
             qw.eq(Prescription::getStatus, status);
@@ -59,7 +65,21 @@ public class PharmacyController {
               .le(Prescription::getCreateTime, d.atTime(java.time.LocalTime.MAX));
         }
         qw.orderByDesc(Prescription::getCreateTime);
-        List<Prescription> list = prescriptionMapper.selectList(qw);
+
+        List<Prescription> list;
+        long totalCount = 0;
+        long currentPage = 1;
+        long currentSize = 10;
+        if (pageNo != null || pageSize != null) {
+            Page<Prescription> pPage = prescriptionMapper.selectPage(pageParam.toPage(), qw);
+            list = pPage.getRecords();
+            totalCount = pPage.getTotal();
+            currentPage = pPage.getCurrent();
+            currentSize = pPage.getSize();
+        } else {
+            list = prescriptionMapper.selectList(qw);
+            totalCount = list.size();
+        }
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (Prescription p : list) {
@@ -100,6 +120,9 @@ public class PharmacyController {
             }
             map.put("prescription", p);
             result.add(map);
+        }
+        if (pageNo != null || pageSize != null) {
+            return PageResult.of(result, totalCount, currentPage, currentSize);
         }
         return result;
     }
@@ -186,10 +209,13 @@ public class PharmacyController {
      * 3. 获取药房药品字典与实时库存（支持按通名/商品名/拼音码/条形码/库位码、一级分类、启用状态动态过滤）
      */
     @GetMapping("/medicines")
-    public List<Medicine> getMedicines(
+    public Object getMedicines(
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "primaryCategory", required = false) String primaryCategory,
-            @RequestParam(value = "isActive", required = false) Integer isActive) {
+            @RequestParam(value = "isActive", required = false) Integer isActive,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
 
         LambdaQueryWrapper<Medicine> qw = new LambdaQueryWrapper<>();
         if (keyword != null && !keyword.trim().isEmpty()) {
@@ -208,6 +234,11 @@ public class PharmacyController {
             qw.eq(Medicine::getIsActive, isActive);
         }
         qw.orderByAsc(Medicine::getId);
+        if (pageNo != null || pageSize != null) {
+            Page<Medicine> page = pageParam.toPage();
+            Page<Medicine> pPage = medicineMapper.selectPage(page, qw);
+            return PageResult.of(pPage);
+        }
         return medicineMapper.selectList(qw);
     }
 
@@ -286,8 +317,18 @@ public class PharmacyController {
      * 7. 进销存流水记录
      */
     @GetMapping("/inventory-records")
-    public List<InventoryRecord> getInventoryRecords() {
-        return inventoryMapper.selectList(new LambdaQueryWrapper<InventoryRecord>().orderByDesc(InventoryRecord::getCreateTime).last("LIMIT 50"));
+    public Object getInventoryRecords(
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        LambdaQueryWrapper<InventoryRecord> qw = new LambdaQueryWrapper<InventoryRecord>()
+                .orderByDesc(InventoryRecord::getCreateTime);
+        if (pageNo != null || pageSize != null) {
+            Page<InventoryRecord> page = pageParam.toPage();
+            Page<InventoryRecord> pPage = inventoryMapper.selectPage(page, qw);
+            return PageResult.of(pPage);
+        }
+        return inventoryMapper.selectList(qw.last("LIMIT 50"));
     }
 
     /**

@@ -32,20 +32,23 @@ public class MallProductTools {
     @Autowired(required = false)
     private MallOrderMapper orderMapper;
 
-    @Tool(description = "根据药品名称或通用名查询春播商城是否有该药品在售，返回真实库存、规格、零售价，并生成下单推荐卡片")
+    @Tool(description = "根据药品名称、通用名或功效分类查询春播商城是否有该药品在售，返回真实库存、规格、零售价，并生成下单推荐卡片")
     public String searchMallProduct(
-            @ToolParam(description = "药品名称或通用名，如 布洛芬、连花清瘟胶囊") String name,
+            @ToolParam(description = "药品名称、通用名或病症分类，如 布洛芬、感冒、连花清瘟、退热") String name,
             ToolContext toolContext) {
 
         if (name == null || name.trim().length() < 2) {
-            return "药品名称太短，无法查询，请提供更具体的药名。";
+            return "药品名称或分类过短，无法查询，请提供具体的药名或病症需求。";
         }
+        String kw = name.trim();
         List<MallProduct> prods;
         try {
             prods = productMapper.selectList(new LambdaQueryWrapper<MallProduct>()
-                    .like(MallProduct::getProductName, name)
-                    .or().like(MallProduct::getGenericName, name)
-                    .last("LIMIT 3"));
+                    .like(MallProduct::getProductName, kw)
+                    .or().like(MallProduct::getGenericName, kw)
+                    .or().like(MallProduct::getCategory, kw)
+                    .or().like(MallProduct::getCsPitch, kw)
+                    .last("LIMIT 4"));
         } catch (Exception e) {
             return "查询商城药品失败：" + e.getMessage();
         }

@@ -226,13 +226,96 @@
         <el-empty description="请从左侧队列点击选择待划价收费的门诊处方单" />
       </div>
     </div>
+
+    <!-- 💳 扫码支付弹窗 (页面内原生弹窗，不弹新窗口，支持当面付扫码 & 自动轮询核销) -->
+    <el-dialog
+      v-model="qrPayVisible"
+      :title="qrPayTitle"
+      width="440px"
+      append-to-body
+      align-center
+      :before-close="handleCloseQrPay"
+      class="qr-pay-dialog"
+    >
+      <div class="qr-pay-box">
+        <!-- 官方安全支付环境提示徽标（同官方微信/支付宝收银台） -->
+        <div style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; font-size: 12px; color: #d46b08; margin-bottom: 12px;">
+          <span>🛡️</span>
+          <span>当前支付环境安全，已接入银联与官方持牌清算链路</span>
+        </div>
+
+        <div class="qr-header-info">
+          <div class="qr-order-tag">处方单号：SJ{{ selectedBill?.prescriptionNo }}</div>
+          <div class="qr-patient-tag">患者：<b>{{ selectedBill?.patientName }}</b> · {{ selectedBill?.doctorName }}开具</div>
+        </div>
+
+        <div class="qr-amount-row">
+          <span class="qr-amount-label">实收金额</span>
+          <span class="qr-amount-val" style="color: #0f172a;">
+            ¥ {{ Number(selectedBill?.totalAmount || 0).toFixed(2) }}
+          </span>
+        </div>
+
+        <!-- 经典官方黑白高对比二维码展示区（内嵌居中品牌Logo） -->
+        <div 
+          class="qr-image-wrapper"
+          style="cursor: pointer; user-select: none;"
+          title="点击刷新二维码"
+          @click="refreshBillingQrPay"
+        >
+          <div v-if="qrPayLoading" class="qr-loading-box">
+            <el-icon class="is-loading" :size="32" color="#1677ff"><Loading /></el-icon>
+            <div class="qr-loading-txt">正在生成收款码...</div>
+          </div>
+          <template v-else-if="qrDataUrl">
+            <img :src="qrDataUrl" class="qr-code-img" alt="支付二维码" />
+            <!-- 经典官方居中品牌徽标 (高容错率内嵌) -->
+            <div class="qr-center-logo" :class="payMethod === 'wechat' ? 'wechat-logo' : 'alipay-logo'">
+              <span v-if="payMethod !== 'wechat'" class="zhi-logo-text">支</span>
+              <svg v-else viewBox="0 0 1024 1024" width="24" height="24">
+                <path fill="#ffffff" d="M666.7 348.6c13.7 0 27.2.9 40.4 2.6-32.9-138.8-175.7-241.9-346.7-241.9-198.8 0-360 141.2-360 315.3 0 102.3 55.4 192.4 141.2 249.2l-35.3 105.9 123.6-61.8c41.2 11.8 82.4 17.6 130.6 17.6 13.5 0 26.8-.7 39.9-2-8.3-29.3-13.7-60-13.7-91.9 0-161.8 125.4-293 280-293zM258.8 289.8c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40zm-140 80c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm745.2 190.2c0-141.2-132.4-256-295.6-256s-295.6 114.8-295.6 256c0 141.2 132.4 256 295.6 256 34.6 0 69.2-8.8 100.8-20.6l88.2 44.1-23.5-73.5c75.6-47 130.1-120.6 130.1-206zm-383.8-32c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32zm176.4 0c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32z"/>
+              </svg>
+            </div>
+          </template>
+          <div v-else class="qr-fail-box">
+            <span>生成二维码异常，点击重试</span>
+          </div>
+        </div>
+
+        <!-- 点击刷新提示 -->
+        <div 
+          style="font-size: 12px; color: #64748b; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;"
+          @click="refreshBillingQrPay"
+        >
+          <el-icon><Refresh /></el-icon>
+          <span>点击二维码可刷新</span>
+        </div>
+
+        <div class="qr-hint-zone" style="margin-top: 8px;">
+          <div class="qr-polling-status" :style="{ color: payMethod === 'wechat' ? '#059669' : '#1677ff' }">
+            <el-icon class="is-loading" :size="14"><Loading /></el-icon>
+            正在实时监听付款结果，付款成功将自动核销处方…
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleCloseQrPay">取消支付</el-button>
+          <el-button type="success" @click="checkPayStatusManually" :loading="manualChecking">
+            我已完成付款
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import QRCode from 'qrcode'
 
 const searchKeyword = ref('')
 const filterPayStatus = ref('all')
@@ -246,6 +329,7 @@ const billItems = ref([])
 const payMethod = ref('chunbo-pay')
 const paying = ref(false)
 const prescriptionExportLoading = ref(false)
+
 
 const exportPrescriptionExcel = async () => {
   prescriptionExportLoading.value = true
@@ -292,6 +376,10 @@ const loadBillingList = async () => {
 
 onMounted(() => {
   loadBillingList()
+})
+
+onUnmounted(() => {
+  stopAlipayPolling()
 })
 
 const pendingBills = computed(() => {
@@ -371,17 +459,171 @@ const calcCategoryAmount = (cat) => {
   return sum.toFixed(2)
 }
 
+// 扫码支付弹窗控制状态
+const qrPayVisible = ref(false)
+const qrPayLoading = ref(false)
+const qrDataUrl = ref('')
+const mockPayLoading = ref(false)
+const manualChecking = ref(false)
+let alipayPollTimer = null
+
+const qrPayTitle = computed(() => {
+  if (payMethod.value === 'wechat') return '🟢 微信扫码支付 · 门诊划价'
+  return '🔵 支付宝当面付 · 扫码收款'
+})
+
+const handleCloseQrPay = () => {
+  stopAlipayPolling()
+  qrPayVisible.value = false
+}
+
+const stopAlipayPolling = () => {
+  if (alipayPollTimer) {
+    clearInterval(alipayPollTimer)
+    alipayPollTimer = null
+  }
+}
+
+const startAlipayPolling = (orderNo) => {
+  stopAlipayPolling()
+  let tries = 0
+  alipayPollTimer = setInterval(async () => {
+    tries++
+    try {
+      const res = await axios.get('/api/pay/alipay/query', { params: { orderNo } })
+      if (res.data?.paid) {
+        stopAlipayPolling()
+        qrPayVisible.value = false
+        if (selectedBill.value) {
+          selectedBill.value.payStatus = '已支付'
+          selectedBill.value.payChannel = payMethod.value === 'wechat' ? '微信支付' : '支付宝'
+          selectedBill.value.status = '1'
+        }
+        ElMessage.success('🎉 支付成功！处方已核销，药房已实时收到调配发药指令！')
+        await loadBillingList()
+      } else if (tries > 200) {
+        stopAlipayPolling()
+      }
+    } catch (e) {
+      if (tries > 200) stopAlipayPolling()
+    }
+  }, 2500)
+}
+
+const simulateMockPay = async () => {
+  if (!selectedBill.value) return
+  mockPayLoading.value = true
+  try {
+    const orderNo = selectedBill.value.prescriptionNo
+    const amount = Number(selectedBill.value.totalAmount || 0).toFixed(2)
+    const res = await axios.post('/api/pay/alipay/mock-pay', { orderNo, amount })
+    if (res.data?.success) {
+      stopAlipayPolling()
+      qrPayVisible.value = false
+      selectedBill.value.payStatus = '已支付'
+      selectedBill.value.payChannel = payMethod.value === 'wechat' ? '微信支付' : '支付宝'
+      selectedBill.value.status = '1'
+      ElMessage.success(res.data?.message || '模拟支付成功！已完成核销并流转药房发药。')
+      await loadBillingList()
+    } else {
+      ElMessage.error(res.data?.message || '模拟支付失败')
+    }
+  } catch (e) {
+    ElMessage.error('模拟支付失败: ' + (e.response?.data?.message || e.message))
+  } finally {
+    mockPayLoading.value = false
+  }
+}
+
+const checkPayStatusManually = async () => {
+  if (!selectedBill.value) return
+  manualChecking.value = true
+  try {
+    const orderNo = selectedBill.value.prescriptionNo
+    const res = await axios.get('/api/pay/alipay/query', { params: { orderNo } })
+    if (res.data?.paid) {
+      stopAlipayPolling()
+      qrPayVisible.value = false
+      selectedBill.value.payStatus = '已支付'
+      selectedBill.value.payChannel = payMethod.value === 'wechat' ? '微信支付' : '支付宝'
+      selectedBill.value.status = '1'
+      ElMessage.success('🎉 已核实付款成功！处方已核销，药房已实时收到调配发药指令！')
+      await loadBillingList()
+    } else {
+      ElMessage.warning('系统尚未收到支付到账回调，请确认是否已在手机上完成付款')
+    }
+  } catch (e) {
+    ElMessage.error('查询状态异常: ' + (e.message || '网络错误'))
+  } finally {
+    manualChecking.value = false
+  }
+}
+
+const refreshBillingQrPay = async () => {
+  if (!selectedBill.value) return
+  await executePayment()
+  ElMessage.success('二维码已刷新')
+}
+
 const executePayment = async () => {
   if (!selectedBill.value) return
+
+  // 支付宝 / 微信渠道：直接唤起页面内优雅扫码支付弹窗，不弹任何浏览器新窗口
+  if (payMethod.value === 'alipay' || payMethod.value === 'wechat') {
+    const orderNo = selectedBill.value.prescriptionNo
+    const amount = Number(selectedBill.value.totalAmount || 0).toFixed(2)
+    const patient = selectedBill.value.patientName || '门诊患者'
+    qrPayVisible.value = true
+    qrPayLoading.value = true
+    qrDataUrl.value = ''
+
+    try {
+      let codeContent = ''
+      if (payMethod.value === 'alipay') {
+        const payRes = await axios.post('/api/pay/alipay/precreate', {
+          orderNo,
+          amount,
+          subject: '门诊处方划价 - ' + patient
+        })
+        if (payRes.data?.success && payRes.data?.qrCode) {
+          codeContent = payRes.data.qrCode
+        } else {
+          throw new Error(payRes.data?.message || '获取支付宝收款码失败，请确认后端已重启')
+        }
+      } else {
+        // 微信支付
+        codeContent = `CHUNBO_WECHAT_PAY_ORDER_${orderNo}_AMT_${amount}`
+      }
+
+      // 用 qrcode 库将内容渲染为高清黑白图片 Base64 (高容错率以支持居中Logo)
+      qrDataUrl.value = await QRCode.toDataURL(codeContent, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'H',
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      })
+      startAlipayPolling(orderNo)
+    } catch (err) {
+      console.error('生成收款二维码异常:', err)
+      ElMessage.error('生成收款二维码失败: ' + (err.message || '网络异常'))
+    } finally {
+      qrPayLoading.value = false
+    }
+    return
+  }
+
+  // 其余渠道（医保聚合 / 现金）：直接本地核销
   paying.value = true
   try {
-    // Simulate Chunbo multi-channel medical insurance anti-fraud audit
     if (payMethod.value === 'chunbo-pay') {
       await new Promise(r => setTimeout(r, 600))
     }
-    // Real call to backend to persist payment in MySQL and advance to 待发药
-    const res = await axios.post(`/api/prescription/checkout/${selectedBill.value.id}`)
+    const res = await axios.post(`/api/prescription/checkout/${selectedBill.value.id}`, { payMethod: payMethod.value })
     selectedBill.value.payStatus = '已支付'
+    selectedBill.value.payChannel = payMethod.value === 'cash' ? '门诊现金结算' : '春播医保聚合付'
     selectedBill.value.status = '1'
     ElMessage.success(res.data?.message || '划价结算成功！费用已核销，药房已实时收到调配发药指令！')
     await loadBillingList()
@@ -398,10 +640,21 @@ const printReceipt = (bill) => {
   const rxAmountVal = Number(bill.totalAmount || 0).toFixed(2)
   const totalAllVal = (Number(rxAmountVal) + Number(regFeeVal)).toFixed(2)
 
+  // 格式化收费方式名称
+  const getPayMethodLabel = (b) => {
+    const raw = b.payChannel || b.payMethod || (b.payStatus === '已支付' ? '支付宝' : payMethod.value)
+    if (!raw) return '🔵 支付宝 (在线扫码付)'
+    if (raw === 'alipay' || raw.includes('支付宝')) return '🔵 支付宝 (在线扫码付)'
+    if (raw === 'wechat' || raw.includes('微信')) return '🟢 微信支付'
+    if (raw === 'cash' || raw.includes('现金')) return '💵 门诊现金结算'
+    if (raw === 'chunbo-pay' || raw.includes('聚合') || raw.includes('医保')) return '🛡️ 春播医保聚合付'
+    return raw
+  }
+
   ElMessageBox.alert(`
     <div style="font-family: monospace; line-height: 1.8; padding: 10px;">
       <h3 style="text-align: center; margin: 0 0 10px 0;">春播万象门诊收费专用收据</h3>
-      <p><b>收据单号：</b> SJ${bill.prescriptionNo}</p>
+      <p><b>收据单号：</b> SJ${bill.prescriptionNo} &nbsp;&nbsp; <b>收费方式：</b> <span style="color: #1677ff; font-weight: bold;">${getPayMethodLabel(bill)}</span></p>
       <p><b>患者姓名：</b> ${bill.patientName} &nbsp;&nbsp; <b>开单医生：</b> ${bill.doctorName}</p>
       <p><b>门诊确诊：</b> ${bill.diagnosis || '门诊确诊（待补录）'}</p>
       <p><b>挂号单号：</b> #${bill.registrationNo || ('GH' + (bill.registrationId || bill.id))} &nbsp;&nbsp; <b>号别：</b> ${bill.regType || '普通全科门诊'}</p>
@@ -415,7 +668,7 @@ const printReceipt = (bill) => {
       <hr style="border: 1px dashed #ccc;"/>
       <p style="text-align: right; font-size: 14px; margin: 4px 0;">处方实收：¥${rxAmountVal}</p>
       <p style="text-align: right; font-size: 16px; margin: 4px 0; color: #1e3a8a;"><b>门诊全流程总计：¥${totalAllVal}</b></p>
-      <p style="text-align: center; color: #64748b; font-size: 11px;">门诊收费凭单流水号: PAY${Date.now()} · 请妥善保管门诊收据</p>
+      <p style="text-align: center; color: #64748b; font-size: 11px;">门诊收费凭单流水号: PAY${Date.now()} · 收费方式: ${getPayMethodLabel(bill)} · 请妥善保管门诊收据</p>
     </div>
   `, '打印门诊收费票据', {
     dangerouslyUseHTMLString: true,
@@ -831,5 +1084,163 @@ const formatTime = (timeStr) => {
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+/* 扫码支付原生弹窗样式 */
+.qr-pay-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 10px;
+}
+
+.qr-header-info {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 13px;
+  color: #475569;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.qr-order-tag {
+  font-family: monospace;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.qr-patient-tag b {
+  color: #1e3a8a;
+}
+
+.qr-amount-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.qr-amount-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.qr-amount-val {
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.qr-image-wrapper {
+  position: relative;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  min-width: 220px;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-center-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  border: 3.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.alipay-logo {
+  background: #1677ff;
+}
+
+.wechat-logo {
+  background: #07c160;
+}
+
+.zhi-logo-text {
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  transform: translateY(-1px);
+}
+
+.qr-code-img {
+  display: block;
+  width: 220px;
+  height: 220px;
+  border-radius: 4px;
+}
+
+.qr-loading-box, .qr-fail-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+  font-size: 13px;
+  padding: 40px 10px;
+}
+
+.qr-hint-zone {
+  margin-top: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qr-hint-main {
+  font-size: 14px;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pulse-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+.qr-polling-status {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.qr-actions-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

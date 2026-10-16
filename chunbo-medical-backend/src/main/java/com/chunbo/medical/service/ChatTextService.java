@@ -14,11 +14,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChatTextService {
 
-    /** 通用文本助手独立 system prompt（笔记标准） */
-    private static final String TEXT_SYSTEM_PROMPT = """
-            你是春播万象平台的专业文本处理助手，根据用户给定的指令与文本，完成帮写、续写、润色、精简、联想等文本处理任务。
-            要求：直接输出处理结果本身，不要任何解释、前缀或多余格式。
-            """;
+    @Autowired(required = false)
+    private com.chunbo.medical.prompt.PromptConfig promptConfig;
+
+    private String getTextSystemPrompt() {
+        if (promptConfig != null) {
+            String p = promptConfig.getChatTextPrompt();
+            if (!p.isBlank()) return p;
+        }
+        return com.chunbo.medical.prompt.PromptConfig.get("chat_text");
+    }
 
     @Autowired
     @Qualifier("textChatClient")
@@ -50,7 +55,7 @@ public class ChatTextService {
         }
         String rendered = template.replace("$input", input == null ? "" : input);
         return textChatClient.prompt()
-                .system(TEXT_SYSTEM_PROMPT)
+                .system(getTextSystemPrompt())
                 .user(rendered)
                 .call()
                 .content();

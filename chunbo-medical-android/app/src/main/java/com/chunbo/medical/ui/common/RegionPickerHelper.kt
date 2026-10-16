@@ -298,6 +298,36 @@ object RegionPickerHelper {
         return Pair("湖南省 长沙市 岳麓区", trimmed)
     }
 
+    /**
+     * 当省市区发生变化时，实时联动更新详细地址：
+     * 自动剥离旧省市区前缀，将新省市区与用户已填写的街道门牌无缝衔接
+     */
+    fun syncDetailAddress(newRegion: String, currentDetail: String?): String {
+        val regionPrefix = newRegion.replace(" ", "").trim()
+        val cur = currentDetail?.trim() ?: ""
+        if (cur.isBlank()) {
+            return regionPrefix
+        }
+        var street = cur
+        val commonTokens = listOf(
+            "北京市", "海淀区", "朝阳区", "东城区", "西城区",
+            "广东省", "深圳市", "南山区", "福田区", "罗湖区", "广州市", "天河区",
+            "湖南省", "长沙市", "岳麓区", "芙蓉区", "天心区", "雨花区", "开福区",
+            "湖北省", "武汉市", "洪山区", "武昌区", "江汉区",
+            "上海市", "浦东新区", "徐汇区", "黄浦区"
+        )
+        for (token in commonTokens) {
+            street = street.replace(token, "")
+        }
+        for (part in newRegion.split(Regex("\\s+"))) {
+            if (part.isNotBlank()) {
+                street = street.replace(part, "")
+            }
+        }
+        street = street.trim().trim(',', '，', '、', ' ', '/', '\\', '-')
+        return if (street.isNotEmpty()) "$regionPrefix $street" else regionPrefix
+    }
+
     private class RegionChoiceAdapter(
         private val onItemClick: (String) -> Unit
     ) : RecyclerView.Adapter<RegionChoiceAdapter.ViewHolder>() {

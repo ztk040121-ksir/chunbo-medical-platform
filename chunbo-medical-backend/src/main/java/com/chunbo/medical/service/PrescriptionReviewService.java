@@ -137,8 +137,9 @@ public class PrescriptionReviewService {
 
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
                 try {
+                    String sysPrompt = com.chunbo.medical.prompt.PromptConfig.get("prescription_review");
                     return client.prompt()
-                            .system("你是基层医疗机构处方合理性审查与临床药学自愈专家，严格把关致命风险，提供权威中西药配伍纠偏建议。")
+                            .system(sysPrompt.isBlank() ? "你是基层医疗机构处方合理性审查与临床药学自愈专家，严格把关致命风险，提供权威中西药配伍纠偏建议。" : sysPrompt)
                             .user(userPrompt)
                             .call()
                             .content();

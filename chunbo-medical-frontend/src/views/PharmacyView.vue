@@ -81,7 +81,7 @@
           </div>
           <div class="queue-list">
             <div 
-              v-for="item in currentDispenseList" 
+              v-for="item in pagedDispenseList" 
               :key="item.prescription.id"
               class="queue-card"
               :class="{ active: selectedPrescription && selectedPrescription.prescription.id === item.prescription.id }"
@@ -110,6 +110,16 @@
             </div>
             <div v-if="currentDispenseList.length === 0" class="empty-hint">
               {{ dispenseSubTab === 'pending' ? '暂无待发药处方' : '暂无已发药历史记录' }}
+            </div>
+            <!-- 处方翻页控制器 -->
+            <div v-if="currentDispenseList.length > rxPageSize" style="margin-top: 8px; padding: 6px 4px; display: flex; justify-content: center; background: rgba(255, 255, 255, 0.8); border-radius: 6px; border: 1px solid #e2e8f0;">
+              <el-pagination
+                v-model:current-page="rxPageNo"
+                v-model:page-size="rxPageSize"
+                :total="currentDispenseList.length"
+                layout="prev, pager, next"
+                size="small"
+              />
             </div>
           </div>
         </div>
@@ -884,8 +894,17 @@ const currentDispenseList = computed(() => {
   return dispenseSubTab.value === 'pending' ? pendingPrescriptions.value : dispensedPrescriptions.value
 })
 
+const rxPageNo = ref(1)
+const rxPageSize = ref(8)
+
+const pagedDispenseList = computed(() => {
+  const start = (rxPageNo.value - 1) * rxPageSize.value
+  return currentDispenseList.value.slice(start, start + rxPageSize.value)
+})
+
 const onDispenseTabChange = () => {
-  const list = currentDispenseList.value
+  rxPageNo.value = 1
+  const list = pagedDispenseList.value
   if (list.length > 0) {
     selectedPrescription.value = list[0]
   } else {

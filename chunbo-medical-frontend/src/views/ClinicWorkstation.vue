@@ -863,7 +863,7 @@
                             <el-option label="干贴（传统膏贴）" value="干贴" />
                             <el-option label="蜡疗贴" value="蜡疗贴" />
                           </el-select>
-                          <el-select v-model="block.duration" size="small" style="width:110px" :disabled="isHistoryReadOnly">
+                          <el-select v-model="block.duration" size="small" style="width:110px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems">
                             <el-option label="贴敷 4 小时" value="4小时" />
                             <el-option label="贴敷 6 小时" value="6小时" />
                             <el-option label="贴敷 8 小时" value="8小时" />
@@ -896,11 +896,11 @@
                                 :value="p.name" 
                               />
                             </el-select>
-                            <el-input v-model="row.dose" placeholder="单贴剂量" size="small" style="width:80px" :disabled="isHistoryReadOnly" @input="syncBlocksToItems">
+                            <el-input v-model="row.dose" placeholder="剂量" size="small" style="width:82px" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" @change="syncBlocksToItems">
                               <template #append>g</template>
                             </el-input>
                             <div class="acupoint-cell-wrap">
-                              <el-input v-model="row.acupoints" placeholder="贴敷穴位（可点选右侧快捷穴位）" size="small" style="width:205px" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" />
+                              <el-input v-model="row.acupoints" placeholder="贴敷穴位（可点选右侧快捷穴位）" size="small" style="width:160px" :disabled="isHistoryReadOnly" @input="syncBlocksToItems" @change="syncBlocksToItems" />
                               <el-popover placement="bottom" :width="330" trigger="click">
                                 <template #reference>
                                   <el-button size="small" type="warning" plain class="btn-acupoint-pick" :disabled="isHistoryReadOnly">
@@ -923,14 +923,14 @@
                                 </div>
                               </el-popover>
                             </div>
-                            <el-select v-model="row.frequency" placeholder="频次" size="small" style="width:95px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems">
+                            <el-select v-model="row.frequency" placeholder="频次" size="small" style="width:100px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems">
                               <el-option label="1次/天" value="1次/天" />
                               <el-option label="2次/天" value="2次/天" />
                               <el-option label="隔日1次" value="隔日1次" />
                             </el-select>
-                            <el-input-number v-model="row.days" :min="1" :max="30" size="small" style="width:90px" placeholder="天数" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
+                            <el-input-number v-model="row.days" :min="1" :max="30" size="small" :controls="false" style="width:48px" placeholder="天数" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
                             <span class="unit-text">天</span>
-                            <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" style="width:90px" placeholder="贴数" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
+                            <el-input-number v-model="row.quantity" :min="1" :max="99" size="small" :controls="false" style="width:48px" placeholder="贴数" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
                             <span class="unit-text">贴</span>
                             <span class="row-subtotal">¥{{ ((Number(row.unitPrice) || 35) * (row.quantity || 1)).toFixed(2) }}</span>
                             <el-button type="danger" link size="small" :disabled="isHistoryReadOnly" @click="removeBlockItem(block, idx)">删</el-button>
@@ -973,17 +973,17 @@
                         <table class="rx-table western-table">
                           <thead>
                             <tr>
-                              <th style="width:36px">#</th>
-                              <th style="min-width: 220px; white-space: nowrap !important; word-break: keep-all !important;">药品名称 / 规格</th>
-                              <th style="width:90px">单次用量</th>
-                              <th style="width:100px">用法途径</th>
-                              <th style="width:95px">用药频次</th>
-                              <th style="width:80px">天数</th>
-                              <th style="width:80px">数量</th>
-                              <th style="width:80px">单价</th>
-                              <th style="width:80px">金额</th>
-                              <th style="width:130px">用药说明</th>
-                              <th style="width:50px">操作</th>
+                              <th style="width:32px">#</th>
+                              <th style="min-width: 170px; white-space: nowrap !important; word-break: keep-all !important;">药品名称 / 规格</th>
+                              <th style="width:75px">单次用量</th>
+                              <th style="width:75px">用法途径</th>
+                              <th style="width:115px">用药频次</th>
+                              <th style="width:55px">天数</th>
+                              <th style="width:55px">数量</th>
+                              <th style="width:65px">单价</th>
+                              <th style="width:65px">金额</th>
+                              <th style="width:110px">用药说明</th>
+                              <th style="width:40px">操作</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1057,7 +1057,7 @@
                             <el-radio-button value="颗粒">颗粒</el-radio-button>
                           </el-radio-group>
                           <span class="tcm-dose-label">剂数:</span>
-                          <el-input-number v-model="block.tcmDoses" :min="1" :max="30" size="small" style="width:90px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
+                          <el-input-number v-model="block.tcmDoses" :min="1" :max="30" size="small" controls-position="right" style="width:85px" :disabled="isHistoryReadOnly" @change="syncBlocksToItems" />
                           <span class="block-subtotal">金额: ¥{{ getBlockTotal(block).toFixed(2) }}</span>
                           <el-button type="danger" link size="small" class="btn-del-block" :disabled="isHistoryReadOnly" @click="removePrescriptionBlock(block.id)">
                             <el-icon><Delete /></el-icon> 删除整单
@@ -1069,14 +1069,14 @@
                         <table class="rx-table tcm-rx-table">
                           <thead>
                             <tr>
-                              <th style="width:36px; white-space: nowrap;">#</th>
-                              <th style="min-width: 220px; white-space: nowrap;">中药材名称 / 规格</th>
-                              <th style="width:100px; white-space: nowrap;">单剂克数(g)</th>
-                              <th style="width:90px; white-space: nowrap;">总用量(g)</th>
-                              <th style="width:90px; white-space: nowrap;">单价(元/g)</th>
-                              <th style="width:90px; white-space: nowrap;">金额</th>
-                              <th style="width:140px; white-space: nowrap;">特殊煎服法</th>
-                              <th style="width:50px; white-space: nowrap;">操作</th>
+                              <th style="width:32px; white-space: nowrap;">#</th>
+                              <th style="min-width: 170px; white-space: nowrap;">中药材名称 / 规格</th>
+                              <th style="width:85px; white-space: nowrap;">单剂克数(g)</th>
+                              <th style="width:75px; white-space: nowrap;">总用量(g)</th>
+                              <th style="width:75px; white-space: nowrap;">单价(元/g)</th>
+                              <th style="width:75px; white-space: nowrap;">金额</th>
+                              <th style="width:115px; white-space: nowrap;">特殊煎服法</th>
+                              <th style="width:40px; white-space: nowrap;">操作</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1825,8 +1825,24 @@
         <el-form-item label="身份证号">
           <el-input v-model="tempPatientForm.idCard" placeholder="选填，用于医保与电子健康卡" />
         </el-form-item>
-        <el-form-item label="家庭住址">
-          <el-input v-model="tempPatientForm.address" placeholder="选填，常住地址" />
+        <el-form-item label="家庭省市区">
+          <el-cascader
+            v-model="tempPatientRegion"
+            :options="regionCascaderOptions"
+            placeholder="请选择省 / 市 / 区县 (支持拼音与汉字搜索)"
+            style="width: 100%;"
+            filterable
+            clearable
+            @change="handleTempPatientRegionChange"
+          />
+        </el-form-item>
+        <el-form-item label="详细住址">
+          <el-input 
+            v-model="tempPatientForm.address" 
+            type="textarea"
+            :rows="2"
+            placeholder="街道、小区、楼栋门牌号（选择上方省市地区后自动联动更新）" 
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -1842,6 +1858,7 @@
       width="650px"
       append-to-body
       destroy-on-close
+      @close="stopInstantAlipayPolling"
     >
       <div class="instant-pay-dialog-body">
         <!-- 患者信息简表 -->
@@ -1896,15 +1913,49 @@
         <!-- 动态收款渠道交互 -->
         <div class="pay-channel-view" v-if="instantPayMethod === 'wechat' || instantPayMethod === 'alipay'">
           <div class="mock-qr-wrap" style="display: flex; flex-direction: column; align-items: center; padding: 16px 0;">
-            <div class="qr-card-box" style="background: #ffffff; padding: 14px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); border: 2px solid #e2e8f0; position: relative;">
-              <!-- 真实高精度支付二维码 -->
-              <img v-if="payQrDataUrl" :src="payQrDataUrl" width="160" height="160" style="display: block; border-radius: 6px;" alt="收款二维码" />
-              <div v-else style="width: 160px; height: 160px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+            <div 
+              class="qr-card-box" 
+              style="background: #ffffff; padding: 14px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.08); border: 2px solid #e2e8f0; position: relative; min-width: 170px; min-height: 170px; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none;"
+              title="点击刷新二维码"
+              @click="refreshInstantPayQr"
+            >
+              <!-- 经典官方高精度黑白支付二维码 (内嵌居中官方「支」徽标) -->
+              <template v-if="payQrDataUrl">
+                <img :src="payQrDataUrl" width="170" height="170" style="display: block; border-radius: 6px;" alt="收款二维码" />
+                <div class="qr-center-logo" :class="instantPayMethod === 'wechat' ? 'wechat-logo' : 'alipay-logo'">
+                  <span v-if="instantPayMethod !== 'wechat'" class="zhi-logo-text">支</span>
+                  <svg v-else viewBox="0 0 1024 1024" width="22" height="22">
+                    <path fill="#ffffff" d="M666.7 348.6c13.7 0 27.2.9 40.4 2.6-32.9-138.8-175.7-241.9-346.7-241.9-198.8 0-360 141.2-360 315.3 0 102.3 55.4 192.4 141.2 249.2l-35.3 105.9 123.6-61.8c41.2 11.8 82.4 17.6 130.6 17.6 13.5 0 26.8-.7 39.9-2-8.3-29.3-13.7-60-13.7-91.9 0-161.8 125.4-293 280-293zM258.8 289.8c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40zm-140 80c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm745.2 190.2c0-141.2-132.4-256-295.6-256s-295.6 114.8-295.6 256c0 141.2 132.4 256 295.6 256 34.6 0 69.2-8.8 100.8-20.6l88.2 44.1-23.5-73.5c75.6-47 130.1-120.6 130.1-206zm-383.8-32c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32zm176.4 0c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32z"/>
+                  </svg>
+                </div>
+              </template>
+              <div v-else style="width: 170px; height: 170px; display: flex; align-items: center; justify-content: center; color: #64748b;">
                 正在生成收款码...
               </div>
             </div>
+
+            <!-- 点击刷新提示 -->
+            <div 
+              style="font-size: 12px; color: #64748b; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;"
+              @click="refreshInstantPayQr"
+            >
+              <el-icon><Refresh /></el-icon>
+              <span>点击二维码可刷新</span>
+            </div>
+
             <div class="qr-tip-txt" style="margin-top: 10px; font-size: 13px; color: #475569; text-align: center;">
               请患者出示{{ instantPayMethod === 'wechat' ? '微信' : '支付宝' }}付款码扫码，或出示医保码直接结算 <b style="color: #059669; font-size: 15px;">¥{{ totalRxAmount.toFixed(2) }}</b>
+            </div>
+            <div v-if="instantPayMethod === 'alipay'" style="margin-top: 10px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <div v-if="instantAlipayPolling" style="color: #1677ff; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <el-icon class="is-loading" :size="14"><Loading /></el-icon>
+                <span>正在实时监听手机支付宝付款结果，付款成功将自动核销…</span>
+              </div>
+              <div style="display: flex; gap: 8px; justify-content: center; margin-top: 4px;">
+                <el-button size="small" type="success" plain @click="checkInstantPayStatusManually" :loading="instantCheckingStatus">
+                  🔄 我已付款，查询结果
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -2310,8 +2361,13 @@ import { ref, computed, onMounted, watch, nextTick, inject } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import axios from 'axios'
 import QRCode from 'qrcode'
+import { regionCascaderOptions, splitRegionPrefix } from '../utils/regionData.js'
 
-const queueTab = ref('waiting')
+const QUEUE_TAB_KEY = 'chunbo_queue_tab'
+const queueTab = ref(sessionStorage.getItem(QUEUE_TAB_KEY) || 'waiting')
+watch(queueTab, (t) => {
+  if (t) sessionStorage.setItem(QUEUE_TAB_KEY, t)
+})
 // 右栏子标签持久化：刷新后停留在原标签（就诊记录/ai/模板），不再跳回就诊记录
 const RIGHT_PANEL_TAB_KEY = 'chunbo_right_panel_tab'
 const RIGHT_PANEL_TABS = ['history', 'ai', 'template']
@@ -2901,7 +2957,20 @@ const loadQueueForDate = (dateStr) => {
   ElMessage.info(`已切换至【${dateStr}】就诊日程，当前待诊/接诊中 ${waitingList.value.length} 人，已结束 ${doneList.value.length} 人`)
 }
 
-const emrActiveTab = ref('emr')
+// 中栏核心Tab持久化：刷新后停留在原标签（emr 电子病历书写 / prescription 处方医嘱与特色贴敷），不再跳回电子病历
+const EMR_ACTIVE_TAB_KEY = 'chunbo_emr_active_tab'
+const VALID_EMR_TABS = ['emr', 'prescription']
+const getStoredEmrTab = () => {
+  const t = sessionStorage.getItem(EMR_ACTIVE_TAB_KEY) || localStorage.getItem(EMR_ACTIVE_TAB_KEY)
+  return VALID_EMR_TABS.includes(t) ? t : 'prescription'
+}
+const emrActiveTab = ref(getStoredEmrTab())
+watch(emrActiveTab, (newTab) => {
+  if (newTab && VALID_EMR_TABS.includes(newTab)) {
+    sessionStorage.setItem(EMR_ACTIVE_TAB_KEY, newTab)
+    localStorage.setItem(EMR_ACTIVE_TAB_KEY, newTab)
+  }
+})
 
 // ── 主诉分类与常用词条 (深度复刻截图 1) ──
 const activeCcTab = ref('ai')
@@ -3128,6 +3197,7 @@ const appendAcupointToRow = (row, ac) => {
     }
   }
   syncBlocksToItems()
+  saveCurrentPatientState()
 }
 
 // 药材点选回填
@@ -3473,7 +3543,7 @@ const addTcmMedToBlock = (block, m) => {
   ElMessage.success('已添加药材【' + m.name + '】')
 }
 
-// 同步所有处方块到全局 patchRxItems, westernRxItems, tcmRxItems, treatmentItems
+// 同步所有处方块到全局 patchRxItems, westernRxItems, tcmRxItems, treatmentItems，并持久化保存草稿
 const syncBlocksToItems = () => {
   const patches = []
   const westerns = []
@@ -3486,7 +3556,9 @@ const syncBlocksToItems = () => {
     } else if (b.type === 'western') {
       westerns.push(...(b.items || []))
     } else if (b.type === 'tcm') {
-      tcms.push(...(b.items || []))
+      // 中药饮片必须携带剂数：保存处方时按「每剂金额 × 剂数」落库，丢失剂数会导致账单金额少乘
+      const doses = Number(b.tcmDoses) || 7
+      tcms.push(...(b.items || []).map(it => ({ ...it, doses })))
     } else if (b.type === 'treatment') {
       treats.push(...(b.items || []))
     }
@@ -3496,7 +3568,15 @@ const syncBlocksToItems = () => {
   westernRxItems.value = westerns
   tcmRxItems.value = tcms
   treatmentItems.value = treats
+
+  // 关键：处方块发生任何输入、编辑、增删，立刻自动保存当前患者草稿，防止刷新后丢失！
+  saveCurrentPatientState()
 }
+
+// 深度监听处方块：防止任何深层单元格变动未触发原生 @input 时，草稿依然100%自动落盘
+watch(prescriptionBlocks, () => {
+  syncBlocksToItems()
+}, { deep: true })
 
 // 反向同步：当由 AI 采纳、历史记录引用或草稿恢复时，将 items 还原成 blocks
 const syncItemsToBlocks = () => {
@@ -3767,6 +3847,7 @@ const isTempPatient = computed(() => {
 })
 
 const showTempPatientModal = ref(false)
+const tempPatientRegion = ref([])
 const tempPatientForm = ref({
   name: '',
   gender: '男',
@@ -3776,12 +3857,32 @@ const tempPatientForm = ref({
   address: ''
 })
 
+const handleTempPatientRegionChange = (val) => {
+  if (Array.isArray(val) && val.length > 0) {
+    const prov = val[0] || ''
+    const city = val[1] || ''
+    const dist = val[2] || ''
+    const prefix = `${prov}${city === prov ? '' : city}${dist}`
+    let street = (tempPatientForm.value.address || '').trim()
+    const oldTokens = ['北京市', '海淀区', '朝阳区', '广东省', '深圳市', '南山区', '广州市', '湖南省', '长沙市', '岳麓区', '湖北省', '武汉市', '洪山区']
+    for (const t of oldTokens) {
+      street = street.replaceAll(t, '').trim()
+    }
+    street = street.replace(/^[,，、\s/\\-]+|[,，、\s/\\-]+$/g, '')
+    tempPatientForm.value.address = street ? `${prefix}${street}` : `${prefix}`
+  } else {
+    tempPatientForm.value.address = ''
+  }
+}
+
 const openTempPatientModal = () => {
   if (!currentPatient.value) return
   tempPatientForm.value.name = currentPatient.value.patientName.replace(/临时就诊-?|急诊-?/g, '') || '张三'
   tempPatientForm.value.gender = currentPatient.value.gender || '男'
   tempPatientForm.value.age = currentPatient.value.age || 30
   tempPatientForm.value.phone = currentPatient.value.phone || ''
+  tempPatientForm.value.address = currentPatient.value.address || ''
+  tempPatientRegion.value = splitRegionPrefix(tempPatientForm.value.address)
   showTempPatientModal.value = true
 }
 
@@ -4265,6 +4366,15 @@ const emr = ref({
   tcmDiagnosis: ''
 })
 
+// 深度监听电子病历：患者主诉、现病史、诊断结论等任何打字，自动实时防抖保存草稿
+let emrAutoSaveTimer = null
+watch(emr, () => {
+  if (emrAutoSaveTimer) clearTimeout(emrAutoSaveTimer)
+  emrAutoSaveTimer = setTimeout(() => {
+    saveCurrentPatientState()
+  }, 250)
+}, { deep: true })
+
 const isImportingTriage = ref(false)
 const showPatientDialogueModal = ref(false)
 const currentPatientDialogue = ref([])
@@ -4525,7 +4635,7 @@ const submitPrescriptionSafe = async (postData) => {
                 ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
                 ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
                 ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
-                ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
+                ...tcmRxItems.value.map(it => { const perDosePrice = (Number(it.unitPrice)||2)*(Number(it.dose)||10); const doses = Number(it.doses) || 7; return { medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: doses, unitPrice: perDosePrice, totalPrice: perDosePrice * doses } })
               ]
               const newPostData = { ...postData, items: updatedItems, totalAmount: totalRxAmount.value }
               const retryRes = await axios.post('/api/prescription/create', newPostData)
@@ -6401,10 +6511,14 @@ const loadPatientsQueue = async () => {
 
     if (queueTab.value === 'waiting') {
       if (waitingList.value.length > 0) {
+        const lastSelectedId = sessionStorage.getItem('chunbo_last_selected_patient_id')
+        const matchedLast = lastSelectedId ? waitingList.value.find(p => String(p.id) === String(lastSelectedId)) : null
         const inProgress = waitingList.value.find(p => p.status === '接诊中')
         let target = null
         if (currentPatient.value && waitingList.value.some(p => p.id === currentPatient.value.id)) {
           target = waitingList.value.find(p => p.id === currentPatient.value.id)
+        } else if (matchedLast) {
+          target = matchedLast
         } else if (inProgress) {
           target = inProgress
         } else {
@@ -6417,9 +6531,11 @@ const loadPatientsQueue = async () => {
       }
     } else {
       if (doneList.value.length > 0) {
+        const lastSelectedId = sessionStorage.getItem('chunbo_last_selected_patient_id')
+        const matchedLast = lastSelectedId ? doneList.value.find(p => String(p.id) === String(lastSelectedId)) : null
         const target = currentPatient.value
           ? (doneList.value.find(p => p.id === currentPatient.value.id) || doneList.value[0])
-          : doneList.value[0]
+          : (matchedLast || doneList.value[0])
         selectQueuePatient(target)
       } else {
         currentPatient.value = null
@@ -6430,6 +6546,9 @@ const loadPatientsQueue = async () => {
 
 const selectQueuePatient = (p) => {
   if (!p) return
+  try {
+    sessionStorage.setItem('chunbo_last_selected_patient_id', String(p.id))
+  } catch (e) {}
 
   // 恢复持久化会员身份并净化普通患者
   const targetPhone = p.phone
@@ -6511,6 +6630,12 @@ const selectQueuePatient = (p) => {
     westernRxItems.value = (past && past.westernItems && past.westernItems.length > 0) ? JSON.parse(JSON.stringify(past.westernItems)) : []
     tcmRxItems.value = (past && past.tcmItems && past.tcmItems.length > 0) ? JSON.parse(JSON.stringify(past.tcmItems)) : []
     treatmentItems.value = (past && past.treatmentItems && past.treatmentItems.length > 0) ? JSON.parse(JSON.stringify(past.treatmentItems)) : []
+    // 历史处方回显：后端数字字段可能以字符串返回，统一转 Number，避免 ElInputNumber 类型校验警告
+    const toRxNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 1 }
+    patchRxItems.value.forEach(it => { it.days = toRxNum(it.days); it.quantity = toRxNum(it.quantity) })
+    westernRxItems.value.forEach(it => { it.quantity = toRxNum(it.quantity) })
+    tcmRxItems.value.forEach(it => { it.dose = toRxNum(it.dose) })
+    treatmentItems.value.forEach(it => { it.quantity = toRxNum(it.quantity) })
     syncItemsToBlocks()
   } else {
     // 待诊患者首次预览，严格保持【待诊】状态，必须由医生点击【开始接诊】才转入接诊中
@@ -6605,7 +6730,7 @@ const startConsultation = async (p) => {
     } catch (e) {}
   }
   window.dispatchEvent(new CustomEvent('registration-updated'))
-  ElMessage.success(`已开始接诊【${targetName}】！状态已变更为【接诊中】。`)
+  ElMessage.success({ message: `已开始接诊【${targetName}】！状态已变更为【接诊中】。`, duration: 1500 })
 }
 
 // ── 语音叫号播报 ──
@@ -6976,18 +7101,125 @@ const instantPayMethod = ref('wechat')
 const cashReceivedAmt = ref(50.00)
 const instantPayLoading = ref(false)
 const payQrDataUrl = ref('')
+const instantAlipayQrLink = ref('')
+const instantAlipayPolling = ref(false)
+let instantAlipayTimer = null
+const instantAlipayOrderNo = ref('')
+const instantMockPayLoading = ref(false)
+const instantCheckingStatus = ref(false)
+
+const stopInstantAlipayPolling = () => {
+  if (instantAlipayTimer) {
+    clearInterval(instantAlipayTimer)
+    instantAlipayTimer = null
+  }
+  instantAlipayPolling.value = false
+}
+
+const startInstantAlipayPolling = (orderNo) => {
+  if (!orderNo || instantAlipayTimer) return
+  instantAlipayPolling.value = true
+  let tries = 0
+  instantAlipayTimer = setInterval(async () => {
+    tries++
+    try {
+      const res = await axios.get('/api/pay/alipay/query', { params: { orderNo } })
+      if (res.data?.paid) {
+        stopInstantAlipayPolling()
+        ElMessage.success('🎉 支付宝付款成功！处方已核销，正在自动完成接诊并结算…')
+        await confirmInstantPayment()
+      } else if (tries > 200) {
+        stopInstantAlipayPolling()
+      }
+    } catch (e) {
+      if (tries > 200) stopInstantAlipayPolling()
+    }
+  }, 3000)
+}
+
+const simulateInstantMockPay = async () => {
+  if (!instantAlipayOrderNo.value) {
+    const regId = currentPatient.value?.registrationId || currentPatient.value?.id || Date.now()
+    instantAlipayOrderNo.value = `CLINIC_${regId}`
+  }
+  const orderNo = instantAlipayOrderNo.value
+  const amount = totalRxAmount.value.toFixed(2)
+  instantMockPayLoading.value = true
+  try {
+    const res = await axios.post('/api/pay/alipay/mock-pay', { orderNo, amount })
+    if (res.data?.success) {
+      stopInstantAlipayPolling()
+      ElMessage.success('🎉 模拟扫码支付成功！处方已自动核销')
+      await confirmInstantPayment()
+    } else {
+      ElMessage.error(res.data?.message || '模拟支付失败')
+    }
+  } catch (e) {
+    ElMessage.error('模拟支付请求异常: ' + (e.message || '未知错误'))
+  } finally {
+    instantMockPayLoading.value = false
+  }
+}
+
+const checkInstantPayStatusManually = async () => {
+  if (!instantAlipayOrderNo.value) {
+    ElMessage.warning('尚未生成有效支付订单')
+    return
+  }
+  instantCheckingStatus.value = true
+  try {
+    const res = await axios.get('/api/pay/alipay/query', { params: { orderNo: instantAlipayOrderNo.value } })
+    if (res.data?.paid) {
+      stopInstantAlipayPolling()
+      ElMessage.success('🎉 支付宝付款已确认成功！正在完成接诊与结算…')
+      await confirmInstantPayment()
+    } else {
+      ElMessage.info('暂未查询到付款记录，请在手机支付宝完成付款后再次查询')
+    }
+  } catch (e) {
+    ElMessage.error('查询支付状态异常: ' + (e.message || '网络错误'))
+  } finally {
+    instantCheckingStatus.value = false
+  }
+}
+
+const refreshInstantPayQr = async () => {
+  await generatePayQr()
+  ElMessage.success('收款码已刷新')
+}
 
 const generatePayQr = async () => {
   const method = instantPayMethod.value
   const amount = totalRxAmount.value.toFixed(2)
   const patient = currentPatient.value?.patientName || '患者'
-  const payPayload = `CHUNBO_PAY_${method.toUpperCase()}_AMT_${amount}_PATIENT_${patient}`
+  const regId = currentPatient.value?.registrationId || currentPatient.value?.id || Date.now()
+  const orderNo = `CLINIC_${regId}`
+  instantAlipayOrderNo.value = orderNo
+  let payPayload = `CHUNBO_PAY_${method.toUpperCase()}_AMT_${amount}_PATIENT_${patient}`
+
+  if (method === 'alipay') {
+    try {
+      const res = await axios.post('/api/pay/alipay/precreate', {
+        orderNo,
+        amount,
+        subject: `门诊接诊现场缴费 - ${patient}`
+      })
+      if (res.data?.success && res.data?.qrCode) {
+        payPayload = res.data.qrCode
+      }
+      startInstantAlipayPolling(orderNo)
+    } catch (e) {
+      // 保持原有收款码
+    }
+  }
+
   try {
     payQrDataUrl.value = await QRCode.toDataURL(payPayload, {
-      width: 160,
+      width: 170,
       margin: 1,
+      errorCorrectionLevel: 'H',
       color: {
-        dark: method === 'wechat' ? '#07c160' : '#1677ff',
+        dark: '#000000',
         light: '#ffffff'
       }
     })
@@ -7062,7 +7294,7 @@ const confirmInstantPayment = async () => {
       ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
       ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
       ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
-      ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
+      ...tcmRxItems.value.map(it => { const perDosePrice = (Number(it.unitPrice)||2)*(Number(it.dose)||10); const doses = Number(it.doses) || 7; return { medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: doses, unitPrice: perDosePrice, totalPrice: perDosePrice * doses } })
     ]
 
     const postData = {
@@ -7075,6 +7307,8 @@ const confirmInstantPayment = async () => {
       diagnosis: emr.value.diagnosis || '门诊确诊',
       totalAmount: totalRxAmount.value,
       status: 'PAID',
+      payStatus: '已支付',
+      payChannel: instantPayMethod.value === 'alipay' ? '支付宝' : instantPayMethod.value === 'wechat' ? '微信支付' : instantPayMethod.value === 'cash' ? '现金收款' : instantPayMethod.value === 'yibao' ? '医保结算' : '会员储值',
       payMethod: instantPayMethod.value,
       items: allSubmittedItems
     }
@@ -7147,6 +7381,7 @@ const confirmInstantPayment = async () => {
     } catch (storageErr) {}
 
     // 5. 必须关闭收银结账弹窗
+    stopInstantAlipayPolling()
     instantPayDialogVisible.value = false
 
     ElNotification({
@@ -7207,7 +7442,7 @@ const finishConsultationToBilling = async () => {
       ...treatmentItems.value.map(it => ({ medicineId: 999, medicineName: `【诊疗】${it.name}`, dosage: `${it.quantity||1}次`, quantity: it.quantity||1, unitPrice: Number(it.price)||35, totalPrice: (Number(it.price)||35)*(it.quantity||1) })),
       ...patchRxItems.value.map(it => ({ medicineId: it.medicineId||101, medicineName: it.name ? `【贴敷】${it.name}` : '【特色贴敷】穴位透皮贴', dosage: `${it.dose||10}g, 穴位:${it.acupoints||'阿是穴'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||35, totalPrice: (Number(it.unitPrice)||35)*(it.quantity||1) })),
       ...westernRxItems.value.map(it => ({ medicineId: it.medicineId||201, medicineName: it.name, dosage: `${it.route||'口服'} ${it.dose||'1片'}`, quantity: it.quantity||1, unitPrice: Number(it.unitPrice)||25, totalPrice: (Number(it.unitPrice)||25)*(it.quantity||1) })),
-      ...tcmRxItems.value.map(it => ({ medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: 1, unitPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10), totalPrice: (Number(it.unitPrice)||2)*(Number(it.dose)||10) }))
+      ...tcmRxItems.value.map(it => { const perDosePrice = (Number(it.unitPrice)||2)*(Number(it.dose)||10); const doses = Number(it.doses) || 7; return { medicineId: it.medicineId||301, medicineName: `【中药饮片】${it.name}`, dosage: `${it.dose||10}g`, quantity: doses, unitPrice: perDosePrice, totalPrice: perDosePrice * doses } })
     ]
 
     if (allSubmittedItems.length > 0) {
@@ -7407,13 +7642,15 @@ const completeAndBill = async () => {
       })
       // 4. 中药处方
       tcmRxItems.value.forEach(it => {
+        const perDosePrice = (Number(it.unitPrice) || 2.00) * (Number(it.dose) || 10)
+        const doses = Number(it.doses) || 7
         allSubmittedItems.push({
           medicineId: it.medicineId || 301,
           medicineName: `【中药饮片】${it.name}`,
           dosage: `${it.dose || 10}g, ${it.frequency || '1剂/天'}`,
-          quantity: 1,
-          unitPrice: (Number(it.unitPrice) || 2.00) * (Number(it.dose) || 10),
-          totalPrice: (Number(it.unitPrice) || 2.00) * (Number(it.dose) || 10)
+          quantity: doses,
+          unitPrice: perDosePrice,
+          totalPrice: perDosePrice * doses
         })
       })
       // 5. 诊疗理疗项目
@@ -7578,9 +7815,9 @@ onMounted(async () => {
 
 .clinic-main-layout {
   display: grid;
-  grid-template-columns: 280px 1fr 360px;
+  grid-template-columns: 285px 1fr 330px;
   gap: 14px;
-  height: calc(100vh - 190px);
+  height: calc(100vh - 180px);
 }
 
 /* 1. 队列面板 */
@@ -7626,14 +7863,16 @@ onMounted(async () => {
 }
 
 .queue-item-card {
-  padding: 10px;
+  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   transition: all 0.2s;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .queue-item-card:hover {
@@ -7652,7 +7891,7 @@ onMounted(async () => {
   flex-wrap: nowrap;
   gap: 5px;
   width: 100%;
-  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .q-seq {
@@ -7668,14 +7907,17 @@ onMounted(async () => {
 
 .q-name {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
   color: #0f172a;
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 115px;
+  flex-shrink: 1;
 }
 
 .q-age {
-  font-size: 12px;
+  font-size: 11.5px;
   color: #64748b;
   white-space: nowrap;
   flex-shrink: 0;
@@ -7684,8 +7926,8 @@ onMounted(async () => {
 
 .q-reg-tag {
   font-size: 10px !important;
-  height: 20px !important;
-  line-height: 18px !important;
+  height: 18px !important;
+  line-height: 16px !important;
   padding: 0 4px !important;
   white-space: nowrap !important;
   flex-shrink: 0 !important;
@@ -7693,7 +7935,28 @@ onMounted(async () => {
 
 .q-card-bottom {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.q-time {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.q-symptom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   color: #64748b;
 }
@@ -9059,12 +9322,37 @@ onMounted(async () => {
 }
 
 .qr-center-logo {
-  font-size: 16px;
-  font-weight: bold;
-  color: #0d9488;
-  padding: 6px 12px;
-  background: #f0fdfa;
-  border-radius: 4px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.alipay-logo {
+  background: #1677ff;
+}
+
+.wechat-logo {
+  background: #07c160;
+}
+
+.zhi-logo-text {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  user-select: none;
+  transform: translateY(-1px);
 }
 
 .qr-tip-txt {
@@ -9164,11 +9452,12 @@ onMounted(async () => {
   font-weight: 600;
   margin-left: auto;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 0 !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1.2;
+  box-sizing: border-box;
 }
 
 .q-status-badge.接诊中 {
@@ -10047,7 +10336,80 @@ onMounted(async () => {
   font-weight: 600 !important;
 }
 .block-body-patch, .block-body-western, .block-body-tcm, .block-body-treatment {
-  padding: 10px 12px;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+.patch-rows-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.patch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+.patch-row > * {
+  flex-shrink: 0;
+}
+/* 贴敷单剂量输入框：紧凑对齐，居中清晰，带 g 标识 */
+.patch-row :deep(.el-input-group--append) {
+  width: 82px !important;
+  flex-shrink: 0 !important;
+}
+.patch-row :deep(.el-input-group--append .el-input__wrapper) {
+  padding-left: 6px !important;
+  padding-right: 4px !important;
+}
+.patch-row :deep(.el-input-group--append .el-input__inner) {
+  text-align: center !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: #606266 !important;
+}
+.patch-row :deep(.el-input-group--append .el-input-group__append) {
+  padding: 0 6px !important;
+  font-size: 12px !important;
+  background-color: #f8fafc !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+/* 贴敷单天数、贴数输入框：与西药表格输入框完全一致的标准无箭头纯数字输入风格 */
+.patch-row :deep(.el-input-number) {
+  width: 48px !important;
+  flex-shrink: 0 !important;
+}
+.patch-row :deep(.el-input-number .el-input__wrapper) {
+  padding: 0 4px !important;
+}
+.patch-row :deep(.el-input-number .el-input__inner) {
+  text-align: center !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: #606266 !important;
+}
+.block-header-right :deep(.el-input-number.is-controls-right) {
+  width: 76px !important;
+  flex-shrink: 0 !important;
+}
+.block-header-right :deep(.el-input-number.is-controls-right .el-input__wrapper) {
+  padding-left: 2px !important;
+  padding-right: 22px !important;
+}
+.block-header-right :deep(.el-input-number.is-controls-right .el-input__inner) {
+  text-align: center !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: #606266 !important;
+}
+.rx-table, .western-table, .tcm-rx-table {
+  width: 100% !important;
 }
 .patch-num {
   width: 22px;

@@ -1087,6 +1087,8 @@ class ProfileFragment : Fragment() {
             com.chunbo.medical.ui.common.RegionPickerHelper.showRegionPicker(requireContext(), selectedRegion) { newReg ->
                 selectedRegion = newReg
                 dBinding.tvProfileSelectedRegion.text = newReg
+                val curDetail = dBinding.etEditAddressDetail.text?.toString()
+                dBinding.etEditAddressDetail.setText(com.chunbo.medical.ui.common.RegionPickerHelper.syncDetailAddress(newReg, curDetail))
             }
         }
 
@@ -1144,6 +1146,8 @@ class ProfileFragment : Fragment() {
             com.chunbo.medical.ui.common.RegionPickerHelper.showRegionPicker(requireContext(), selectedRegion) { newReg ->
                 selectedRegion = newReg
                 dBinding.tvSelectedRegion.text = newReg
+                val curDetail = dBinding.etEditAddressDetail.text?.toString()
+                dBinding.etEditAddressDetail.setText(com.chunbo.medical.ui.common.RegionPickerHelper.syncDetailAddress(newReg, curDetail))
             }
         }
 

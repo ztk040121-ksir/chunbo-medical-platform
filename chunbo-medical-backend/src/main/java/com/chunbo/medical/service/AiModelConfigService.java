@@ -353,20 +353,10 @@ public class AiModelConfigService {
 
             this.activeChatModel = chatModel;
 
-            String systemPrompt = """
-                    你是春播科技研发的基层全科医疗AI专家「春播万象」。
-                    你的核心职责：
-                    1. 严格结合患者主诉、症状推荐权威临床诊疗与用药方案。
-                    2. 在开具处方前，务必调用工具查询患者药物过敏史（如青霉素过敏、头孢过敏）与药品库存。
-                    3. 若患者过敏史与处方冲突，严禁开具该药物，并重点给出警示！
-                    4. 每次输出遵循规范结构：
-                       - 临床初步诊断
-                       - 规范诊疗依据
-                       - 推荐处方建议清单
-                       - 用药安全与过敏禁忌预警
-                       - 基层转诊与随访指征
-                    所有用药建议仅供执业医师临床决策参考，必须经医师核准签字后生效。
-                    """;
+            String systemPrompt = com.chunbo.medical.prompt.PromptConfig.get("med_diagnose");
+            if (systemPrompt.isBlank()) {
+                systemPrompt = "你是春播科技研发的基层全科医疗AI专家「春播万象」。负责规范辨证开方与安全用药。";
+            }
 
             this.activeChatClient = ChatClient.builder(chatModel)
                     .defaultSystem(systemPrompt)

@@ -157,6 +157,7 @@
             style="width: 100%;"
             clearable
             filterable
+            @change="handleNewUserRegionChange"
           />
         </el-form-item>
         <el-form-item label="详细地址">
@@ -198,6 +199,7 @@
             style="width: 100%;"
             clearable
             filterable
+            @change="handleEditUserRegionChange"
           />
         </el-form-item>
         <el-form-item label="详细地址">
@@ -288,6 +290,30 @@ const openAddMallUserDialog = () => {
 /** 省市区级联 + 详细地址 → 落库地址串（与手机端「省 市 区 详细」空格口径一致） */
 const composeAddress = (regionPath, detail) => {
   return [...(regionPath || []), (detail || '').trim()].filter(Boolean).join(' ')
+}
+
+const handleNewUserRegionChange = (val) => {
+  if (Array.isArray(val) && val.length > 0) {
+    const prefix = val.join('')
+    let street = (newMallUserForm.value.addressDetail || '').trim()
+    val.forEach(item => { if (item) street = street.replaceAll(item, '') })
+    street = street.replace(/^[,，、\s/\\-]+|[,，、\s/\\-]+$/g, '')
+    newMallUserForm.value.addressDetail = street ? `${prefix}${street}` : `${prefix}`
+  } else {
+    newMallUserForm.value.addressDetail = ''
+  }
+}
+
+const handleEditUserRegionChange = (val) => {
+  if (Array.isArray(val) && val.length > 0) {
+    const prefix = val.join('')
+    let street = (editUserForm.value.addressDetail || '').trim()
+    val.forEach(item => { if (item) street = street.replaceAll(item, '') })
+    street = street.replace(/^[,，、\s/\\-]+|[,，、\s/\\-]+$/g, '')
+    editUserForm.value.addressDetail = street ? `${prefix}${street}` : `${prefix}`
+  } else {
+    editUserForm.value.addressDetail = ''
+  }
 }
 
 const triggerAvatarUpload = (mode) => {

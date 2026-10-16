@@ -31,6 +31,7 @@ public class JwtFilter extends OncePerRequestFilter {
             "/api/mall/chat",
             "/api/audio/",   // 语音接口开放给未登录的商城游客（TTS 朗读/ASR 录音）
             "/api/upload/",  // 多模态附件上传开放给商城游客（图片/Excel 识别）
+            "/api/pay/",     // 支付宝支付回调（服务器回调不带 JWT，需放行验签）
             "/mcp",
             "/sse",
             "/uploads/",

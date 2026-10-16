@@ -21,6 +21,7 @@ public class MallOrder {
     private BigDecimal finalAmount;
     private String itemsJson;
     private String status;
+    private String payMethod;
     private String bargainNotes;
     private LocalDateTime createTime;
 
@@ -53,6 +54,9 @@ public class MallOrder {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getPayMethod() { return payMethod; }
+    public void setPayMethod(String payMethod) { this.payMethod = payMethod; }
 
     public String getBargainNotes() { return bargainNotes; }
     public void setBargainNotes(String bargainNotes) { this.bargainNotes = bargainNotes; }

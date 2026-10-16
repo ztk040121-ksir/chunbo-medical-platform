@@ -31,14 +31,14 @@ object MallAuthHelper {
         dialogBinding.btnModeLogin.setOnClickListener {
             isLoginMode = true
             dialogBinding.layoutRegisterExtra.visibility = View.GONE
-            dialogBinding.tvLoginDialogTitle.text = "春播健康商城会员登录"
+            dialogBinding.tvLoginDialogTitle.text = "春播健康商城会员登录 · v5.0.1"
             dialogBinding.btnDoAuth.text = "立即登录"
         }
 
         dialogBinding.btnModeRegister.setOnClickListener {
             isLoginMode = false
             dialogBinding.layoutRegisterExtra.visibility = View.VISIBLE
-            dialogBinding.tvLoginDialogTitle.text = "新用户极速注册"
+            dialogBinding.tvLoginDialogTitle.text = "新用户极速注册 · v5.0.1"
             dialogBinding.btnDoAuth.text = "立即注册并领取体验金"
         }
 

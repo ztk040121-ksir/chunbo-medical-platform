@@ -80,6 +80,10 @@ public class Prescription {
     public String getPayStatus() { return payStatus; }
     public void setPayStatus(String payStatus) { this.payStatus = payStatus; }
 
+    private String payChannel;
+    public String getPayChannel() { return payChannel; }
+    public void setPayChannel(String payChannel) { this.payChannel = payChannel; }
+
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Long registrationId;
 

@@ -1,13 +1,17 @@
 package com.chunbo.medical.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.chunbo.medical.agent.AgentRouter;
 import com.chunbo.medical.agent.MallGeneralAgent;
 import com.chunbo.medical.agent.MallRouteAgent;
 import com.chunbo.medical.constant.AgentConstant;
+import com.chunbo.medical.dto.PageParam;
 import com.chunbo.medical.entity.MallOrder;
 import com.chunbo.medical.entity.MallProduct;
 import com.chunbo.medical.service.B2bMultiAgentService;
 import com.chunbo.medical.vo.ChatEventVO;
+import com.chunbo.medical.vo.PageResult;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -37,18 +41,37 @@ public class MallAgentController {
     @Autowired
     private com.chunbo.medical.mapper.MallUserMapper mallUserMapper;
 
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.MallProductMapper productMapper;
+
+    @Autowired(required = false)
+    private com.chunbo.medical.mapper.MallOrderMapper orderMapper;
+
     @Autowired
     private com.chunbo.medical.service.OaAssistantService oaAssistantService;
 
     @GetMapping("/products")
-    public List<MallProduct> getProducts() {
+    public Object getProducts(
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        if ((pageNo != null || pageSize != null) && productMapper != null) {
+            LambdaQueryWrapper<MallProduct> qw = new LambdaQueryWrapper<MallProduct>()
+                    .and(w -> w.isNull(MallProduct::getStatus).or().ne(MallProduct::getStatus, "OFF_SALE"))
+                    .orderByAsc(MallProduct::getId);
+            Page<MallProduct> pPage = productMapper.selectPage(pageParam.toPage(), qw);
+            return PageResult.of(pPage);
+        }
         return agentService.getProducts();
     }
 
     @GetMapping("/orders")
-    public List<MallOrder> getOrders(
+    public Object getOrders(
             @RequestParam(value = "username", required = false) String paramUsername,
             @RequestParam(value = "phone", required = false) String paramPhone,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam,
             HttpServletRequest request) {
         String username = (String) request.getAttribute("username");
         if (username == null || username.isBlank()) {
@@ -56,10 +79,35 @@ public class MallAgentController {
         }
         if ((username == null || username.isBlank()) && paramPhone != null && !paramPhone.isBlank() && mallUserMapper != null) {
             com.chunbo.medical.entity.MallUser mu = mallUserMapper.selectOne(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
+                    new LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
                             .eq(com.chunbo.medical.entity.MallUser::getPhone, paramPhone.trim())
             );
             if (mu != null) username = mu.getUsername();
+        }
+        if (pageNo != null || pageSize != null) {
+            if (username == null || username.isBlank() || orderMapper == null) {
+                return PageResult.of(new java.util.ArrayList<>(), 0, pageParam.getPageNo(), pageParam.getPageSize());
+            }
+            com.chunbo.medical.entity.MallUser user = mallUserMapper.selectOne(
+                    new LambdaQueryWrapper<com.chunbo.medical.entity.MallUser>()
+                            .eq(com.chunbo.medical.entity.MallUser::getUsername, username));
+            if (user == null) {
+                return PageResult.of(new java.util.ArrayList<>(), 0, pageParam.getPageNo(), pageParam.getPageSize());
+            }
+            final Long uid = user.getId();
+            final String ph = user.getPhone() == null ? "" : user.getPhone().trim();
+            final String nickname = user.getNickname() == null ? "" : user.getNickname().trim();
+            LambdaQueryWrapper<MallOrder> wrapper = new LambdaQueryWrapper<MallOrder>().orderByDesc(MallOrder::getCreateTime);
+            wrapper.and(w -> {
+                w.eq(MallOrder::getUserId, uid);
+                if (!nickname.isEmpty()) w.or().like(MallOrder::getBuyerName, nickname);
+                if (!ph.isEmpty()) {
+                    w.or().like(MallOrder::getBuyerName, ph)
+                            .or().like(MallOrder::getBargainNotes, ph);
+                }
+            });
+            Page<MallOrder> pPage = orderMapper.selectPage(pageParam.toPage(), wrapper);
+            return PageResult.of(pPage);
         }
         return agentService.getOrdersForUser(username);
     }

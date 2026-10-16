@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
  * 处理「用药禁忌/配伍/能否一起吃」类意图
  */
 @Component
-public class MallGuardAgent extends MallBaseAgent {
+public class
+
+MallGuardAgent extends MallBaseAgent {
 
     @Override
     public AgentTypeEnum getAgentType() {

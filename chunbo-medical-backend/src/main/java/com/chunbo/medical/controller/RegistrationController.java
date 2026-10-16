@@ -1,6 +1,8 @@
 package com.chunbo.medical.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.chunbo.medical.dto.PageParam;
 import com.chunbo.medical.entity.ClinicRegistration;
 import com.chunbo.medical.entity.MallUser;
 import com.chunbo.medical.entity.Patient;
@@ -8,6 +10,7 @@ import com.chunbo.medical.mapper.ClinicRegistrationMapper;
 import com.chunbo.medical.mapper.MallUserMapper;
 import com.chunbo.medical.mapper.PatientMapper;
 import com.chunbo.medical.service.CurrentUserService;
+import com.chunbo.medical.vo.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -41,14 +44,17 @@ public class RegistrationController {
     private StringRedisTemplate redisTemplate;
 
     @GetMapping(value = {"/list", "/queue"})
-    public List<ClinicRegistration> getList(
+    public Object getList(
+            PageParam pageParam,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "department", required = false) String department,
             @RequestParam(value = "doctorName", required = false) String doctorName,
             @RequestParam(value = "userPhone", required = false) String userPhone,
             @RequestParam(value = "patientPhone", required = false) String patientPhone,
-            @RequestParam(value = "date", required = false) String date) {
+            @RequestParam(value = "date", required = false) String date,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize) {
         
         LambdaQueryWrapper<ClinicRegistration> qw = new LambdaQueryWrapper<>();
         if (date != null && !date.trim().isEmpty()) {
@@ -81,22 +87,35 @@ public class RegistrationController {
         }
 
         qw.orderByDesc(ClinicRegistration::getId);
-        List<ClinicRegistration> list = registrationMapper.selectList(qw);
 
-        // Normalize any empty queueNumber or legacy status
-        for (ClinicRegistration reg : list) {
-            if (reg.getQueueNumber() == null || reg.getQueueNumber().isEmpty()) {
-                reg.setQueueNumber(String.format("%02d", reg.getQueueNo() != null ? reg.getQueueNo() : reg.getId()));
+        // 分页参数存在时，执行真实的 MyBatis-Plus selectPage 数据库物理分页
+        if (pageNo != null || pageSize != null) {
+            Page<ClinicRegistration> page = pageParam.toPage();
+            Page<ClinicRegistration> pResult = registrationMapper.selectPage(page, qw);
+            for (ClinicRegistration reg : pResult.getRecords()) {
+                normalizeRegistration(reg);
             }
-            if ("候诊中".equals(reg.getStatus())) {
-                reg.setStatus("待诊");
-            }
-            if (reg.getFee() == null && reg.getRegFee() != null) {
-                reg.setFee(reg.getRegFee());
-            }
+            return PageResult.of(pResult);
         }
 
+        List<ClinicRegistration> list = registrationMapper.selectList(qw);
+        for (ClinicRegistration reg : list) {
+            normalizeRegistration(reg);
+        }
         return list;
+    }
+
+    private void normalizeRegistration(ClinicRegistration reg) {
+        if (reg == null) return;
+        if (reg.getQueueNumber() == null || reg.getQueueNumber().isEmpty()) {
+            reg.setQueueNumber(String.format("%02d", reg.getQueueNo() != null ? reg.getQueueNo() : reg.getId()));
+        }
+        if ("候诊中".equals(reg.getStatus())) {
+            reg.setStatus("待诊");
+        }
+        if (reg.getFee() == null && reg.getRegFee() != null) {
+            reg.setFee(reg.getRegFee());
+        }
     }
 
     @PostMapping("/create")

@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.chunbo</groupId>
     <artifactId>chunbo-medical-backend</artifactId>
-    <version>5.0.0</version>
+    <version>5.0.1</version>
     <name>chunbo-medical-backend</name>
     <description>春播云诊所 - 基于 Spring AI 的医疗问诊智能体平台</description>
 
@@ -132,6 +132,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
             <version>3.2.5</version>
+        </dependency>
+
+        <!-- 支付宝支付 SDK（电脑网站支付/手机网站支付，沙箱与生产通用） -->
+        <dependency>
+            <groupId>com.alipay.sdk</groupId>
+            <artifactId>alipay-sdk-java</artifactId>
+            <version>4.39.208.ALL</version>
+            <exclusions>
+                <!-- 排除老旧的 commons-logging，避免与 Spring Boot SLF4J 日志冲突 -->
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- JWT Token Support -->

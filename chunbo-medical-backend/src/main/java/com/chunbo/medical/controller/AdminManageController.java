@@ -2,7 +2,9 @@ package com.chunbo.medical.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.chunbo.medical.config.PasswordUtil;
+import com.chunbo.medical.dto.PageParam;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.enums.OrderStatusEnum;
 import com.chunbo.medical.mapper.*;
@@ -99,14 +101,32 @@ public class AdminManageController {
     }
 
     @GetMapping("/staff/list")
-    public ResponseEntity<Map<String, Object>> listStaff() {
-        List<StaffAccount> list = staffAccountMapper.selectList(
-                new LambdaQueryWrapper<StaffAccount>().orderByDesc(StaffAccount::getId)
-        );
-        list.forEach(s -> s.setPassword("******"));
+    public ResponseEntity<Map<String, Object>> listStaff(
+            @RequestParam(value = "role", required = false) String role,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        LambdaQueryWrapper<StaffAccount> qw = new LambdaQueryWrapper<>();
+        if (role != null && !role.trim().isEmpty()) {
+            qw.eq(StaffAccount::getRole, role.trim());
+        }
+        qw.orderByDesc(StaffAccount::getId);
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
+        if (pageNo != null || pageSize != null) {
+            Page<StaffAccount> pPage = staffAccountMapper.selectPage(pageParam.toPage(), qw);
+            pPage.getRecords().forEach(s -> s.setPassword("******"));
+            res.put("data", pPage.getRecords());
+            res.put("total", pPage.getTotal());
+            res.put("pageNo", pPage.getCurrent());
+            res.put("pageSize", pPage.getSize());
+            res.put("pages", pPage.getPages());
+            return ResponseEntity.ok(res);
+        }
+        List<StaffAccount> list = staffAccountMapper.selectList(qw);
+        list.forEach(s -> s.setPassword("******"));
         res.put("data", list);
+        res.put("total", list.size());
         return ResponseEntity.ok(res);
     }
 
@@ -282,13 +302,35 @@ public class AdminManageController {
     // 2. 商城商品管理与进销存 (上下架、调价、入库补货)
     // ==========================================
     @GetMapping("/mall/products")
-    public ResponseEntity<Map<String, Object>> getAllProducts() {
-        List<MallProduct> list = mallProductMapper.selectList(
-                new LambdaQueryWrapper<MallProduct>().orderByDesc(MallProduct::getId)
-        );
+    public ResponseEntity<Map<String, Object>> getAllProducts(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        LambdaQueryWrapper<MallProduct> qw = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            qw.and(w -> w.like(MallProduct::getProductName, keyword.trim())
+                    .or().like(MallProduct::getGenericName, keyword.trim()));
+        }
+        if (category != null && !category.isBlank() && !category.equalsIgnoreCase("all")) {
+            qw.eq(MallProduct::getCategory, category.trim());
+        }
+        qw.orderByDesc(MallProduct::getId);
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
+        if (pageNo != null || pageSize != null) {
+            Page<MallProduct> pPage = mallProductMapper.selectPage(pageParam.toPage(), qw);
+            res.put("data", pPage.getRecords());
+            res.put("total", pPage.getTotal());
+            res.put("pageNo", pPage.getCurrent());
+            res.put("pageSize", pPage.getSize());
+            res.put("pages", pPage.getPages());
+            return ResponseEntity.ok(res);
+        }
+        List<MallProduct> list = mallProductMapper.selectList(qw);
         res.put("data", list);
+        res.put("total", list.size());
         return ResponseEntity.ok(res);
     }
 
@@ -632,14 +674,33 @@ public class AdminManageController {
     // 3. 商城注册用户管理与订单追溯
     // ==========================================
     @GetMapping("/mall/users")
-    public ResponseEntity<Map<String, Object>> listMallUsers() {
-        List<MallUser> list = mallUserMapper.selectList(
-                new LambdaQueryWrapper<MallUser>().orderByDesc(MallUser::getId)
-        );
-        list.forEach(u -> u.setPassword("******"));
+    public ResponseEntity<Map<String, Object>> listMallUsers(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        LambdaQueryWrapper<MallUser> qw = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            qw.like(MallUser::getUsername, kw).or().like(MallUser::getNickname, kw).or().like(MallUser::getPhone, kw);
+        }
+        qw.orderByDesc(MallUser::getId);
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
+        if (pageNo != null || pageSize != null) {
+            Page<MallUser> pPage = mallUserMapper.selectPage(pageParam.toPage(), qw);
+            pPage.getRecords().forEach(u -> u.setPassword("******"));
+            res.put("data", pPage.getRecords());
+            res.put("total", pPage.getTotal());
+            res.put("pageNo", pPage.getCurrent());
+            res.put("pageSize", pPage.getSize());
+            res.put("pages", pPage.getPages());
+            return ResponseEntity.ok(res);
+        }
+        List<MallUser> list = mallUserMapper.selectList(qw);
+        list.forEach(u -> u.setPassword("******"));
         res.put("data", list);
+        res.put("total", list.size());
         return ResponseEntity.ok(res);
     }
 
@@ -710,7 +771,11 @@ public class AdminManageController {
     }
 
     @GetMapping("/mall/user/orders")
-    public ResponseEntity<Map<String, Object>> listUserOrders(@RequestParam(value = "buyerName", required = false) String buyerName) {
+    public ResponseEntity<Map<String, Object>> listUserOrders(
+            @RequestParam(value = "buyerName", required = false) String buyerName,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
         // 严格限定只查询春播商城 C端居民购药订单 (B2C开头)，不混杂医生门诊/院内批发采购单
         LambdaQueryWrapper<MallOrder> wrapper = new LambdaQueryWrapper<MallOrder>()
                 .likeRight(MallOrder::getOrderNo, "B2C")
@@ -734,10 +799,20 @@ public class AdminManageController {
             wrapper.and(w -> w.like(MallOrder::getBuyerName, kwNick)
                     .or().like(MallOrder::getBuyerName, kwPhone));
         }
-        List<MallOrder> orders = mallOrderMapper.selectList(wrapper);
         Map<String, Object> res = new HashMap<>();
         res.put("success", true);
+        if (pageNo != null || pageSize != null) {
+            Page<MallOrder> pPage = mallOrderMapper.selectPage(pageParam.toPage(), wrapper);
+            res.put("data", pPage.getRecords());
+            res.put("total", pPage.getTotal());
+            res.put("pageNo", pPage.getCurrent());
+            res.put("pageSize", pPage.getSize());
+            res.put("pages", pPage.getPages());
+            return ResponseEntity.ok(res);
+        }
+        List<MallOrder> orders = mallOrderMapper.selectList(wrapper);
         res.put("data", orders);
+        res.put("total", orders.size());
         return ResponseEntity.ok(res);
     }
 

@@ -80,31 +80,8 @@ public class PayAuditService {
         org.springframework.ai.chat.client.ChatClient chatClient = aiConfigService != null ? aiConfigService.getBareChatClient() : null;
         if (chatClient != null && !aiConfigService.isMockEnabled()) {
             try {
-                String prompt = String.format("""
-                        你是春播万象全栈医疗科技风控专家「春播智能支付与合规审计大模型」。
-                        请针对以下门诊/医药控销资金交易底账与凭证核验线索，执行多维度风控深度研判：
-                        【交易底账信息】
-                        - 订单流水号：%s
-                        - 支付渠道：%s
-                        - 付款人姓名：%s
-                        - 收款商户名：%s（商户ID：%s）
-                        - 网关实际入账金额：¥%.2f
-                        - 交易发生时间：%s
-                        - 当前风控状态：%s
-                        【凭证核验线索】
-                        - 凭证路径/URL：%s
-                        - 业务场景与异常提示：%s
-
-                        请你对凭证是否存在金额篡改/PS虚标、重复核销(一图多付)、商户要素不符等高危风险进行专业审计研判，严格以 JSON 格式输出结果，不要输出多余解释或markdown代码块以外的文字：
-                        ```json
-                        {
-                          "detectedAmount": %.2f,
-                          "riskLevel": "高危(阻断)" 或 "中危" 或 "低危(合规)",
-                          "anomalyType": "凭证金额恶意篡改" 或 "一图多付重复核销" 或 "合规正常凭证",
-                          "aiAnalysis": "【春播多模态大模型视觉深度审计】\\n1. 凭证分析与要素比对...\\n2. 风控判定理由...\\n3. 处置建议..."
-                        }
-                        ```
-                        """,
+                String auditTemplate = com.chunbo.medical.prompt.PromptConfig.get("pay_audit");
+                String prompt = String.format(auditTemplate,
                         tx.getOrderNo(),
                         tx.getChannelType() != null ? tx.getChannelType() : "聚合扫码支付",
                         tx.getPayerName() != null ? tx.getPayerName() : "未知付款人",

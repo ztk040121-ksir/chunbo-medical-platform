@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="patient-manage-container">
     <!-- 顶部操作栏 -->
     <div class="header-card">
@@ -34,7 +34,7 @@
 
         <div class="patient-cards">
           <div 
-            v-for="p in filteredPatients" 
+            v-for="p in pagedPatients" 
             :key="p.id" 
             class="patient-side-card"
             :class="{ active: selectedPatient && selectedPatient.id === p.id }"
@@ -51,6 +51,15 @@
               <span class="p-consume">消费 ¥{{ Number(p.totalSpent || 290.7).toFixed(2) }}</span>
             </div>
           </div>
+        </div>
+        <div v-if="filteredPatients.length > patientPageSize" style="padding: 8px 4px; display: flex; justify-content: center; background: #fff; border-top: 1px solid #e2e8f0;">
+          <el-pagination
+            v-model:current-page="patientPageNo"
+            v-model:page-size="patientPageSize"
+            :total="filteredPatients.length"
+            layout="prev, pager, next"
+            size="small"
+          />
         </div>
       </div>
 
@@ -97,7 +106,7 @@
             <!-- 1. 电子病历视图 (截图 09/10/56) -->
             <el-tab-pane label="电子病历与处方" name="emr">
               <div class="timeline-emr-list">
-                <div class="emr-timeline-node" v-for="(rec, idx) in emrHistory" :key="idx">
+                <div class="emr-timeline-node" v-for="(rec, idx) in pagedEmrHistory" :key="idx">
                   <div class="node-header">
                     <span class="node-date">{{ rec.date }}</span>
                     <el-tag type="primary" size="small">{{ rec.dept }} · {{ rec.doctor }}</el-tag>
@@ -115,6 +124,18 @@
                 </div>
                 <div v-if="emrHistory.length === 0" class="empty-history-hint" style="text-align:center;color:#94a3b8;padding:40px 0;">
                   该患者名下暂无就诊记录（同一身份证号的历史就诊会自动合并到一起）
+                </div>
+                <!-- 历次病历处方分页 -->
+                <div v-if="emrHistory.length > emrPageSize" style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                  <el-pagination
+                    v-model:current-page="emrPageNo"
+                    v-model:page-size="emrPageSize"
+                    :page-sizes="[3, 5, 10]"
+                    :total="emrHistory.length"
+                    layout="total, sizes, prev, pager, next"
+                    size="small"
+                    background
+                  />
                 </div>
               </div>
             </el-tab-pane>
@@ -298,6 +319,7 @@
         <el-button @click="showFollowupModal = false">取消</el-button>
         <el-button type="primary" @click="submitFollowup">保存随访计划</el-button>
       </template>
+    </el-dialog>
 
     <!-- 升级会员弹窗 -->
     <el-dialog v-model="showUpgradeMemberDialog" title="⬆ 升级会员等级" width="400px">
@@ -346,13 +368,12 @@
         <el-button type="primary" @click="bindAuxiliary">确认绑定</el-button>
       </template>
     </el-dialog>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
 const currentUserName = localStorage.getItem('chunbo_display_name') || localStorage.getItem('chunbo_username') || '系统用户'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
@@ -367,8 +388,9 @@ const followupList = ref([])
 const loadPatients = async () => {
   try {
     const res = await axios.get('/api/patients')
-    if (res.data && res.data.length > 0) {
-      patients.value = res.data.map(p => ({
+    const rawList = Array.isArray(res.data) ? res.data : (res.data?.list || [])
+    if (rawList && rawList.length > 0) {
+      patients.value = rawList.map(p => ({
         id: p.id,
         name: p.name,
         gender: p.gender || '男',
@@ -406,6 +428,14 @@ const filteredPatients = computed(() => {
   return patients.value.filter(p => p.name.includes(kw) || p.phone.includes(kw))
 })
 
+const patientPageNo = ref(1)
+const patientPageSize = ref(8)
+const pagedPatients = computed(() => {
+  const start = (patientPageNo.value - 1) * patientPageSize.value
+  return filteredPatients.value.slice(start, start + patientPageSize.value)
+})
+watch(searchKey, () => { patientPageNo.value = 1 })
+
 const selectPatient = (p) => {
   selectedPatient.value = p
   loadEmrHistory()
@@ -414,6 +444,13 @@ const selectPatient = (p) => {
 // 电子病历与处方：走真实数据库，按 patientId + 身份证号合并同人的全部历史处方
 // （同一身份证可能存在多条历史档案，后端 patient-history 接口会自动归一合并）
 const emrHistory = ref([])
+const emrPageNo = ref(1)
+const emrPageSize = ref(4)
+
+const pagedEmrHistory = computed(() => {
+  const start = (emrPageNo.value - 1) * emrPageSize.value
+  return emrHistory.value.slice(start, start + emrPageSize.value)
+})
 
 const formatRxParts = (v) => {
   const parts = []
@@ -435,7 +472,7 @@ const loadEmrHistory = async () => {
     if (p.id) params.patientId = p.id
     if (p.idCard && !String(p.idCard).includes('*')) params.idCard = p.idCard
     const res = await axios.get('/api/prescription/patient-history', { params })
-    const list = res.data || []
+    const list = Array.isArray(res.data) ? res.data : (res.data?.list || [])
     emrHistory.value = list.map(v => ({
       date: v.date,
       dept: '中医全科门诊',
@@ -449,6 +486,7 @@ const loadEmrHistory = async () => {
       prescription: formatRxParts(v),
       totalFee: v.totalFee
     }))
+    emrPageNo.value = 1
   } catch (e) {
     console.error('加载患者历史就诊失败', e)
     emrHistory.value = []

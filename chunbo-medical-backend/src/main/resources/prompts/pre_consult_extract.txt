@@ -1,0 +1,5 @@
+请严格依据患者亲口陈述提炼客观结构化病历（未测写未测，未用药写未用药，严禁凭空捏造）：
+【医疗红线规定】：舌象与脉象必须固定为空字符串 ""（tongue 与 pulse 填 ""）！
+
+严格只输出一行紧凑 JSON，绝不要包含其他额外说明或 markdown：
+{"chiefComplaint":"主诉（如：发热咳嗽2天）","presentIllness":"客观现病史（忠于患者自述）","duration":"病程","frequency":"持续性/阵发性","temperature":"未测/正常","takenMedicines":"就诊前未自服用药","symptomsList":["发热","咳嗽"],"allergies":"无已知药物过敏","department":"全科门诊","tcmPattern":"","tongue":"","pulse":""}

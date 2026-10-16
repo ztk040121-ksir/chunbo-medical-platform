@@ -2,7 +2,7 @@
 
 > 基于 **Spring AI** 的基层医疗数字化平台，集 **云诊所智能问诊**、**运营管理中台**、**便民网上药房** 三大子系统于一体，深度集成 **MCP 协议工具调用**、**RAG 用药知识库检索** 与 **多智能体协同**。
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![PC Version](https://img.shields.io/badge/PC--Version-5.0.0-red) ![Android Version](https://img.shields.io/badge/Android--Version-1.0.0-emerald) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen) ![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-blue) ![Vue](https://img.shields.io/badge/Vue-3-green) ![JDK](https://img.shields.io/badge/JDK-17-orange) ![PC Version](https://img.shields.io/badge/PC--Version-5.0.1-red) ![Android Version](https://img.shields.io/badge/Android--Version-5.0.1-emerald) ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 ---
 
@@ -449,6 +449,26 @@ content
 ---
 
 ## 十、版本历史
+
+- **v5.0.1 (全平台统一步进)** — 支付宝沙箱双端直连 + Hybrid RAG 医疗混合检索架构 + 处方自愈纠偏 (Auto-Fix) + 全端登录与版本统一升级：
+  - 💳 **真实支付宝沙箱双端直连与闭环**：
+    - 集成官方最新推荐 `alipay-sdk-java:4.39.208.ALL`，排除老旧冲突依赖；
+    - 后端研发 `AlipayService` 与 `AlipayController`，统一调度电脑网站支付与手机网站支付沙箱收银台；
+    - 云诊所划价收费（PC 端）与便民健康商城（PC 端、移动端）全面打通沙箱拉起、异步回调与自动核销全链路；
+  - 🧠 **Hybrid RAG 混合检索架构增强**：
+    - 稠密向量检索（Embedding 70% 权重）结合 BM25 倒排索引（30% 权重）双轨召回，结合 MedicalReranker 医疗重排序器综合打分；
+    - 攻克罕见生僻中药材与生化检验指标缩写（ALT、HbA1c）语义漂移难题；
+    - 医疗安全红线机制：18 反 19 畏与患者过敏原双重绝对阻断，首创结合大模型给出循证替换/调量方案，一键采纳纠偏（Auto-Fix）；
+  - 🎨 **工程架构图谱原生矢量交付**：
+    - 全面交付原生 Microsoft Visio `.vsdx`、原生 Office `.pptx`、高精矢量 `.svg` 及 Draw.io 原型工程文件；
+    - 包含「系统四层架构图」、「多智能体流转协作图」与「四大子系统角色职能划分图」；
+  - 💻 **全端登录页与配置文件版本统一同步至 v5.0.1**：
+    - 医生工作台（5173）、运营中台（5174）、便民商城（5175）、Android 移动端统一更新版本标识；
+    - `pom.xml` 与各端 `package.json`、`build.gradle` 统一升级为 `5.0.1`；
+  - 🐞 **业务闭环与稳定性加固**：
+    - 排队流水号并发按日自增生成加固；
+    - 全国省市区级联地址选择器与回显逻辑优化；
+    - 极速网络下 SSE 流式打字机平滑流控与白屏自愈；
 
 - **v5.0.0 (PC 端) & v1.0.0 (Android 移动端)** — 移动端正式发布与多端医疗全流程闭环打通 + 商城药品分类统一与界面深度优化：
   - 📱 **新增全新端：春播万象便民医疗 Android 客户端 (v1.0.0 正式发布)**：

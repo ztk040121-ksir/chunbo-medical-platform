@@ -1149,7 +1149,25 @@ public class B2bMultiAgentService {
         o.setTotalAmount(totalAmt);
         o.setDiscountAmount(discountAmt);
         o.setFinalAmount(finalAmt);
-        o.setStatus("待商户发货出库");
+        String rawPay = req.getOrDefault("payMethod", req.getOrDefault("payType", "alipay")).toString();
+        String payName = switch (rawPay.toLowerCase()) {
+            case "wechat" -> "微信支付";
+            case "alipay" -> "支付宝";
+            case "card", "yibao" -> "银联/医保在线";
+            case "balance" -> "账户余额";
+            default -> rawPay;
+        };
+        o.setPayMethod(payName);
+
+        boolean isOnlinePay = "alipay".equalsIgnoreCase(rawPay) || "wechat".equalsIgnoreCase(rawPay)
+                || "alipay".equalsIgnoreCase(String.valueOf(req.get("payType")))
+                || "wechat".equalsIgnoreCase(String.valueOf(req.get("payType")))
+                || "支付宝".equals(payName) || "微信支付".equals(payName);
+        if (finalAmt.compareTo(BigDecimal.ZERO) > 0 && isOnlinePay) {
+            o.setStatus("待支付");
+        } else {
+            o.setStatus("待商户发货出库");
+        }
         String baseNotes = req.getOrDefault("notes", "个人便民购药 · 满68元春播便民速递免邮 · 正品保障").toString();
         if (useBalance && u != null) {
             baseNotes += " 【已使用健康体验金抵扣，账户结余: ¥" + u.getBalance() + "】";

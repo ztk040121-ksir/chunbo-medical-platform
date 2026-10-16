@@ -164,20 +164,7 @@ public class MedicalChatService {
                 systemPrompt = "你是春播万象诊所AI临床辅助诊断与用药助手。接诊患者：" + patientName
                         + "，药物过敏史：【" + allergies + "】，既往慢病史：【" + history + "】。\n";
             } else {
-                systemPrompt = """
-                        你是「春播小药师」——春播万象全科医疗便民健康顾问与智能导医。
-                        服务宗旨：权威、安全、温暖、便捷。
-                        你的核心能力与职责：
-                        1. 【智能分诊导医】：居民描述身体不适或询问「看哪个科/挂什么科」时，进行专业症状分析与鉴别诊断，明确建议就诊科室（如耳鼻喉科、呼吸内科、中医内科、骨伤科、儿科等），引导其在【便民挂号】预约名医面诊；
-                        2. 【医疗常识与症状诊断】：耐心解答各类日常疾病健康常识、居家护理与自我观察要点；
-                        3. 【合理用药与禁忌核对】：解答药品用法用量（如儿童按体重精准计算布洛芬剂量：每次5~10mg/kg，每6-8小时一次，24小时不超过4次）、适应症与安全禁忌（如消化性溃疡、过敏体质、特殊时期用药注意）；
-                        4. 【春播商城正品购药引导】：若居民咨询购药、是否有药在售，或针对其症状推荐了常用对症药品（如美林布洛芬混悬滴剂、连花清瘟、小儿咳喘贴、江中健胃消食片、云南白药、六味地黄丸等），请贴心说明春播便民健康商城有正品现货直供，引导居民点击回答下方的推荐药品卡片一键直达商城选购！
-                        
-                        排版包装规范（极重要）：
-                        - 层次分明，使用标准的 Markdown 小标题（### ）、加粗重点（**词语**）与分点列表（- 或 1. 2. ）；
-                        - 各版块间适当空行，文字舒展，严禁密密麻麻挤在一堆；
-                        - 语气专业亲切，充满人文关怀。
-                        """;
+                systemPrompt = com.chunbo.medical.prompt.PromptConfig.get("pre_consult_triage");
             }
             // 前端传来的本次门诊病历摘要（主诉/现病史/既往史/查体等），AI 辨证必须基于真实病历而非模板
             String emr = request.getEmrContext();
@@ -940,20 +927,14 @@ public class MedicalChatService {
                 conv.append(m.getOrDefault("role", "user")).append(": ").append(m.getOrDefault("content", "")).append("\n");
             }
 
-            String userPrompt = String.format("""
-                    患者【%s，%s，%s岁】预问诊对话记录：
-                    %s
-                    
-                    请严格依据患者亲口陈述提炼客观结构化病历（未测写未测，未用药写未用药，严禁凭空捏造）：
-                    【医疗红线规定】：舌象与脉象必须固定为空字符串 ""（tongue 与 pulse 填 ""）！
-                    
-                    严格只输出一行紧凑 JSON，绝不要包含其他额外说明或 markdown：
-                    {"chiefComplaint":"主诉（如：发热咳嗽2天）","presentIllness":"客观现病史（忠于患者自述）","duration":"病程","frequency":"持续性/阵发性","temperature":"未测/正常","takenMedicines":"就诊前未自服用药","symptomsList":["发热","咳嗽"],"allergies":"无已知药物过敏","department":"全科门诊","tcmPattern":"","tongue":"","pulse":""}
-                    """,
+            String extractTemplate = com.chunbo.medical.prompt.PromptConfig.get("pre_consult_extract");
+            String userPrompt = String.format(
+                    "患者【%s，%s，%s岁】预问诊对话记录：\n%s\n\n%s",
                     patientName != null && !patientName.isBlank() ? patientName : "患者",
                     gender != null && !gender.isBlank() ? gender : "男",
                     age != null && !age.isBlank() ? age : "30",
-                    conv.toString()
+                    conv.toString(),
+                    extractTemplate
             );
 
             log.info(">>> [病史提炼Service-LLM推理开始] 正在提交大模型结构化提炼...");

@@ -463,13 +463,14 @@ body {
   font-size: 13px;
 }
 
-/* 主容器 */
+/* 主容器：恢复优雅的居中容器布局，微调扩宽至 1720px，保持精致美观与舒适留白 */
 .main-content-viewport {
   flex: 1;
-  padding: 16px 24px;
-  max-width: 1680px;
+  padding: 14px 20px;
+  max-width: 1720px;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* 医生工牌卡片样式 */

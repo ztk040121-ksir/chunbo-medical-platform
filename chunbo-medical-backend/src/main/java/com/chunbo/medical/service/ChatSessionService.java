@@ -36,15 +36,16 @@ public class ChatSessionService {
     @Qualifier("titleChatClient")
     private ChatClient titleChatClient;
 
-    /** AI 提炼标题专用 system prompt（笔记 10205 行标准模板） */
-    private static final String TITLE_PROMPT = """
-            请根据对话内容生成中文标题，严格遵循：
-            1. 长度≤18字符（含标点/空格，1个汉字=1字符）
-            2. 直接输出标题，无任何解释或格式
-            3. 禁用非核心词汇："问题""帮助""方法"等（除非对话核心）
-            4. 关键词前置突出对话主旨
-            5. 语言绝对精简，删除冗余修饰词
-            """;
+    @Autowired(required = false)
+    private com.chunbo.medical.prompt.PromptConfig promptConfig;
+
+    private String getTitlePrompt() {
+        if (promptConfig != null) {
+            String p = promptConfig.getChatSessionTitlePrompt();
+            if (!p.isBlank()) return p;
+        }
+        return com.chunbo.medical.prompt.PromptConfig.get("chat_session_title");
+    }
 
     /**
      * 保存或更新会话：会话不存在则新建（title 为首次提问），存在则更新 updateTime
@@ -127,7 +128,7 @@ public class ChatSessionService {
         if (titleChatClient == null || content == null || content.isEmpty()) return null;
         try {
             String t = titleChatClient.prompt()
-                    .system(TITLE_PROMPT)
+                    .system(getTitlePrompt())
                     .user("对话内容：\n" + content)
                     .call()
                     .content();

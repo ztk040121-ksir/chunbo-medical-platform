@@ -1,6 +1,10 @@
 package com.chunbo.medical.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.chunbo.medical.dto.PageParam;
 import com.chunbo.medical.entity.Patient;
+import com.chunbo.medical.vo.PageResult;
 import com.chunbo.medical.mapper.PatientMapper;
 import com.chunbo.medical.service.PatientService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +27,27 @@ public class PatientController {
     private PatientMapper patientMapper;
 
     @GetMapping(value = {"", "/list"})
-    public List<Patient> listPatients() {
+    public Object listPatients(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
+        LambdaQueryWrapper<Patient> qw = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            qw.like(Patient::getName, kw)
+              .or().like(Patient::getPhone, kw)
+              .or().like(Patient::getIdCard, kw);
+        }
+        qw.orderByDesc(Patient::getId);
+        if (pageNo != null || pageSize != null) {
+            Page<Patient> page = pageParam.toPage();
+            Page<Patient> pPage = patientMapper.selectPage(page, qw);
+            return PageResult.of(pPage);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            return patientMapper.selectList(qw);
+        }
         return patientService.listAll();
     }
 

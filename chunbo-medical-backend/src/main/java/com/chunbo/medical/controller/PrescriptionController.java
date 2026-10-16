@@ -1,9 +1,12 @@
 package com.chunbo.medical.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.chunbo.medical.dto.PageParam;
 import com.chunbo.medical.entity.*;
 import com.chunbo.medical.mapper.*;
 import com.chunbo.medical.service.CurrentUserService;
+import com.chunbo.medical.vo.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -64,9 +67,12 @@ public class PrescriptionController {
     }
 
     @GetMapping("/list")
-    public List<Map<String, Object>> listPrescriptions(
+    public Object listPrescriptions(
+            PageParam pageParam,
             @RequestParam(value = "phone", required = false) String phone,
             @RequestParam(value = "patientName", required = false) String patientName,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
             jakarta.servlet.http.HttpServletRequest request) {
         LambdaQueryWrapper<Prescription> qw = new LambdaQueryWrapper<>();
         qw.orderByDesc(Prescription::getCreateTime);
@@ -123,13 +129,32 @@ public class PrescriptionController {
 
         if ("USER".equals(role) || (phone != null && !phone.isBlank())) {
             if (myNames.isEmpty()) {
+                if (pageNo != null || pageSize != null) {
+                    return new PageResult<>(new ArrayList<>(), 0, pageParam.getPageNo(), pageParam.getPageSize(), 0);
+                }
                 return new ArrayList<>();
             }
             qw.in(Prescription::getPatientName, myNames);
         }
 
-        List<Prescription> list = prescriptionMapper.selectList(qw);
+        // 分页参数存在时，执行真实的 MyBatis-Plus selectPage 物理分页
+        if (pageNo != null || pageSize != null) {
+            Page<Prescription> page = pageParam.toPage();
+            Page<Prescription> pPage = prescriptionMapper.selectPage(page, qw);
+            List<Map<String, Object>> pRes = new ArrayList<>();
+            for (Prescription p : pPage.getRecords()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("prescription", p);
+                List<PrescriptionItem> items = itemMapper.selectList(
+                        new LambdaQueryWrapper<PrescriptionItem>().eq(PrescriptionItem::getPrescriptionId, p.getId())
+                );
+                map.put("items", items);
+                pRes.add(map);
+            }
+            return PageResult.of(pRes, pPage.getTotal(), pPage.getCurrent(), pPage.getSize());
+        }
 
+        List<Prescription> list = prescriptionMapper.selectList(qw);
         List<Map<String, Object>> res = new ArrayList<>();
         for (Prescription p : list) {
             Map<String, Object> map = new HashMap<>();
@@ -148,12 +173,20 @@ public class PrescriptionController {
      * 返回结构对接前端「就诊记录」面板与「引用开方」。
      */
     @GetMapping("/patient-history")
-    public List<Map<String, Object>> patientHistory(
+    public Object patientHistory(
             @RequestParam(value = "patientId", required = false) Long patientId,
-            @RequestParam(value = "idCard", required = false) String idCard) {
+            @RequestParam(value = "idCard", required = false) String idCard,
+            @RequestParam(value = "pageNo", required = false) Integer pageNo,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize,
+            PageParam pageParam) {
         List<Map<String, Object>> res = new ArrayList<>();
         String card = (idCard != null && !idCard.trim().isEmpty()) ? idCard.trim() : null;
-        if (patientId == null && card == null) return res;
+        if (patientId == null && card == null) {
+            if (pageNo != null || pageSize != null) {
+                return new PageResult<>(res, 0, pageParam.getPageNo(), pageParam.getPageSize(), 0);
+            }
+            return res;
+        }
 
         // 候选 id 集合：患者档案 id + 该患者（按身份证/档案关联）名下所有挂号记录 id。
         // 历史版本处方落库时 patientId 存的是挂号记录 id，此处统一兼容两种语义。
@@ -191,6 +224,9 @@ public class PrescriptionController {
         // 兼容历史数据：处方.patient_id 曾存过挂号 id / 不同档案 id，统一按 id 集合 + 同身份证挂号姓名 双通道合并。
         // 两个集合都可能为空，MyBatis-Plus .in(空集合) 会生成非法 SQL "IN ()"，必须逐个判空后再拼条件。
         List<Prescription> list;
+        long totalCount = 0;
+        long currentPage = 1;
+        long currentSize = 10;
         if (candidateIds.isEmpty() && relatedNamesFinal.isEmpty()) {
             list = new ArrayList<>();
         } else {
@@ -206,8 +242,18 @@ public class PrescriptionController {
                     w.in(Prescription::getPatientName, relatedNamesFinal);
                 }
             });
-            pw.orderByDesc(Prescription::getCreateTime).last("LIMIT 10");
-            list = prescriptionMapper.selectList(pw);
+            pw.orderByDesc(Prescription::getCreateTime);
+
+            if (pageNo != null || pageSize != null) {
+                Page<Prescription> pPage = prescriptionMapper.selectPage(pageParam.toPage(), pw);
+                list = pPage.getRecords();
+                totalCount = pPage.getTotal();
+                currentPage = pPage.getCurrent();
+                currentSize = pPage.getSize();
+            } else {
+                list = prescriptionMapper.selectList(pw);
+                totalCount = list.size();
+            }
         }
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -265,6 +311,9 @@ public class PrescriptionController {
             visit.put("advice", (p.getAiAdvice() != null && !p.getAiAdvice().isEmpty()) ? p.getAiAdvice() : "遵医嘱规律服药。");
             visit.put("totalFee", p.getTotalAmount());
             res.add(visit);
+        }
+        if (pageNo != null || pageSize != null) {
+            return PageResult.of(res, totalCount, currentPage, currentSize);
         }
         return res;
     }
@@ -713,6 +762,7 @@ public class PrescriptionController {
         }
 
         p.setPayStatus("已支付");
+        p.setPayChannel(payChannel);
         p.setStatus("1"); // 1: 待发药
         prescriptionMapper.updateById(p);
 

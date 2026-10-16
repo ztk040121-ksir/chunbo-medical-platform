@@ -79,6 +79,40 @@
             <b class="text-danger">¥{{ scope.row.finalAmount }}</b>
           </template>
         </el-table-column>
+        <el-table-column prop="payMethod" label="支付方式" width="125" align="center">
+          <template #default="scope">
+            <el-tag
+              v-if="scope.row.payMethod === '支付宝' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('alipay'))"
+              size="small"
+              type="primary"
+              effect="plain"
+              style="font-weight: 500;"
+            >
+              🔵 支付宝
+            </el-tag>
+            <el-tag
+              v-else-if="scope.row.payMethod === '微信支付' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('wechat'))"
+              size="small"
+              type="success"
+              effect="plain"
+              style="font-weight: 500;"
+            >
+              🟢 微信支付
+            </el-tag>
+            <el-tag
+              v-else-if="scope.row.payMethod === '账户余额' || (scope.row.bargainNotes && scope.row.bargainNotes.includes('体验金'))"
+              size="small"
+              type="warning"
+              effect="plain"
+              style="font-weight: 500;"
+            >
+              💳 体验金抵扣
+            </el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">
+              {{ scope.row.payMethod || '在线支付' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="履约状态" width="180">
           <template #default="scope">
             <el-tag :type="scope.row.status && scope.row.status.includes('已发货') ? 'success' : 'warning'" size="small">

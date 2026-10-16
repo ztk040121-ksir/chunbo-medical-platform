@@ -106,8 +106,7 @@ public abstract class OaBaseAgent extends AbstractAgent {
         // 2. 商城履约：精准区分「列表查询」与「发货动作」，预取真实订单数据后纯流式下发
         if ("OA_ORDER".equals(skillHint())) {
             StringBuilder sysBuilder = new StringBuilder();
-            sysBuilder.append("你是「春播云管理系统中台 · 商城履约调度智能体」，当前登录用户：").append(name)
-                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            sysBuilder.append(com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_order", name, role, userId)).append("\n");
             try {
                 boolean isListQuery = question.contains("清单") || question.contains("列表") || question.contains("有哪些")
                         || question.contains("查看") || question.contains("查询") || question.contains("待发货订单")
@@ -139,8 +138,7 @@ public abstract class OaBaseAgent extends AbstractAgent {
         // 3. 商品与进销存：预取商品库存或执行上下架/调价/入库后纯流式下发
         if ("OA_PRODUCT".equals(skillHint())) {
             StringBuilder sysBuilder = new StringBuilder();
-            sysBuilder.append("你是「春播云管理系统中台 · 商品与进销存调度智能体」，当前登录用户：").append(name)
-                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            sysBuilder.append(com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_product", name, role, userId)).append("\n");
             try {
                 boolean isAnalysisOrOverview = question.contains("研判") || question.contains("预警") || question.contains("分析")
                         || question.contains("概况") || question.contains("报告") || question.contains("全部") || question.contains("清单") || question.contains("列表") || question.contains("所有");
@@ -177,8 +175,7 @@ public abstract class OaBaseAgent extends AbstractAgent {
         // 4. 商城用户管理：预取用户清单或统计后纯流式下发
         if ("OA_MALL_USER".equals(skillHint())) {
             StringBuilder sysBuilder = new StringBuilder();
-            sysBuilder.append("你是「春播云管理系统中台 · 商城用户管理智能体」，当前登录用户：").append(name)
-                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            sysBuilder.append(com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_mall_user", name, role, userId)).append("\n");
             try {
                 if (question.contains("统计") || question.contains("总数") || question.contains("概况")) {
                     String res = assistantTools.queryMallUserStats(toolContext);
@@ -198,8 +195,7 @@ public abstract class OaBaseAgent extends AbstractAgent {
         // 5. OA 请假审批：预取请假名单或执行审批动作后纯流式下发
         if ("OA_APPROVAL".equals(skillHint())) {
             StringBuilder sysBuilder = new StringBuilder();
-            sysBuilder.append("你是「春播云管理系统中台 · OA 请假审批调度智能体」，当前登录用户：").append(name)
-                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            sysBuilder.append(com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_approval", name, role, userId)).append("\n");
             try {
                 if (question.contains("批准") || question.contains("通过") || question.contains("同意")) {
                     String target = extractTargetName(question, "批准", "通过", "同意", "请假", "单", "的");
@@ -228,8 +224,7 @@ public abstract class OaBaseAgent extends AbstractAgent {
         // 6. 药房库存与智能补货调度：预取药房库存或临期预警后纯流式下发
         if ("OA_INVENTORY".equals(skillHint())) {
             StringBuilder sysBuilder = new StringBuilder();
-            sysBuilder.append("你是「春播云管理系统中台 · 智慧药房与库存调度智能体」，当前登录用户：").append(name)
-                    .append("（角色：").append(role).append("，工号：").append(userId).append("）。\n");
+            sysBuilder.append(com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_inventory", name, role, userId)).append("\n");
             try {
                 if (question.contains("补货") || question.contains("预警") || question.contains("缺药") || question.contains("临期") || question.contains("采购") || question.contains("快没")) {
                     String res = assistantTools.queryMedicineReplenishmentWarning(toolContext);
@@ -257,8 +252,8 @@ public abstract class OaBaseAgent extends AbstractAgent {
             } catch (Exception e) {
                 res = "大盘数据获取异常：" + e.getMessage();
             }
-            String sys = "你是「春播云管理系统中台 · 门诊大盘经营诊断智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "\n【门诊大盘与综合营收真实统计】\n" + res
+            String sys = com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_analytics", name, role, userId)
+                    + "\n\n【门诊大盘与综合营收真实统计】\n" + res
                     + "\n\n【本回复无需调用任何工具】请基于上述真实门诊运营大盘数据，结构化解读现状，提炼亮点与改善建议。";
             return functionCallingFlux(question, sessionId, userId, role, sys);
         }
@@ -274,8 +269,8 @@ public abstract class OaBaseAgent extends AbstractAgent {
             } catch (Exception e) {
                 res = "贴敷数据获取异常：" + e.getMessage();
             }
-            String sys = "你是「春播云管理系统中台 · 中药贴敷特色理疗智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "\n【中药贴敷特色理疗运营真实统计】\n" + res
+            String sys = com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_plaster", name, role, userId)
+                    + "\n\n【中药贴敷特色理疗运营真实统计】\n" + res
                     + "\n\n【本回复无需调用任何工具】请基于上述真实贴敷统计数据，详细转述疗程量、各贴敷类型占比、施术人次与创收数据，给出专业运营分析。";
             return functionCallingFlux(question, sessionId, userId, role, sys);
         }
@@ -288,8 +283,8 @@ public abstract class OaBaseAgent extends AbstractAgent {
             } catch (Exception e) {
                 res = "排班数据获取异常：" + e.getMessage();
             }
-            String sys = "你是「春播云管理系统中台 · 医生护士排班值班智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                    + "\n【门诊轮值排班与请假真实日历】\n" + res
+            String sys = com.chunbo.medical.prompt.PromptConfig.formatPrompt("oa_schedule", name, role, userId)
+                    + "\n\n【门诊轮值排班与请假真实日历】\n" + res
                     + "\n\n【本回复无需调用任何工具】请基于上述真实排班表，清晰呈现医生护士的值班安排。";
             return functionCallingFlux(question, sessionId, userId, role, sys);
         }
@@ -402,14 +397,13 @@ public abstract class OaBaseAgent extends AbstractAgent {
         return sb.toString();
     }
 
-    /** 薪资智能体 system prompt：引导 LLM 先调工具核对工资条，同时向 LLM 声明当前身份供透明化 */
+    /** 薪资智能体 system prompt：从 PromptConfig 读取独立 txt 提示词 */
     private String buildSalarySystemPrompt(String name, String role, String userId) {
-        return "你是「春播云管理系统中台 · 薪酬绩效智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n"
-                + "【查询工资必须自主调用工具】\n"
-                + "1. 用户查询自己或他人工资时，必须调用 querySalarySlip(doctorId, month) 获取真实工资条数据；\n"
-                + "2. 工具的权限由系统后台强制校验（医生只能查自己，管理员/人事可查任意员工），你无需自行判断权限；\n"
-                + "3. 拿到工具返回的工资数据后，用清晰的 Markdown 表格呈现。\n"
-                + "【注意】不要编造任何工资数字，一切以工具返回的真实数据为准。";
+        String template = com.chunbo.medical.prompt.PromptConfig.get("oa_salary");
+        if (template.isBlank()) {
+            return "你是「春播云管理系统中台 · 薪酬绩效智能体」，当前登录用户：" + name + "（角色：" + role + "，工号：" + userId + "）。\n";
+        }
+        return String.format(template, name, role, userId);
     }
 
     /** 按工号前缀还原角色（DOC_ 医生 / HR_ 人事 / MERCH_ 商户 / 其它 ADMIN），并以 DB 为准修正 */

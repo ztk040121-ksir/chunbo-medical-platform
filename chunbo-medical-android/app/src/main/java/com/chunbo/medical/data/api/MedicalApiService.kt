@@ -61,6 +61,16 @@ interface MedicalApiService {
     @POST("api/mall/order/deliver")
     suspend fun confirmOrderDelivered(@Body body: Map<String, String>): Map<String, Any>
 
+    // === 支付宝当面付扫码与主动查单补偿 ===
+    @POST("api/pay/alipay/precreate")
+    suspend fun alipayPrecreate(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
+
+    @GET("api/pay/alipay/query")
+    suspend fun alipayQuery(@Query("orderNo") orderNo: String): Map<String, Any>
+
+    @POST("api/pay/alipay/mock-pay")
+    suspend fun alipayMockPay(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
+
     // === AI 执业药师智能体咨询与对话 ===
     @POST("api/mall/chat")
     suspend fun mallChat(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
